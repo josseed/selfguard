@@ -3,60 +3,12 @@
  * Pure data: never executes anything from the project.
  */
 import { isObject } from "../fsutil.ts";
-import { isValid } from "../semver.ts";
-import type { Dependency, ParsedLockfile } from "./types.ts";
-
-const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const;
-
-function depNames(manifest: unknown): Set<string> {
-  const names = new Set<string>();
-  if (!isObject(manifest)) return names;
-  for (const field of DEP_FIELDS) {
-    const deps = manifest[field];
-    if (isObject(deps)) for (const n of Object.keys(deps)) names.add(n);
-  }
-  return names;
-}
-
-class Collector {
-  private map = new Map<string, Dependency>();
-  skipped = 0;
-
-  add(name: string, version: string, direct: boolean, dev: boolean): void {
-    if (!name || !isValid(version)) {
-      this.skipped++;
-      return;
-    }
-    const key = `${name}@${version}`;
-    const prev = this.map.get(key);
-    if (prev) {
-      prev.direct ||= direct;
-      prev.dev &&= dev; // prod if reachable from prod anywhere
-    } else {
-      this.map.set(key, { name, version, direct, dev });
-    }
-  }
-
-  result(): ParsedLockfile {
-    const deps = [...this.map.values()].sort((a, b) =>
-      a.name === b.name ? (a.version < b.version ? -1 : 1) : a.name < b.name ? -1 : 1,
-    );
-    return { deps, skipped: this.skipped };
-  }
-}
+import { Collector, depNames, parseAlias } from "./common.ts";
+import type { ParsedLockfile } from "./types.ts";
 
 function isNonRegistry(resolved: unknown): boolean {
   if (typeof resolved !== "string") return false;
   return /^(git\+|git:|github:|file:|link:)/.test(resolved) || resolved.endsWith(".git");
-}
-
-/** "npm:real-name@1.2.3" -> { name, version } */
-function parseAlias(spec: string): { name: string; version: string } | null {
-  if (!spec.startsWith("npm:")) return null;
-  const rest = spec.slice(4);
-  const at = rest.lastIndexOf("@");
-  if (at <= 0) return null;
-  return { name: rest.slice(0, at), version: rest.slice(at + 1) };
 }
 
 const NM = "node_modules/";

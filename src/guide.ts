@@ -10,7 +10,8 @@ state lives in ~/.selfguard, only package names+versions are sent to OSV, and it
 project code or package managers.
 
 ## Concepts
-- project: a folder with a lockfile (package-lock.json; pnpm/yarn/bun are detected but not parsed yet).
+- project: a folder with a lockfile: package-lock.json, npm-shrinkwrap.json, pnpm-lock.yaml (v5-v9),
+  yarn.lock (classic v1 and berry v2+) or bun.lock. The binary bun.lockb is not supported.
 - roots: folders where projects are discovered (recursive, depth-limited, skips node_modules-like dirs).
 - exclude: paths never tracked (fixtures, examples, archived repos).
 - severity order: malicious > critical > high > moderate > low > unknown.

@@ -121,8 +121,11 @@ cd ──► zsh hook (pure shell: walk up for package.json, stat lockfile on ea
                                                                     └─► macOS notification on new findings
 ```
 
-Supported today: `package-lock.json` / `npm-shrinkwrap.json` (v1, v2, v3). pnpm, yarn and bun
-lockfiles are detected but not parsed yet.
+Supported lockfiles: `package-lock.json` / `npm-shrinkwrap.json` (v1–v3), `pnpm-lock.yaml`
+(v5, v6, v9), `yarn.lock` (classic v1 and berry v2+) and `bun.lock`. The binary `bun.lockb` is
+not supported (`bun install --save-text-lockfile` converts it). All of them are parsed as data,
+with a dependency-free parser; the test suite checks that real lockfiles from every manager
+produce identical results for the same project.
 
 ## Development
 

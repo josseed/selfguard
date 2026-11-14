@@ -10,7 +10,7 @@ export interface Project {
   lockType: LockfileType | null;
 }
 
-/** In priority order. Only npm is parsed for now; the rest are detected so we can say so. */
+/** In priority order (bun.lock wins over the legacy binary bun.lockb). */
 export const LOCKFILES: ReadonlyArray<[string, LockfileType]> = [
   ["npm-shrinkwrap.json", "npm"],
   ["package-lock.json", "npm"],
@@ -19,8 +19,6 @@ export const LOCKFILES: ReadonlyArray<[string, LockfileType]> = [
   ["bun.lock", "bun"],
   ["bun.lockb", "bun"],
 ];
-
-export const SUPPORTED_LOCK_TYPES: ReadonlySet<LockfileType> = new Set(["npm"]);
 
 function lockfileIn(dir: string): [string, LockfileType] | null {
   for (const [file, type] of LOCKFILES) {

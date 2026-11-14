@@ -1,8 +1,8 @@
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { sha256 } from "./fsutil.ts";
-import { SUPPORTED_LOCK_TYPES, type Project } from "./lockfile/detect.ts";
-import { parseNpmLockfile } from "./lockfile/npm.ts";
+import type { Project } from "./lockfile/detect.ts";
+import { isSupported, parseLockfile } from "./lockfile/index.ts";
 import type { Dependency } from "./lockfile/types.ts";
 import { evaluate, severityOf, severityRank } from "./match.ts";
 import { getVulns, queryBatch, type OsvVuln } from "./osv.ts";
@@ -76,8 +76,8 @@ function inventory(project: Project): Inventory {
     return { record, previous };
   }
   Object.assign(record, { lockHash: st.hash, lockMtimeMs: st.mtimeMs, lockSize: st.size });
-  if (!SUPPORTED_LOCK_TYPES.has(project.lockType)) {
-    record.error = `${project.lockType} lockfiles are not supported yet`;
+  if (!isSupported(project.lockType, project.lockfile)) {
+    record.error = "bun.lockb (binary) is not supported; run `bun install --save-text-lockfile` to create bun.lock";
     record.scannedAt = now;
     return { record, previous };
   }
@@ -89,7 +89,7 @@ function inventory(project: Project): Inventory {
     } catch {
       manifest = undefined;
     }
-    const parsed = parseNpmLockfile(readFileSync(project.lockfile, "utf8"), manifest);
+    const parsed = parseLockfile(project.lockType, readFileSync(project.lockfile, "utf8"), manifest);
     record.deps = parsed.deps;
     record.skipped = parsed.skipped;
   } catch (err) {

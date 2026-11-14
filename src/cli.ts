@@ -174,7 +174,7 @@ async function cmdDiscover(args: string[]): Promise<number> {
   const c = paint(out);
   if (r.found.length === 0) out.write("No new projects found.\n");
   for (const p of r.found) {
-    const note = p.lockType && p.lockType !== "npm" ? c.dim(` (${p.lockType}, not supported yet)`) : "";
+    const note = p.lockType ? c.dim(` (${p.lockType})`) : c.dim(" (no lockfile)");
     out.write(`  ${c.green("+")} ${tildify(p.path)}${note}\n`);
   }
   if (r.dryRun && r.found.length) out.write(`${r.found.length} new project(s) (dry run, nothing registered).\n`);

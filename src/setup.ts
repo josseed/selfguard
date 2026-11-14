@@ -184,7 +184,7 @@ function printScanSummary(outcomes: ScanOutcome[]): void {
     out.write(`  ${color("●")} ${c.bold(tildify(o.record.path))}  ${pkgs} vulnerable pkg(s) ${c.dim(`(${summarizeCounts(o.record.findings)})`)}\n`);
   }
   if (risky.length > 10) out.write(c.dim(`  …and ${risky.length - 10} more (selfguard status)\n`));
-  if (unsupported > 0) out.write(c.dim(`  ${unsupported} project(s) skipped: no lockfile or pnpm/yarn/bun (not supported yet)\n`));
+  if (unsupported > 0) out.write(c.dim(`  ${unsupported} project(s) skipped: no lockfile yet, or unreadable\n`));
 }
 
 export async function runSetup(): Promise<number> {
