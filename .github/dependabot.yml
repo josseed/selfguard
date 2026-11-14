@@ -17,6 +17,10 @@ updates:
     groups:
       dev-tooling:
         patterns: ["*"]
+    # @types/node must match the oldest supported Node (engines >= 20), not the newest.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     # Give the ecosystem time to catch compromised releases before we adopt them.
     cooldown:
       default-days: 7
