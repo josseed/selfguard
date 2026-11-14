@@ -44,7 +44,7 @@ export const TOOLS: Tool[] = [
     name: "selfguard_status",
     title: "List tracked projects",
     description:
-      "List every project selfguard tracks with its risk summary (worst severity, vulnerable package count, last scan). Reads local state only, no network. Start here.",
+      "Risk overview of everything selfguard tracks. `repos` groups git worktrees and clones of the same repository (each checkout with its branch and counts); `projects` is the flat list. Reads local state only, no network. Start here.",
     inputSchema: obj({ onlyVulnerable: { type: "boolean", description: "Only projects with findings." } }),
     annotations: { readOnlyHint: true, openWorldHint: false },
     run: (a) => api.getStatus({ onlyVulnerable: bool(a, "onlyVulnerable") ?? false }),

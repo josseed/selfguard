@@ -7,6 +7,7 @@ import { hookEnter, ZSH_HOOK } from "./hook.ts";
 import { findProject } from "./lockfile/detect.ts";
 import { runMcpServer } from "./mcp.ts";
 import { paint, renderFindings, severityLabel, tildify, worstSeverity } from "./report.ts";
+import { repoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import type { ScanOutcome } from "./scan.ts";
 import { parseInterval, scheduleOff, scheduleOn, scheduleStatus } from "./schedule.ts";
@@ -24,7 +25,8 @@ Setup:
                                      periodic sync with macOS notifications (launchd)
 
 Projects:
-  selfguard status [--vulnerable]    every tracked project, riskiest first
+  selfguard status [--vulnerable] [--flat]
+                                     tracked repos, riskiest first (worktrees/clones grouped)
   selfguard scan [dir] [-v]          scan a project now (exit 1 if vulnerable) and track it
   selfguard report [dir] [-v]        last scan results, no network
   selfguard sync                     find new repos in your folders + re-check everything
@@ -64,7 +66,13 @@ function usage(message: string): never {
 }
 
 function notifyNew(outcomes: ScanOutcome[]): Promise<void> {
-  return deliver(buildAlert(outcomes.map((o) => ({ path: o.record.path, newFindings: o.newFindings }))));
+  return deliver(
+    buildAlert(
+      outcomes
+        .filter((o) => o.newFindings.length > 0)
+        .map((o) => ({ path: o.record.path, newFindings: o.newFindings, repo: repoIdentity(o.record.path) })),
+    ),
+  );
 }
 
 /** Detached scan started by the shell hook: log + notify, never print to a terminal. */
@@ -110,7 +118,7 @@ function cmdReport(args: string[]): number {
 }
 
 function cmdStatus(args: string[]): number {
-  const { values } = parseArgs({ args, options: { ...JSON_OPT, vulnerable: { type: "boolean" } } });
+  const { values } = parseArgs({ args, options: { ...JSON_OPT, vulnerable: { type: "boolean" }, flat: { type: "boolean" } } });
   const status = api.getStatus({ onlyVulnerable: values.vulnerable ?? false });
   if (values.json) {
     emit(status);
@@ -121,15 +129,48 @@ function cmdStatus(args: string[]): number {
     out.write(`No projects tracked yet. Run ${c.bold("selfguard setup")}.\n`);
     return 0;
   }
-  for (const p of status.projects) {
-    const badge = p.worstSeverity ? severityLabel(p.worstSeverity, c) : p.error ? c.yellow("!") : c.green("✓");
-    const counts = Object.entries(p.bySeverity).map(([s, n]) => `${n} ${s}`).join(", ");
-    const detail = p.advisories
-      ? `${p.vulnerablePackages} vulnerable pkg(s) ${c.dim(`(${counts})`)}`
-      : p.error
-        ? c.dim(clean(p.error, 80))
-        : c.dim(`${p.packages} packages, clean`);
-    out.write(`${badge} ${c.bold(tildify(p.path))}${p.exists ? "" : c.dim(" (missing)")}  ${detail}\n`);
+  const badge = (w: api.ProjectSummary["worstSeverity"], error: string | null) =>
+    w ? severityLabel(w, c) : error ? c.yellow("!") : c.green("✓");
+
+  if (values.flat) {
+    for (const p of status.projects) {
+      const counts = Object.entries(p.bySeverity).map(([s, n]) => `${n} ${s}`).join(", ");
+      const detail = p.advisories
+        ? `${p.vulnerablePackages} vulnerable pkg(s) ${c.dim(`(${counts})`)}`
+        : p.error
+          ? c.dim(clean(p.error, 80))
+          : c.dim(`${p.packages} packages, clean`);
+      out.write(`${badge(p.worstSeverity, p.error)} ${c.bold(tildify(p.path))}${p.exists ? "" : c.dim(" (missing)")}  ${detail}\n`);
+    }
+    return 0;
+  }
+
+  for (const g of status.repos) {
+    const many = g.checkouts.length > 1;
+    const firstError = g.checkouts.find((k) => k.error)?.error ?? null;
+    // Headline: the main checkout; mention a branch that is worse than it.
+    const main = g.checkouts.find((k) => !k.worktree) ?? g.checkouts[0]!;
+    const worse = g.checkouts
+      .filter((k) => k !== main && k.vulnerablePackages > main.vulnerablePackages)
+      .sort((a, b) => b.vulnerablePackages - a.vulnerablePackages)[0];
+    const mainText = main.vulnerablePackages
+      ? `${main.vulnerablePackages} vulnerable pkg(s)${many && main.branch ? ` on ${clean(main.branch, 40)}` : ""}`
+      : main.error && !many
+        ? c.dim(clean(main.error, 80))
+        : many && main.branch
+          ? c.dim(`clean on ${clean(main.branch, 40)}`)
+          : c.dim("clean");
+    const head = worse ? `${mainText} ${c.yellow(`· ${worse.vulnerablePackages} on ${clean(worse.branch ?? "another checkout", 40)}`)}` : mainText;
+    const where = many ? c.dim(`${g.checkouts.length} checkouts`) : c.dim(tildify(g.checkouts[0]!.path));
+    out.write(`${badge(g.worstSeverity, firstError)} ${c.bold(clean(g.label, 80))}  ${head}  ${where}\n`);
+    if (!many) continue;
+    g.checkouts.forEach((k, i) => {
+      const branch = k.branch ? c.cyan(clean(k.branch, 50)) : c.dim("(no branch)");
+      const kind = k.worktree ? c.dim(" worktree") : "";
+      const detail = k.advisories ? `${k.vulnerablePackages} vulnerable` : k.error ? c.dim(clean(k.error, 60)) : c.dim("clean");
+      const tree = i === g.checkouts.length - 1 ? "└" : "├";
+      out.write(`   ${c.dim(tree)} ${branch}${kind}  ${detail}  ${c.dim(tildify(k.path))}${k.exists ? "" : c.dim(" (missing)")}\n`);
+    });
   }
   return 0;
 }
@@ -154,6 +195,7 @@ async function cmdSync(args: string[]): Promise<number> {
   } else {
     const c = paint(out);
     if (data.discovered.length) out.write(`Discovered ${data.discovered.length} new project(s) in your folders.\n`);
+    if (data.pruned.length) out.write(c.dim(`Stopped tracking ${data.pruned.length} folder(s) that no longer exist.\n`));
     out.write(`Synced ${data.projects} project(s). ${total ? c.red(`${total} newly vulnerable package(s).`) : c.green("Nothing new.")}\n`);
     for (const p of data.news) {
       const pkgs = p.packages.map((g) => `${clean(g.name)}@${clean(g.version)} ${c.dim(`(${g.advisories.length})`)}`);

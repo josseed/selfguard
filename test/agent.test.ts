@@ -27,7 +27,7 @@ function cli(env: NodeJS.ProcessEnv, ...args: string[]): { code: number; json: a
 
 test("--json: stable documents and structured errors with exit code 2", () => {
   const { code, env } = sandbox();
-  assert.deepEqual(cli(env, "status", "--json"), { code: 0, json: { projects: [] } });
+  assert.deepEqual(cli(env, "status", "--json"), { code: 0, json: { repos: [], projects: [] } });
   const added = cli(env, "roots", "add", code, "--depth", "2", "--json");
   assert.deepEqual(added.json.roots, [{ path: code, depth: 2 }]);
   const dry = cli(env, "discover", "--dry-run", "--json");

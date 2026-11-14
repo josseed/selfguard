@@ -8,6 +8,8 @@ import type { Finding } from "./store.ts";
 export interface ProjectNews {
   path: string;
   newFindings: Finding[];
+  /** Same key = same repo (worktrees/clones): reported once. */
+  repo?: { key: string; label: string } | null;
 }
 
 export type Alert =
@@ -34,15 +36,38 @@ function listFixes(findings: Finding[], max = 3): string {
   return parts.join(", ");
 }
 
+/** Merge checkouts of the same repo into one entry, de-duplicating findings. */
+function byRepo(news: ProjectNews[]): Array<ProjectNews & { label: string; checkouts: number }> {
+  const groups = new Map<string, ProjectNews & { label: string; checkouts: number; seen: Set<string> }>();
+  for (const n of news) {
+    if (n.newFindings.length === 0) continue;
+    const key = n.repo?.key ?? `path:${n.path}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { path: n.path, newFindings: [], label: n.repo?.label ?? name(n.path), checkouts: 0, seen: new Set() };
+      groups.set(key, g);
+    }
+    g.checkouts++;
+    for (const f of n.newFindings) {
+      const k = `${f.id}|${f.name}@${f.version}`;
+      if (g.seen.has(k)) continue;
+      g.seen.add(k);
+      g.newFindings.push(f);
+    }
+  }
+  return [...groups.values()].map(({ seen: _s, ...g }) => g);
+}
+
 export function buildAlert(news: ProjectNews[]): Alert {
-  const affected = news.filter((n) => n.newFindings.length > 0);
+  const affected = byRepo(news);
   if (affected.length === 0) return { kind: "none" };
   const all = affected.flatMap((n) => n.newFindings);
 
   const malicious = affected.flatMap((n) => n.newFindings.filter((f) => f.severity === "malicious").map((f) => ({ f, path: n.path })));
   if (malicious.length > 0) {
     const { f, path } = malicious[0]!;
-    const where = affected.length === 1 ? name(path) : `${affected.length} projects`;
+    const group = affected.find((n) => n.path === path)!;
+    const where = affected.length === 1 ? group.label : `${affected.length} projects`;
     const others = malicious.length > 1 ? ` (+${malicious.length - 1} more malicious)` : "";
     return {
       kind: "critical",
@@ -52,7 +77,7 @@ export function buildAlert(news: ProjectNews[]): Alert {
       dialogTitle: `selfguard: malicious package in ${where}`,
       dialogMessage:
         `${f.name}@${f.version} is a known malicious package${others}.\n\n` +
-        `Project: ${path}\n\n` +
+        `Project: ${path}${group.checkouts > 1 ? ` (and ${group.checkouts - 1} other checkout(s) of ${group.label})` : ""}\n\n` +
         "1. Remove it (or pin a safe version) and reinstall.\n" +
         "2. Rotate credentials this machine or CI could reach: npm tokens, cloud keys, SSH keys, .env secrets.\n" +
         "3. Check the advisory for what the payload does.",
@@ -66,13 +91,13 @@ export function buildAlert(news: ProjectNews[]): Alert {
     const pkgs = groupByPackage(n.newFindings).length;
     return {
       kind: "banner",
-      title: `selfguard: ${name(n.path)}`,
+      title: `selfguard: ${n.label}${n.checkouts > 1 ? ` (${n.checkouts} checkouts)` : ""}`,
       subtitle: `${plural(pkgs, "vulnerable package")} · worst: ${worst}`,
       body: listFixes(n.newFindings),
     };
   }
   const pkgs = affected.reduce((sum, n) => sum + groupByPackage(n.newFindings).length, 0);
-  const names = affected.map((n) => name(n.path));
+  const names = affected.map((n) => n.label);
   return {
     kind: "banner",
     title: `selfguard: ${affected.length} projects affected`,

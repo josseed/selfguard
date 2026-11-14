@@ -16,6 +16,9 @@ project code or package managers.
 - exclude: paths never tracked (fixtures, examples, archived repos).
 - severity order: malicious > critical > high > moderate > low > unknown.
 - upgradeTo: lowest version of a package that fixes all of its advisories that have a fix.
+- repo groups: git worktrees and separate clones of the same repo (same remote + same subfolder) are
+  grouped. status returns "repos" (grouped, with each checkout's branch) and "projects" (flat).
+  A finding usually needs fixing once on the main branch; mention branches that are worse.
 
 ## Use it via MCP (preferred) or the CLI with --json
 | Goal | MCP tool | CLI |

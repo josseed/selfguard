@@ -57,3 +57,17 @@ test("multiline cleaning keeps line breaks but still strips escapes", () => {
   assert.equal(clean("a\n\n\n\nb\u001b[2J", 100, { multiline: true }), "a\n\nb[2J");
   assert.equal(clean("a\nb"), "a b");
 });
+
+test("checkouts of the same repo are reported once, findings de-duplicated", () => {
+  const repo = { key: "github.com/acme/web", label: "acme/web" };
+  const lodash = f("lodash", "4.17.20", "GHSA-3", "high", "4.18.0");
+  const a = buildAlert([
+    { path: "/c/web", newFindings: [lodash], repo },
+    { path: "/c/web-feat-x", newFindings: [lodash, f("qs", "6.5.1", "GHSA-5", "moderate", "6.5.3")], repo },
+    { path: "/c/web-hotfix", newFindings: [lodash], repo },
+  ]);
+  assert.equal(a.kind, "banner");
+  if (a.kind !== "banner") return;
+  assert.equal(a.title, "selfguard: acme/web (3 checkouts)");
+  assert.equal(a.subtitle, "2 vulnerable packages · worst: HIGH");
+});

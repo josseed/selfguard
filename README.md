@@ -44,6 +44,19 @@ selfguard **never crawls your whole disk**. A project gets tracked in one of thr
 2. **The shell hook**: `cd` anywhere and the enclosing project is registered.
 3. **By hand**: `selfguard scan <dir>`.
 
+Worktrees and separate clones of the same repo are **grouped** (by remote URL, or by the main
+repo a worktree points to), and each subfolder project of a monorepo stays its own group:
+
+```
+CRITICAL acme/datahub  31 vulnerable pkg(s) on main · 82 on feat/calculadora  3 checkouts
+   ├ main  31 vulnerable  ~/code/datahub
+   ├ fix/query-perf worktree  30 vulnerable  ~/code/datahub-query-perf
+   └ feat/calculadora worktree  82 vulnerable  ~/code/datahub-feat-calculadora
+```
+
+Notifications about the same advisory in several checkouts of one repo arrive once. `sync` stops
+tracking folders that no longer exist (e.g. removed worktrees). `status --flat` lists every checkout.
+
 Test fixtures, examples or archived repos you don't care about: `selfguard forget <dir>` stops
 tracking them and excludes them from discovery (undo with `selfguard unexclude <dir>`).
 
@@ -82,7 +95,7 @@ Run `selfguard --help` for everything. The main ones:
 | Command | What it does |
 |---|---|
 | `selfguard setup` | Interactive: choose your code folders, scan, install hook + sync |
-| `selfguard status [--vulnerable]` | All tracked projects, riskiest first |
+| `selfguard status [--vulnerable] [--flat]` | Tracked repos, riskiest first (worktrees/clones grouped) |
 | `selfguard scan [dir] [-v]` | Scan a project now (exit code 1 if anything is found) |
 | `selfguard report [dir] [-v]` | Last results for a project, no network |
 | `selfguard sync` | Find new repos in your folders, re-check everything, notify about news |

@@ -21,6 +21,7 @@ import type { LockfileType } from "./lockfile/types.ts";
 import { evaluate, severityOf, severityRank, type Severity } from "./match.ts";
 import { getVulns, type OsvVuln } from "./osv.ts";
 import { countBySeverity, groupByPackage, worstSeverity } from "./report.ts";
+import { repoIdentity, type RepoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import { scanProjects, type ScanOutcome } from "./scan.ts";
 import { forgetRepo, listRepos, loadRepo, saveRepo, type RepoRecord } from "./store.ts";
@@ -50,6 +51,27 @@ export interface ProjectSummary {
   vulnerablePackages: number;
   advisories: number;
   bySeverity: Partial<Record<Severity, number>>;
+  /** Repository this checkout belongs to (null when it isn't in a git repo). */
+  repo: RepoIdentity | null;
+}
+
+/** Worktrees / clones of the same repo (and same subfolder) grouped together. */
+export interface RepoGroup {
+  key: string;
+  label: string;
+  worstSeverity: Severity | null;
+  /** Distinct vulnerable name@version across all checkouts. */
+  vulnerablePackages: number;
+  checkouts: Array<{
+    path: string;
+    branch: string | null;
+    worktree: boolean;
+    exists: boolean;
+    worstSeverity: Severity | null;
+    vulnerablePackages: number;
+    advisories: number;
+    error: string | null;
+  }>;
 }
 
 export interface AdvisoryRef {
@@ -94,6 +116,7 @@ function summarize(rec: RepoRecord): ProjectSummary {
     vulnerablePackages: groupByPackage(rec.findings).length,
     advisories: rec.findings.length,
     bySeverity: countBySeverity(rec.findings),
+    repo: existsSync(rec.path) ? repoIdentity(rec.path) : null,
   };
 }
 
@@ -131,13 +154,47 @@ function resolveProject(path: string): Project {
 
 // ---------- operations ----------
 
-export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { projects: ProjectSummary[] } {
-  const rank = (p: ProjectSummary): number => (p.worstSeverity ? severityRank(p.worstSeverity) : 99);
-  const projects = listRepos()
-    .map(summarize)
+export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: RepoGroup[]; projects: ProjectSummary[] } {
+  const rank = (w: Severity | null): number => (w ? severityRank(w) : 99);
+  const records = listRepos();
+  const summaries = records.map(summarize);
+  const groups = new Map<string, { group: RepoGroup; pkgs: Set<string>; findings: RepoRecord["findings"] }>();
+  summaries.forEach((p, i) => {
+    const rec = records[i]!;
+    const key = p.repo?.key ?? `path:${p.path}`;
+    let g = groups.get(key);
+    if (!g) {
+      const label = p.repo?.label ?? (p.path.split("/").pop() || p.path);
+      g = { group: { key, label, worstSeverity: null, vulnerablePackages: 0, checkouts: [] }, pkgs: new Set(), findings: [] };
+      groups.set(key, g);
+    }
+    g.group.checkouts.push({
+      path: p.path,
+      branch: p.repo?.branch ?? null,
+      worktree: p.repo?.worktree ?? false,
+      exists: p.exists,
+      worstSeverity: p.worstSeverity,
+      vulnerablePackages: p.vulnerablePackages,
+      advisories: p.advisories,
+      error: p.error,
+    });
+    for (const f of rec.findings) g.pkgs.add(`${f.name}@${f.version}`);
+    g.findings.push(...rec.findings);
+  });
+  const repos = [...groups.values()]
+    .map(({ group, pkgs, findings }) => {
+      group.worstSeverity = worstSeverity(findings);
+      group.vulnerablePackages = pkgs.size;
+      // main checkout first, then riskiest worktrees
+      group.checkouts.sort((a, b) => Number(a.worktree) - Number(b.worktree) || rank(a.worstSeverity) - rank(b.worstSeverity) || a.path.localeCompare(b.path));
+      return group;
+    })
+    .filter((g) => !opts.onlyVulnerable || g.vulnerablePackages > 0)
+    .sort((a, b) => rank(a.worstSeverity) - rank(b.worstSeverity) || b.vulnerablePackages - a.vulnerablePackages || a.label.localeCompare(b.label));
+  const projects = summaries
     .filter((p) => !opts.onlyVulnerable || p.advisories > 0)
-    .sort((a, b) => rank(a) - rank(b) || b.advisories - a.advisories || a.path.localeCompare(b.path));
-  return { projects };
+    .sort((a, b) => rank(a.worstSeverity) - rank(b.worstSeverity) || b.advisories - a.advisories || a.path.localeCompare(b.path));
+  return { repos, projects };
 }
 
 /** Last stored report for a project (no network). */
@@ -170,6 +227,8 @@ export async function scanPath(path: string): Promise<ScanResult> {
 export interface SyncResult {
   projects: number;
   discovered: string[];
+  /** Tracked folders that no longer exist (e.g. removed worktrees); no longer tracked. */
+  pruned: string[];
   /** Per project, vulnerable packages with advisories not seen before. */
   news: Array<{ path: string; packages: Array<{ name: string; version: string; worstSeverity: Severity; advisories: string[] }> }>;
   errors: Array<{ path: string; error: string }>;
@@ -184,8 +243,14 @@ export async function sync(): Promise<SyncResult> {
     const cfg = loadConfig();
     const projects: Project[] = [];
     const seen = new Set<string>();
+    const pruned: string[] = [];
     for (const r of listRepos()) {
-      if (!existsSync(r.path) || isExcluded(r.path, cfg.exclude)) continue;
+      if (!existsSync(r.path)) {
+        forgetRepo(r.path); // e.g. a worktree you removed: nothing left to protect
+        pruned.push(r.path);
+        continue;
+      }
+      if (isExcluded(r.path, cfg.exclude)) continue;
       const p = findProject(r.path);
       if (p && p.root === r.path) {
         projects.push(p);
@@ -201,6 +266,7 @@ export async function sync(): Promise<SyncResult> {
     return {
       projects: projects.length,
       discovered: discovered.map((p) => p.root),
+      pruned,
       news: outcomes
         .filter((o) => o.newFindings.length > 0)
         .map((o) => ({
