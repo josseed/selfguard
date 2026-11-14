@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Worktrees whose main repository was deleted are shown as "(orphaned worktree)" instead of
+  being grouped under a bogus "worktrees" repo.
+
 ## [0.1.0] - 2026-11-14
 
 First release.

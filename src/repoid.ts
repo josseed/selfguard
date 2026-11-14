@@ -15,6 +15,8 @@ export interface RepoIdentity {
   branch: string | null;
   /** True when this checkout is a linked worktree (not the main clone). */
   worktree: boolean;
+  /** Worktree whose main repository no longer exists (git can't use it anymore). */
+  orphaned?: boolean;
 }
 
 const MAX_FILE = 64 * 1024;
@@ -116,6 +118,17 @@ export function repoIdentity(projectRoot: string): RepoIdentity | null {
         gitDir = isAbsolute(target) ? target : resolve(dir, target);
         worktree = true;
       }
+    }
+    if (gitDir && worktree && !isDir(gitDir)) {
+      // The main repository was deleted: this folder is a leftover, not part of any repo.
+      const sub = relative(dir, resolve(projectRoot)).split(sep).join("/");
+      return {
+        key: `orphan:${dir}${sub ? `#${sub}` : ""}`,
+        label: `${basename(dir)}${sub ? `/${sub}` : ""} (orphaned worktree)`,
+        branch: null,
+        worktree: true,
+        orphaned: true,
+      };
     }
     if (gitDir) {
       // Linked worktrees point at <common>/.git/worktrees/<name>; "commondir" leads back.

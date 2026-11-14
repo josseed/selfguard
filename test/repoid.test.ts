@@ -60,3 +60,14 @@ test("not a git repo: no identity", () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "sg-nogit-")));
   assert.equal(repoIdentity(dir), null);
 });
+
+test("a worktree whose main repo was deleted is reported as orphaned, not grouped", () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "sg-orphan-")));
+  const wt = join(base, "leftover");
+  mkdirSync(wt, { recursive: true });
+  writeFileSync(join(wt, ".git"), `gitdir: ${join(base, "gone.git", "worktrees", "leftover")}\n`);
+  const id = repoIdentity(wt)!;
+  assert.equal(id.orphaned, true);
+  assert.equal(id.label, "leftover (orphaned worktree)");
+  assert.equal(id.key, `orphan:${wt}`);
+});
