@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
+import { buildAlert, deliver } from "./alerts.ts";
 import * as api from "./api.ts";
 import { GUIDE } from "./guide.ts";
 import { hookEnter, ZSH_HOOK } from "./hook.ts";
 import { findProject } from "./lockfile/detect.ts";
 import { runMcpServer } from "./mcp.ts";
-import { notify } from "./notify.ts";
 import { paint, renderFindings, severityLabel, tildify, worstSeverity } from "./report.ts";
 import { clean } from "./sanitize.ts";
 import type { ScanOutcome } from "./scan.ts";
@@ -64,22 +64,7 @@ function usage(message: string): never {
 }
 
 function notifyNew(outcomes: ScanOutcome[]): Promise<void> {
-  const fresh = outcomes.filter((o) => o.newFindings.length > 0);
-  if (fresh.length === 0) return Promise.resolve();
-  const all: Finding[] = fresh.flatMap((o) => o.newFindings);
-  const worst = worstSeverity(all);
-  const where = fresh.length === 1 ? tildify(fresh[0]!.record.path) : `${fresh.length} projects`;
-  const malicious = all.filter((f) => f.severity === "malicious");
-  if (malicious.length > 0) {
-    const f = malicious[0]!;
-    return notify("⛔ selfguard: MALICIOUS package", `${f.name}@${f.version} in ${where}. Remove it and rotate credentials.`, f.id);
-  }
-  const pkgs = [...new Set(all.map((f) => f.name))];
-  return notify(
-    `selfguard: ${all.length} new ${worst ?? ""} vulnerabilit${all.length === 1 ? "y" : "ies"}`.replace(/\s+/g, " "),
-    `${pkgs.slice(0, 3).join(", ")}${pkgs.length > 3 ? ` +${pkgs.length - 3}` : ""}`,
-    where,
-  );
+  return deliver(buildAlert(outcomes.map((o) => ({ path: o.record.path, newFindings: o.newFindings }))));
 }
 
 /** Detached scan started by the shell hook: log + notify, never print to a terminal. */

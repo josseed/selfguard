@@ -9,7 +9,8 @@ const CONTROL = new RegExp(
   "g",
 );
 
-export function clean(input: unknown, maxLen = 300): string {
-  const s = String(input ?? "").replace(CONTROL, "").replace(/\s*\n\s*/g, " ").trim();
+export function clean(input: unknown, maxLen = 300, opts: { multiline?: boolean } = {}): string {
+  const stripped = String(input ?? "").replace(CONTROL, "");
+  const s = (opts.multiline ? stripped.replace(/\n{3,}/g, "\n\n") : stripped.replace(/\s*\n\s*/g, " ")).trim();
   return s.length > maxLen ? `${s.slice(0, maxLen - 1)}…` : s;
 }
