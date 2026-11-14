@@ -1,0 +1,29 @@
+# Publishes to npm with Trusted Publishing (OIDC) + provenance: no long-lived npm token exists
+# anywhere, so a stolen token cannot be used to push a malicious version.
+# Setup once on npmjs.com: package settings → Trusted Publisher → GitHub Actions, this repo + workflow.
+name: release
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck && npm test && npm run build
+      - run: npm publish --provenance --access public

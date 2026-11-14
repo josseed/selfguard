@@ -1,0 +1,3 @@
+{ "name": "app", "version": "1.0.0", "workspaces": ["packages/*"],
+  "dependencies": { "lodash": "^4.17.0", "my-alias": "npm:left-pad@1.3.0", "from-git": "github:x/y" },
+  "devDependencies": { "minimist": "^1.2.0" } }

@@ -1,0 +1,388 @@
+/**
+ * Structured operations shared by the CLI (`--json`) and the MCP server.
+ * Every function returns plain JSON-serializable data with a stable shape
+ * (documented in src/guide.ts). Human rendering lives elsewhere.
+ */
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  clampDepth,
+  DEFAULT_DEPTH,
+  isExcluded,
+  loadConfig,
+  normalizeDir,
+  saveConfig,
+  type Root,
+} from "./config.ts";
+import { discoverAll } from "./discover.ts";
+import { tryLock } from "./fsutil.ts";
+import { findProject, type Project } from "./lockfile/detect.ts";
+import type { LockfileType } from "./lockfile/types.ts";
+import { evaluate, severityOf, severityRank, type Severity } from "./match.ts";
+import { getVulns, type OsvVuln } from "./osv.ts";
+import { countBySeverity, groupByPackage, worstSeverity } from "./report.ts";
+import { clean } from "./sanitize.ts";
+import { scanProjects, type ScanOutcome } from "./scan.ts";
+import { forgetRepo, listRepos, loadRepo, saveRepo, type RepoRecord } from "./store.ts";
+
+export class ApiError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+const advisoryUrl = (id: string): string => `https://osv.dev/vulnerability/${encodeURIComponent(id)}`;
+
+// ---------- shapes ----------
+
+export interface ProjectSummary {
+  path: string;
+  exists: boolean;
+  lockfile: string | null;
+  lockType: LockfileType | null;
+  packages: number;
+  skippedEntries: number;
+  scannedAt: string | null;
+  error: string | null;
+  worstSeverity: Severity | null;
+  vulnerablePackages: number;
+  advisories: number;
+  bySeverity: Partial<Record<Severity, number>>;
+}
+
+export interface AdvisoryRef {
+  id: string;
+  aliases: string[];
+  severity: Severity;
+  summary: string;
+  fixedIn: string | null;
+  firstSeen: string;
+  url: string;
+}
+
+export interface VulnerablePackage {
+  name: string;
+  version: string;
+  direct: boolean;
+  dev: boolean;
+  worstSeverity: Severity;
+  /** Lowest version that fixes every advisory that has a fix (null: none published). */
+  upgradeTo: string | null;
+  advisoriesWithoutFix: number;
+  advisories: AdvisoryRef[];
+}
+
+export interface ProjectReport extends ProjectSummary {
+  vulnerable: VulnerablePackage[];
+}
+
+// ---------- helpers ----------
+
+function summarize(rec: RepoRecord): ProjectSummary {
+  return {
+    path: rec.path,
+    exists: existsSync(rec.path),
+    lockfile: rec.lockfile,
+    lockType: rec.lockType,
+    packages: rec.deps.length,
+    skippedEntries: rec.skipped,
+    scannedAt: rec.scannedAt,
+    error: rec.error ?? null,
+    worstSeverity: worstSeverity(rec.findings),
+    vulnerablePackages: groupByPackage(rec.findings).length,
+    advisories: rec.findings.length,
+    bySeverity: countBySeverity(rec.findings),
+  };
+}
+
+export function toReport(rec: RepoRecord): ProjectReport {
+  return {
+    ...summarize(rec),
+    vulnerable: groupByPackage(rec.findings).map((g) => ({
+      name: g.name,
+      version: g.version,
+      direct: g.direct,
+      dev: g.dev,
+      worstSeverity: g.worst,
+      upgradeTo: g.worst === "malicious" ? null : (g.upgradeTo ?? null),
+      advisoriesWithoutFix: g.unfixed,
+      advisories: g.findings.map((f) => ({
+        id: f.id,
+        aliases: f.aliases,
+        severity: f.severity,
+        summary: f.summary,
+        fixedIn: f.fixedIn ?? null,
+        firstSeen: f.firstSeen,
+        url: advisoryUrl(f.id),
+      })),
+    })),
+  };
+}
+
+function resolveProject(path: string): Project {
+  const abs = resolve(path);
+  if (!existsSync(abs)) throw new ApiError("not_found", `no such directory: ${abs}`);
+  const project = findProject(abs);
+  if (!project) throw new ApiError("no_project", `no package.json found in ${abs} or its parents`);
+  return project;
+}
+
+// ---------- operations ----------
+
+export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { projects: ProjectSummary[] } {
+  const rank = (p: ProjectSummary): number => (p.worstSeverity ? severityRank(p.worstSeverity) : 99);
+  const projects = listRepos()
+    .map(summarize)
+    .filter((p) => !opts.onlyVulnerable || p.advisories > 0)
+    .sort((a, b) => rank(a) - rank(b) || b.advisories - a.advisories || a.path.localeCompare(b.path));
+  return { projects };
+}
+
+/** Last stored report for a project (no network). */
+export function getReport(path: string): ProjectReport {
+  const project = resolveProject(path);
+  const rec = loadRepo(project.root);
+  if (!rec) throw new ApiError("not_tracked", `${project.root} is not tracked yet; scan it first`);
+  return toReport(rec);
+}
+
+export interface ScanResult {
+  project: ProjectReport;
+  firstScan: boolean;
+  newAdvisories: number;
+}
+
+export async function scanPath(path: string): Promise<ScanResult> {
+  const project = resolveProject(path);
+  const release = tryLock(`scan:${project.root}`);
+  if (!release) throw new ApiError("busy", "another scan of this project is running, try again in a moment");
+  try {
+    const [o] = await scanProjects([project]);
+    saveRepo(o!.record);
+    return { project: toReport(o!.record), firstScan: o!.firstScan, newAdvisories: o!.newFindings.length };
+  } finally {
+    release();
+  }
+}
+
+export interface SyncResult {
+  projects: number;
+  discovered: string[];
+  /** Per project, vulnerable packages with advisories not seen before. */
+  news: Array<{ path: string; packages: Array<{ name: string; version: string; worstSeverity: Severity; advisories: string[] }> }>;
+  errors: Array<{ path: string; error: string }>;
+  /** Raw outcomes for notifications (not serialized). */
+  outcomes: ScanOutcome[];
+}
+
+export async function sync(): Promise<SyncResult> {
+  const release = tryLock("sync");
+  if (!release) throw new ApiError("busy", "a sync is already running");
+  try {
+    const cfg = loadConfig();
+    const projects: Project[] = [];
+    const seen = new Set<string>();
+    for (const r of listRepos()) {
+      if (!existsSync(r.path) || isExcluded(r.path, cfg.exclude)) continue;
+      const p = findProject(r.path);
+      if (p && p.root === r.path) {
+        projects.push(p);
+        seen.add(p.root);
+      }
+    }
+    // New clones inside your folders get tracked without you ever cd-ing into them.
+    const discovered = (await discoverAll(cfg.roots, { exclude: cfg.exclude })).filter((p) => !seen.has(p.root));
+    projects.push(...discovered);
+
+    const outcomes = await scanProjects(projects);
+    for (const o of outcomes) saveRepo(o.record);
+    return {
+      projects: projects.length,
+      discovered: discovered.map((p) => p.root),
+      news: outcomes
+        .filter((o) => o.newFindings.length > 0)
+        .map((o) => ({
+          path: o.record.path,
+          packages: groupByPackage(o.newFindings).map((g) => ({
+            name: g.name,
+            version: g.version,
+            worstSeverity: g.worst,
+            advisories: g.findings.map((f) => f.id),
+          })),
+        })),
+      errors: outcomes.filter((o) => o.record.error).map((o) => ({ path: o.record.path, error: o.record.error! })),
+      outcomes,
+    };
+  } finally {
+    release();
+  }
+}
+
+export interface DiscoverResult {
+  dryRun: boolean;
+  found: Array<{ path: string; lockType: LockfileType | null }>;
+  registered: number;
+  withVulnerabilities: number;
+}
+
+export async function discoverNew(opts: { dryRun?: boolean } = {}): Promise<DiscoverResult> {
+  const cfg = loadConfig();
+  if (cfg.roots.length === 0) throw new ApiError("no_roots", "no folders configured; add one with roots add <dir>");
+  const known = new Set(listRepos().map((r) => r.path));
+  const fresh = (await discoverAll(cfg.roots, { exclude: cfg.exclude })).filter((p) => !known.has(p.root));
+  const found = fresh.map((p) => ({ path: p.root, lockType: p.lockType }));
+  if (opts.dryRun || fresh.length === 0) return { dryRun: Boolean(opts.dryRun), found, registered: 0, withVulnerabilities: 0 };
+  const outcomes = await scanProjects(fresh);
+  for (const o of outcomes) saveRepo(o.record);
+  return {
+    dryRun: false,
+    found,
+    registered: outcomes.length,
+    withVulnerabilities: outcomes.filter((o) => o.record.findings.length > 0).length,
+  };
+}
+
+export interface WhereResult {
+  package: string;
+  usedIn: Array<{ path: string; versions: Array<{ version: string; direct: boolean; dev: boolean; vulnerable: boolean }> }>;
+}
+
+export function whereUsed(name: string): WhereResult {
+  const usedIn: WhereResult["usedIn"] = [];
+  for (const r of listRepos()) {
+    const versions = r.deps
+      .filter((d) => d.name === name)
+      .map((d) => ({
+        version: d.version,
+        direct: d.direct,
+        dev: d.dev,
+        vulnerable: r.findings.some((f) => f.name === name && f.version === d.version),
+      }));
+    if (versions.length) usedIn.push({ path: r.path, versions });
+  }
+  return { package: name, usedIn };
+}
+
+export interface RootsResult {
+  roots: Root[];
+  exclude: string[];
+}
+
+export function listRoots(): RootsResult {
+  const { roots, exclude } = loadConfig();
+  return { roots, exclude };
+}
+
+export function addRoot(path: string, depth?: number): RootsResult {
+  const dir = normalizeDir(path);
+  if (!dir) throw new ApiError("not_found", `not a directory: ${path}`);
+  const cfg = loadConfig();
+  const d = depth === undefined ? DEFAULT_DEPTH : clampDepth(depth);
+  cfg.roots = [...cfg.roots.filter((r) => r.path !== dir), { path: dir, depth: d }];
+  saveConfig(cfg);
+  return { roots: cfg.roots, exclude: cfg.exclude };
+}
+
+export function removeRoot(path: string): RootsResult & { removed: boolean } {
+  const cfg = loadConfig();
+  const abs = normalizeDir(path) ?? resolve(path);
+  const before = cfg.roots.length;
+  cfg.roots = cfg.roots.filter((r) => r.path !== abs);
+  saveConfig(cfg);
+  return { roots: cfg.roots, exclude: cfg.exclude, removed: cfg.roots.length < before };
+}
+
+/**
+ * Stop tracking a path. With `exclude` (default), it's also excluded from discovery
+ * so it never comes back (use for fixtures, examples, archived repos).
+ */
+export function forget(path: string, opts: { exclude?: boolean } = {}): { path: string; wasTracked: boolean; excluded: boolean; alsoForgotten: string[] } {
+  const abs = normalizeDir(path) ?? resolve(path);
+  const root = loadRepo(abs) ? abs : (findProject(abs)?.root ?? abs);
+  const wasTracked = forgetRepo(root);
+  const alsoForgotten: string[] = [];
+  const exclude = opts.exclude ?? true;
+  if (exclude) {
+    const cfg = loadConfig();
+    if (!cfg.exclude.includes(root)) cfg.exclude.push(root);
+    saveConfig(cfg);
+    // Excluding a folder also drops tracked projects below it.
+    for (const r of listRepos()) {
+      if (r.path !== root && isExcluded(r.path, [root])) {
+        forgetRepo(r.path);
+        alsoForgotten.push(r.path);
+      }
+    }
+  }
+  return { path: root, wasTracked, excluded: exclude, alsoForgotten };
+}
+
+export function unexclude(path: string): RootsResult & { removed: boolean } {
+  const cfg = loadConfig();
+  const abs = normalizeDir(path) ?? resolve(path);
+  const before = cfg.exclude.length;
+  cfg.exclude = cfg.exclude.filter((e) => e !== abs);
+  saveConfig(cfg);
+  return { roots: cfg.roots, exclude: cfg.exclude, removed: cfg.exclude.length < before };
+}
+
+export interface VulnerabilityDetail {
+  id: string;
+  aliases: string[];
+  severity: Severity;
+  summary: string;
+  details: string;
+  published: string | null;
+  modified: string | null;
+  withdrawn: string | null;
+  affected: Array<{ package: string; ranges: Array<{ introduced?: string; fixed?: string; last_affected?: string }>; versions: string[] }>;
+  references: string[];
+  url: string;
+  /** Tracked projects affected by this advisory. */
+  affectsYourProjects: Array<{ path: string; package: string; version: string; fixedIn: string | null }>;
+}
+
+export async function getVulnerability(id: string): Promise<VulnerabilityDetail> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id)) throw new ApiError("invalid", "invalid advisory id");
+  const vulns = await getVulns([{ id, modified: "" }]);
+  const v: OsvVuln | undefined = vulns.get(id);
+  if (!v) throw new ApiError("not_found", `advisory ${id} not found`);
+  const s = (x: unknown, n: number): string => clean(x ?? "", n);
+  const affectsYourProjects: VulnerabilityDetail["affectsYourProjects"] = [];
+  for (const r of listRepos()) {
+    for (const d of r.deps) {
+      const ev = evaluate(v, d.name, d.version);
+      if (ev.affected) affectsYourProjects.push({ path: r.path, package: d.name, version: d.version, fixedIn: ev.fixedIn ?? null });
+    }
+  }
+  const raw = v as unknown as Record<string, unknown>;
+  return {
+    id: v.id,
+    aliases: (v.aliases ?? []).map((a) => s(a, 64)),
+    severity: severityOf(v),
+    summary: s(v.summary, 300),
+    details: clean(v.details ?? "", 4000),
+    published: typeof raw.published === "string" ? raw.published : null,
+    modified: v.modified ?? null,
+    withdrawn: v.withdrawn ?? null,
+    affected: (v.affected ?? [])
+      .filter((a) => a.package?.ecosystem === "npm")
+      .slice(0, 20)
+      .map((a) => ({
+        package: s(a.package?.name, 214),
+        ranges: (a.ranges ?? []).flatMap((r) =>
+          (r.events ?? []).map((e) => ({ ...e })),
+        ).slice(0, 50),
+        versions: (a.versions ?? []).slice(0, 50).map((x) => s(x, 64)),
+      })),
+    references: (Array.isArray(raw.references) ? raw.references : [])
+      .map((r) => (r && typeof r === "object" ? (r as { url?: unknown }).url : undefined))
+      .filter((u): u is string => typeof u === "string" && /^https:\/\//.test(u))
+      .slice(0, 15)
+      .map((u) => s(u, 300)),
+    url: advisoryUrl(v.id),
+    affectsYourProjects,
+  };
+}

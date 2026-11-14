@@ -1,0 +1,49 @@
+{
+  "name": "selfguard",
+  "version": "0.1.0",
+  "description": "Local-first guard that watches every JS repo you work on and alerts you about vulnerable or malicious dependencies.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/josseed/selfguard.git"
+  },
+  "homepage": "https://github.com/josseed/selfguard#readme",
+  "bugs": {
+    "url": "https://github.com/josseed/selfguard/issues"
+  },
+  "type": "module",
+  "bin": {
+    "selfguard": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.10"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "keywords": [
+    "security",
+    "vulnerabilities",
+    "osv",
+    "npm",
+    "supply-chain",
+    "audit",
+    "cli"
+  ],
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
+  }
+}
