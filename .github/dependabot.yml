@@ -1,0 +1,22 @@
+# Keeps pinned action SHAs and dev dependencies current. Every update arrives as a PR
+# that must pass CI and be reviewed; nothing is merged automatically.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Only dev tooling lives here (selfguard has zero runtime dependencies).
+    groups:
+      dev-tooling:
+        patterns: ["*"]
+    # Give the ecosystem time to catch compromised releases before we adopt them.
+    cooldown:
+      default-days: 7
