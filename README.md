@@ -119,7 +119,9 @@ selfguard is a security tool, so it holds itself to a stricter standard:
 - **Untrusted text is sanitized** before it reaches your terminal or a notification: no terminal
   escape injection and no bidi spoofing. Notification text goes to AppleScript as arguments, never as code.
 - **Local state is private**: `~/.selfguard` is created `0700` and its files `0600`.
-- **Releases use npm Trusted Publishing with provenance**, so no long-lived publish token exists.
+- **Releases use npm Trusted Publishing with provenance and staged publishing**: no long-lived
+  publish token exists, CI can only stage a version, and a maintainer must approve it with 2FA
+  before anyone can install it. `npm view selfguard --json` shows the provenance attestation.
 
 ## How it works
 
