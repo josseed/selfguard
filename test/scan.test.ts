@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { copyFixture } from "./helpers.ts";
 
 // Fake OSV API: lodash@4.17.20 is vulnerable (GHSA + CVE alias), left-pad@1.3.0 is "malicious".
 const VULNS: Record<string, unknown> = {
@@ -68,7 +69,7 @@ before(async () => {
   scan = await import("../src/scan.ts");
   store = await import("../src/store.ts");
   const dir = mkdtempSync(join(tmpdir(), "sg-proj-"));
-  cpSync(new URL("./fixtures/v3/", import.meta.url), dir, { recursive: true });
+  copyFixture("v3", dir);
   project = { root: dir, lockfile: join(dir, "package-lock.json"), lockType: "npm" };
 });
 after(() => server.close());

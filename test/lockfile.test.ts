@@ -12,7 +12,7 @@ const byKey = (deps: Dependency[]) =>
   Object.fromEntries(deps.map((d) => [`${d.name}@${d.version}`, d]));
 
 test("lockfile v3: aliases, workspaces, nesting, dev, git deps", () => {
-  const { deps, skipped } = parseNpmLockfile(fixture("v3/package-lock.json"));
+  const { deps, skipped } = parseNpmLockfile(fixture("v3/lockfile.fixture.json"));
   const m = byKey(deps);
   assert.deepEqual(Object.keys(m).sort(), [
     "left-pad@1.3.0", "lodash@4.17.20", "lodash@4.17.21", "loose-envify@1.4.0", "minimist@1.2.5", "react@18.2.0",
@@ -27,8 +27,8 @@ test("lockfile v3: aliases, workspaces, nesting, dev, git deps", () => {
 });
 
 test("lockfile v1: nested deps, aliases, direct from package.json", () => {
-  const manifest = JSON.parse(fixture("v1/package.json"));
-  const { deps, skipped } = parseNpmLockfile(fixture("v1/package-lock.json"), manifest);
+  const manifest = JSON.parse(fixture("v1/manifest.fixture.json"));
+  const { deps, skipped } = parseNpmLockfile(fixture("v1/lockfile.fixture.json"), manifest);
   const m = byKey(deps);
   assert.deepEqual(Object.keys(m).sort(), ["debug@2.6.8", "express@4.16.0", "mocha@5.0.0", "qs@6.11.0", "qs@6.5.1"]);
   assert.equal(m["express@4.16.0"]!.direct, true);

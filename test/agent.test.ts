@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { copyFixture } from "./helpers.ts";
 import { fileURLToPath } from "node:url";
 
 const CLI = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-const FIXTURE = fileURLToPath(new URL("./fixtures/v3/", import.meta.url));
 
 function sandbox() {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "sg-agent-")));
   const code = join(home, "code");
-  mkdirSync(join(code, "app"), { recursive: true });
-  cpSync(FIXTURE, join(code, "app"), { recursive: true });
+  copyFixture("v3", join(code, "app"));
   const env = { ...process.env, HOME: home, SELFGUARD_HOME: join(home, ".sg"), SELFGUARD_NO_NOTIFY: "1", NO_COLOR: "1" };
   return { home, code, env };
 }
