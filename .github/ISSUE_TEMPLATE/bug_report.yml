@@ -1,0 +1,47 @@
+name: Bug report
+description: Something doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! For **security vulnerabilities**, please use
+        [private reporting](https://github.com/josseed/selfguard/security/advisories/new) instead.
+        Before pasting output, remove anything private (paths, repo or package names you don't want public).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Commands you ran. If a lockfile is involved, a minimal lockfile that reproduces it helps a lot.
+      placeholder: |
+        1. selfguard scan ~/code/app
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Relevant output, ideally with `--json`. Add `tail -n 20 ~/.selfguard/selfguard.log` for background issues.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: selfguard version
+      placeholder: "selfguard --version"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS, Node.js version and package manager
+      placeholder: "macOS 26.1, Node 24.12, pnpm 10"
+    validations:
+      required: true

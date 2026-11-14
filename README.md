@@ -1,155 +1,124 @@
 # selfguard
 
-A local-first guard for the dependencies of **every** JavaScript repo you work on.
+[![npm](https://img.shields.io/npm/v/selfguard)](https://www.npmjs.com/package/selfguard)
+[![CI](https://github.com/josseed/selfguard/actions/workflows/ci.yml/badge.svg)](https://github.com/josseed/selfguard/actions/workflows/ci.yml)
+[![provenance](https://img.shields.io/badge/npm-provenance-blue)](https://www.npmjs.com/package/selfguard#provenance)
+[![license](https://img.shields.io/npm/l/selfguard)](LICENSE)
 
-- **Hands-off**: `cd` into a project and selfguard registers it and scans it in the background.
-  Run `npm install` and it notices that the lockfile changed and re-scans.
-- **Reverse alerts**: `selfguard sync` (or the scheduled job) re-checks all your projects against
-  new advisories. You get a macOS notification when a repo you haven't opened in months becomes vulnerable.
-- **Malicious packages first**: OSV includes the OpenSSF malicious-packages feed (`MAL-*`), so
-  compromised releases (Shai-Hulud style) are flagged above any CVE.
-- **Incident response**: `selfguard where <pkg>` answers "do I use this anywhere?" in one command.
+**A local-first guard for the dependencies of every JavaScript repo on your machine.**
 
-## Install
+Most dependency scanners only check a project when you remember to run them, or only for repos
+hosted on a platform. selfguard tracks every project on your machine and checks their lockfiles
+against [OSV.dev](https://osv.dev). It tells you when one of them is affected by a new
+vulnerability or a malicious package, including repos you haven't opened in months.
+
+```text
+$ selfguard status
+CRITICAL acme/storefront  31 vulnerable pkg(s) on main · 82 on feat/checkout  3 checkouts
+   ├ main  31 vulnerable  ~/code/storefront
+   ├ fix/query-perf worktree  30 vulnerable  ~/code/storefront-query-perf
+   └ feat/checkout worktree  82 vulnerable  ~/code/storefront-feat-checkout
+HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
+✓        acme/docs-site  clean  ~/code/docs-site
+```
+
+## Features
+
+- **Hands-off.** `cd` into a project and it is registered and scanned in the background. Run
+  `npm install` and selfguard notices that the lockfile changed and re-scans.
+- **Reverse alerts.** A scheduled `sync` re-checks every project against new advisories and
+  picks up new clones in your code folders.
+- **Malicious packages first.** OSV includes the OpenSSF malicious-packages feed (`MAL-*`).
+  Compromised releases, like the Shai-Hulud npm worm, outrank any CVE and open a dialog that
+  stays on screen until you dismiss it.
+- **Actionable output.** One upgrade target per vulnerable package ("upgrade lodash to 4.18.0"),
+  not a wall of advisories.
+- **Every package manager.** npm, pnpm, yarn (classic and berry) and bun lockfiles.
+- **Repo-aware.** Git worktrees and clones of the same repo are grouped, each with its branch.
+- **Incident response.** `selfguard where <package>` answers "do I use this anywhere?" in one
+  command.
+- **AI-ready.** A built-in MCP server, `--json` output on every command, and a guide for agents.
+- **Safe by design.** It never executes code from your projects, has zero runtime dependencies,
+  and only sends package names and versions over the network.
+
+## Quick start
+
+Requires **Node.js 20.10+**. Works on **macOS** and **Linux**. Native notifications and
+scheduling are macOS-only for now.
 
 ```sh
 npm install -g selfguard
 selfguard setup
 ```
 
-`setup` is a small terminal UI: pick the folders where you keep your repos (it suggests
-`~/repository`, `~/code`, `~/dev`… and shows how many projects each has), then it scans them and
-offers to install the shell hook and the background sync.
+`setup` is a small terminal UI. Pick the folders where you keep your code, and selfguard scans
+them. It then offers to install the shell hook and a background sync with notifications.
 
-```
+```text
 Where do you keep your code?
 selfguard only looks inside the folders you pick, nothing else on your disk.
 
-  [x] ~/repository                     205 projects   depth 3
-› [x] ~/code                             12 projects   depth 2
+  [x] ~/code                          42 projects    depth 5
+› [ ] ~/work                          17 projects    depth 5
   + add another folder…
 
 ↑/↓ move · space select · ←/→ depth · a add folder · enter continue · q quit
 ```
 
-## How projects are found
+Or scan a single project without setting anything up:
 
-selfguard **never crawls your whole disk**. A project gets tracked in one of three ways:
+```text
+$ selfguard scan
+~/code/payments-api  412 packages
+  3 vulnerable package(s), 9 advisories: 1 critical, 4 high, 4 moderate
 
-1. **Your folders** (`setup` / `roots add`): a recursive search of every subfolder (depth-limited,
-   default 5) that only skips dependency/generated folders: `node_modules`, `bower_components`,
-   `vendor`, `Pods`, `venv`, `target`, `__pycache__`, hidden folders (`.git`, `.next`, `.cache`…),
-   and symlinks. It also looks inside projects, so monorepos with several lockfiles are covered.
-   `sync` re-runs it, so a fresh `git clone` gets watched even if you never open it.
-2. **The shell hook**: `cd` anywhere and the enclosing project is registered.
-3. **By hand**: `selfguard scan <dir>`.
+  CRITICAL minimist@1.2.5 (transitive)
+    → upgrade to 1.2.6 or later
+    • GHSA-xvch-5gv4-984h critical Prototype Pollution in minimist
 
-Worktrees and separate clones of the same repo are **grouped** (by remote URL, or by the main
-repo a worktree points to), and each subfolder project of a monorepo stays its own group:
-
-```
-CRITICAL acme/datahub  31 vulnerable pkg(s) on main · 82 on feat/calculadora  3 checkouts
-   ├ main  31 vulnerable  ~/code/datahub
-   ├ fix/query-perf worktree  30 vulnerable  ~/code/datahub-query-perf
-   └ feat/calculadora worktree  82 vulnerable  ~/code/datahub-feat-calculadora
+  HIGH axios@0.21.0 (direct)
+    → upgrade to 0.33.0 or later
+    • GHSA-cph5-m8f7-6c5x high axios Inefficient Regular Expression Complexity vulnerability
+    …
 ```
 
-Notifications about the same advisory in several checkouts of one repo arrive once. `sync` stops
-tracking folders that no longer exist (e.g. removed worktrees). `status --flat` lists every checkout.
+## Documentation
 
-Test fixtures, examples or archived repos you don't care about: `selfguard forget <dir>` stops
-tracking them and excludes them from discovery (undo with `selfguard unexclude <dir>`).
-
-## Use it with AI (MCP)
-
-selfguard ships an MCP server, so assistants like Claude Code or Cursor can triage and manage it:
-
-```sh
-claude mcp add selfguard -- selfguard mcp
-```
-
-Then ask things like *"which of my projects have critical vulnerabilities and how do I fix them?"*,
-*"is `@ctrl/tinycolor` used anywhere?"* or *"stop tracking the test fixtures in ~/code/shop"*.
-
-| Tool | Purpose |
+| | |
 |---|---|
-| `selfguard_status` | All projects with risk summary |
-| `selfguard_project_report` | Vulnerable packages of a project, with `upgradeTo` |
-| `selfguard_scan` / `selfguard_sync` | Re-check one project / everything |
-| `selfguard_where` | Which projects use a package |
-| `selfguard_vulnerability` | Advisory details + which of your projects it affects |
-| `selfguard_roots_*`, `selfguard_discover` | Manage watched folders |
-| `selfguard_forget` / `selfguard_unexclude` | Stop tracking / re-include |
+| [Getting started](docs/getting-started.md) | Install, setup, shell hook, background sync, uninstall |
+| [CLI reference](docs/cli.md) | Every command and flag, exit codes, environment variables |
+| [How it works](docs/how-it-works.md) | Discovery, lockfile parsing, repo grouping, OSV, caching, alerts |
+| [AI and automation](docs/ai-and-automation.md) | MCP server setup, tools, JSON output, scripting and CI |
+| [Security model](docs/security-model.md) | What selfguard trusts, what it sends, how it is released |
+| [Troubleshooting](docs/troubleshooting.md) | Notifications, hook, scheduling, unsupported lockfiles |
 
-The MCP tools never run package managers or project code. Fixes are proposed for the user to apply.
-Advisory text is marked as third-party data so the model treats it as data, not instructions.
+## How it compares
 
-Without MCP, every command accepts `--json` (one JSON document on stdout, errors as
-`{"error":{"code","message"}}`, exit codes 0/1/2), and `selfguard guide` prints a guide written
-for agents.
+| | selfguard | `npm audit` | osv-scanner | Dependabot |
+|---|---|---|---|---|
+| Watches every project on your machine | ✅ | ❌ one project, on demand | ❌ on demand | ❌ hosted repos only |
+| Alerts when a new advisory hits an old project | ✅ | ❌ | ❌ | ✅ |
+| Local-only (no repo hosting required) | ✅ | ✅ | ✅ | ❌ |
+| npm, pnpm, yarn, bun | ✅ | npm only | ✅ | ✅ |
+| Malicious package feed | ✅ via OSV | ❌ | ✅ via OSV | partial |
+| Opens PRs with fixes | ❌ | ❌ (`npm audit fix` locally) | guided remediation | ✅ |
+| Ecosystems | JavaScript | JavaScript | many | many |
 
-## Commands
+selfguard complements these tools rather than replacing them. Keep Dependabot or Renovate for
+automated fix PRs, and use selfguard to know what is vulnerable on your machine right now.
 
-Run `selfguard --help` for everything. The main ones:
+## Privacy
 
-| Command | What it does |
-|---|---|
-| `selfguard setup` | Interactive: choose your code folders, scan, install hook + sync |
-| `selfguard status [--vulnerable] [--flat]` | Tracked repos, riskiest first (worktrees/clones grouped) |
-| `selfguard scan [dir] [-v]` | Scan a project now (exit code 1 if anything is found) |
-| `selfguard report [dir] [-v]` | Last results for a project, no network |
-| `selfguard sync` | Find new repos in your folders, re-check everything, notify about news |
-| `selfguard where <pkg>` | Which projects use a package, and which versions |
-| `selfguard vuln <id>` | Advisory details and which of your projects it affects |
-| `selfguard roots [add <dir> [--depth N] \| remove <dir>]` | Manage your code folders |
-| `selfguard discover [--dry-run]` | Register new projects found in your folders |
-| `selfguard forget [dir]` / `unexclude <dir>` | Stop tracking + exclude / re-include |
-| `selfguard schedule on\|off\|status` | Periodic sync via launchd (macOS) |
-| `selfguard mcp` / `selfguard guide` | MCP server / guide for AI agents |
+selfguard sends only `name` and `version` pairs of your locked dependencies to the OSV.dev API.
+No file paths, repo names or source code ever leave your machine. All state lives in
+`~/.selfguard`, readable only by your user. See the [security model](docs/security-model.md).
 
-## Security model
+## Contributing
 
-selfguard is a security tool, so it holds itself to a stricter standard:
-
-- **Never executes anything from your projects.** Lockfiles are parsed as data. No `npm ls`, no
-  lifecycle scripts, no `.npmrc`. Entering a hostile repo is safe.
-- **Zero runtime dependencies.** Only Node built-ins. CI fails if a runtime dependency is added.
-- **Minimal data leaves your machine**: only `name` + `version` pairs go to
-  [OSV.dev](https://osv.dev). No paths, repo names, or file contents.
-- **Untrusted text is sanitized** before it reaches your terminal or a notification: no terminal
-  escape injection and no bidi spoofing. Notification text goes to AppleScript as arguments, never as code.
-- **Local state is private**: `~/.selfguard` is created `0700` and its files `0600`.
-- **Releases use npm Trusted Publishing with provenance and staged publishing**: no long-lived
-  publish token exists, CI can only stage a version, and a maintainer must approve it with 2FA
-  before anyone can install it. `npm view selfguard --json` shows the provenance attestation.
-
-## How it works
-
-```
-cd ──► zsh hook (pure shell: walk up for package.json, stat lockfile on each prompt)
-         │ only when the project or lockfile changes
-         ▼
-   selfguard hook-enter ──► cached summary on stderr
-         │ lockfile changed / never scanned / >24h
-         ▼
-   detached background scan ──► parse lockfile ──► OSV querybatch ──► ~/.selfguard
-                                                                    └─► macOS notification on new findings
-```
-
-Supported lockfiles: `package-lock.json` / `npm-shrinkwrap.json` (v1–v3), `pnpm-lock.yaml`
-(v5, v6, v9), `yarn.lock` (classic v1 and berry v2+) and `bun.lock`. The binary `bun.lockb` is
-not supported (`bun install --save-text-lockfile` converts it). All of them are parsed as data,
-with a dependency-free parser; the test suite checks that real lockfiles from every manager
-produce identical results for the same project.
-
-## Development
-
-```sh
-npm ci --ignore-scripts
-npm test          # node:test runs the TypeScript sources directly (Node >= 22.18)
-npm run build     # emits dist/
-```
+Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Please report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)

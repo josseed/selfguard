@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/josseed/selfguard/security/advisories/new
+    about: Please report vulnerabilities in selfguard privately, not as a public issue.
+  - name: Question or idea
+    url: https://github.com/josseed/selfguard/discussions
+    about: Ask questions and share ideas in Discussions.

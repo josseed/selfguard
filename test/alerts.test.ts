@@ -15,7 +15,7 @@ test("no news, no alert", () => {
 
 test("one project: package count, worst severity and upgrade targets", () => {
   const a = buildAlert([{
-    path: "/code/tienda-web",
+    path: "/code/shop-web",
     newFindings: [
       f("axios", "0.21.0", "GHSA-1", "moderate", "0.21.2"),
       f("axios", "0.21.0", "GHSA-2", "high", "0.33.0"),
@@ -26,7 +26,7 @@ test("one project: package count, worst severity and upgrade targets", () => {
   }]);
   assert.equal(a.kind, "banner");
   if (a.kind !== "banner") return;
-  assert.equal(a.title, "selfguard: tienda-web");
+  assert.equal(a.title, "selfguard: shop-web");
   assert.equal(a.subtitle, "4 vulnerable packages · worst: HIGH");
   assert.equal(a.body, "axios → 0.33.0, lodash → 4.18.0, qs → 6.5.3, +1 more");
 });
@@ -43,14 +43,14 @@ test("several projects are summarized", () => {
 test("a malicious package escalates to a critical dialog that wins over everything", () => {
   const a = buildAlert([
     { path: "/c/web", newFindings: [f("lodash", "4.17.20", "GHSA-3", "critical", "4.18.0")] },
-    { path: "/c/api-pagos", newFindings: [f("color-utils-pro", "2.4.1", "MAL-2026-9999", "malicious")] },
+    { path: "/c/payments-api", newFindings: [f("color-utils-pro", "2.4.1", "MAL-2026-9999", "malicious")] },
   ]);
   assert.equal(a.kind, "critical");
   if (a.kind !== "critical") return;
   assert.equal(a.subtitle, "color-utils-pro@2.4.1 · MAL-2026-9999");
   assert.equal(a.url, "https://osv.dev/vulnerability/MAL-2026-9999");
   assert.match(a.dialogMessage, /Rotate credentials/);
-  assert.match(a.dialogMessage, /\/c\/api-pagos/);
+  assert.match(a.dialogMessage, /\/c\/payments-api/);
 });
 
 test("multiline cleaning keeps line breaks but still strips escapes", () => {
