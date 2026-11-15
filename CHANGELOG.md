@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-15
+
+### Added
+
+- Update notice: once a day, selfguard asks the npm registry for its latest version, sending
+  only the package name. You can turn this off with `--update-check off` or
+  `SELFGUARD_NO_UPDATE_CHECK=1`. Each new version gets one notification. The dashboard shows a
+  banner with the release notes, the npm provenance status and the safe command to copy
+  (`npm i -g selfguard@<version> --ignore-scripts`). `selfguard status` mentions it too.
+  selfguard never installs anything by itself.
+- After an update, the dashboard notices that the code on disk is newer and offers **Restart
+  dashboard**: it restarts on the same address and the page reloads.
+- `selfguard update`: check now and show how to update.
+
 ## [0.7.0] - 2026-11-15
 
 ### Added
@@ -144,7 +158,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/josseed/selfguard/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/josseed/selfguard/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/josseed/selfguard/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/josseed/selfguard/compare/v0.4.0...v0.5.0

@@ -228,6 +228,21 @@ selfguard unexclude ~/code/shop/test/fixtures  # undo
 Desktop notifications and the lockfile watcher are not implemented on Linux yet. New findings
 are recorded and shown by `selfguard ui`, `selfguard status` and the shell hook.
 
+## Staying up to date
+
+selfguard checks npm once a day for a newer version, sending only the package name. When there
+is one, you get one notification and the dashboard shows a banner with the release notes and the
+command to run:
+
+```sh
+npm i -g selfguard@<version> --ignore-scripts
+```
+
+selfguard never updates itself. After you run that command, the dashboard shows **Restart
+dashboard**, which reloads it with the new version at the same address. The background agents
+pick up the new version on their next run. `selfguard update` checks right away. Turn the check
+off with `selfguard settings --update-check off`.
+
 ## Uninstall
 
 ```sh

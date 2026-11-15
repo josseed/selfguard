@@ -141,3 +141,14 @@ test("machine endpoints: token, validation, only configured machines", async () 
   assert.equal(unknown.status, 404);
   assert.equal((await call("/api/machines/fs?name=nope", { headers: auth() })).status, 404);
 });
+
+test("update endpoints: status needs the token; restart only where supported", async () => {
+  process.env.SELFGUARD_NO_UPDATE_CHECK = "1";
+  const json = { ...auth(), "content-type": "application/json" };
+  assert.equal((await call("/api/update")).status, 401);
+  const st = JSON.parse((await call("/api/update", { headers: auth() })).body);
+  assert.equal(st.restartNeeded, false);
+  assert.equal(st.enabled, false);
+  assert.equal((await call("/api/restart", { method: "POST", headers: json, body: "{}" })).status, 501);
+  assert.equal((await call("/api/restart", { method: "POST", headers: { ...auth(), "content-type": "text/plain" }, body: "{}" })).status, 403);
+});

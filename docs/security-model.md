@@ -29,7 +29,8 @@ Downloads unless you already watch a folder there, so it never shows a privacy p
 
 ## What leaves your machine
 
-Only calls to the OSV.dev API at `https://api.osv.dev/v1`:
+Calls to the OSV.dev API at `https://api.osv.dev/v1`, plus the daily update check described
+below:
 
 - `POST /querybatch` with `{ "package": { "ecosystem": "npm", "name": … }, "version": … }` for
   each unique dependency;
@@ -41,6 +42,20 @@ size-capped, and requests time out.
 
 OSV can infer which open-source packages and versions you use, but not who you are or what you
 build. If even that is too much, point `SELFGUARD_OSV_API` at a mirror you control.
+
+**Update check.** At most once a day, selfguard sends `GET https://registry.npmjs.org/selfguard/latest`
+to learn whether a newer selfguard exists. The request has the same safeguards (no redirects,
+timeout, size cap) and carries nothing about your projects: npm only sees that someone asked
+about selfguard, as with any `npm view`. The answer is used only if it holds a valid version,
+and it is never executed. selfguard **never installs or updates itself**. It shows the command
+(`npm i -g selfguard@<version> --ignore-scripts`), the release notes, and whether the release
+carries an npm provenance attestation, meaning it was built and signed by the project's GitHub
+Actions. Turn the check off with `selfguard settings --update-check off` or
+`SELFGUARD_NO_UPDATE_CHECK=1`.
+
+After you update, the dashboard notices that the code on disk is newer than the code it runs and
+offers to restart. It restarts itself on the same address, handing its session token to the new
+process through the environment (never on the command line or in the log).
 
 ## Local state
 

@@ -20,6 +20,7 @@ const state = {
     repoSearch: "",
     repoGroupBy: "folder",
     repoMachine: "all",
+    updateHidden: sessionStorage.getItem("selfguard-update-hidden"),
     collapsed: new Set(),
     pkgFilter: "serious",
     pkgSearch: "",
@@ -1253,6 +1254,24 @@ function pageSettings() {
       toast(on ? "Automatic discovery off" : "Automatic discovery on");
       await refresh();
     }));
+    const u = o.update || {};
+    const upOn = o.settings.updateCheck;
+    const upToggle = h("button", { class: `btn small${upOn ? "" : " primary"}`, type: "button" }, upOn ? "Turn off" : "Turn on");
+    upToggle.addEventListener("click", () => busy(upToggle, "…", async () => {
+      await call("POST", "/api/settings", { updateCheck: !upOn });
+      await refresh();
+    }));
+    const checkNow = h("button", { class: "btn small", type: "button" }, "Check now");
+    checkNow.addEventListener("click", () => busy(checkNow, "Checking…", async () => {
+      const r = await call("POST", "/api/update/check", {});
+      toast(r.available ? `selfguard ${r.latest} is available` : r.latest ? `You have the latest version (${r.current})` : "Couldn't reach the npm registry");
+      state.ui.updateHidden = null;
+      sessionStorage.removeItem("selfguard-update-hidden");
+      await refresh();
+    }));
+    rows.push(settingRow("Updates",
+      `${upOn ? "Checks npm once a day for a newer selfguard (only the package name is sent) and tells you here and with a notification." : "Off: selfguard doesn't check for new versions."} You have ${u.current || o.version}${u.checkedAt ? `, last checked ${ago(u.checkedAt)}` : ""}.`,
+      upOn ? [checkNow, upToggle] : [upToggle]));
     rows.push(settingRow("Find new projects on its own",
       `${on ? "On" : "Off"}: once a week selfguard searches your home folder and starts watching new folders with active repos, with a notification.${o.settings.lastEverywhere ? ` Last search ${ago(o.settings.lastEverywhere)}.` : ""}`,
       [toggle, h("a", { class: "btn small", href: "#/folders" }, "Search now")]));
@@ -1310,9 +1329,72 @@ function parseRoute() {
   return PAGES.some(([id]) => id === name) || name === "repo" ? { name, arg } : { name: "overview", arg: null };
 }
 
+/** "A new version is available" / "updated: restart the dashboard", on every page. */
+function renderUpdate() {
+  const host = $("update-banner");
+  const u = state.overview && state.overview.update;
+  if (!u || (!u.restartNeeded && !u.available) || state.ui.updateHidden === (u.restartNeeded ? `restart-${u.installed}` : u.latest)) {
+    host.hidden = true;
+    host.replaceChildren();
+    return;
+  }
+  host.hidden = false;
+  const later = h("button", { class: "btn small ghost", type: "button", title: "Hide until the next version" }, "Later");
+  later.addEventListener("click", () => {
+    state.ui.updateHidden = u.restartNeeded ? `restart-${u.installed}` : u.latest;
+    sessionStorage.setItem("selfguard-update-hidden", state.ui.updateHidden);
+    renderUpdate();
+  });
+  if (u.restartNeeded) {
+    const restart = h("button", { class: "btn small primary", type: "button" }, icon("refresh"), "Restart dashboard");
+    restart.addEventListener("click", () => busy(restart, "Restarting…", () => restartDashboard(u.installed)));
+    host.replaceChildren(h("div", { class: "update-banner" },
+      h("span", { class: "folder-icon" }, icon("refresh")),
+      h("div", { class: "grow" },
+        h("strong", {}, `selfguard was updated to ${u.installed}.`),
+        h("div", { class: "small muted" }, `This dashboard is still running ${u.current}. Restart it to use the new version (same address, takes a second).`)),
+      restart, later));
+    return;
+  }
+  const copy = h("button", { class: "btn small primary", type: "button" }, icon("copy"), "Copy update command");
+  copy.addEventListener("click", async () => {
+    if (await copyText(u.command)) toast("Copied. Run it in a terminal, then restart the dashboard from here.");
+    else toast(u.command);
+  });
+  host.replaceChildren(h("div", { class: "update-banner" },
+    h("span", { class: "folder-icon" }, icon("shieldOk")),
+    h("div", { class: "grow" },
+      h("strong", {}, `selfguard ${u.latest} is available`), h("span", { class: "muted" }, ` (you have ${u.current}). `),
+      h("a", { href: u.releaseNotes, target: "_blank", rel: "noopener noreferrer" }, "What's new"),
+      h("div", { class: "small muted mono" }, u.command),
+      u.provenance === false
+        ? h("div", { class: "small warn-text" }, "This release has no npm provenance attestation: check it before installing.")
+        : u.provenance ? h("div", { class: "small muted" }, "Built and signed by GitHub Actions (npm provenance). selfguard never installs anything by itself.") : null),
+    copy, later));
+}
+
+/** Ask the server to restart with the new code, wait for it, then reload the page. */
+async function restartDashboard(expected) {
+  await call("POST", "/api/restart", {});
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+      const ping = await call("GET", "/api/ping");
+      if (ping.version === expected) {
+        location.reload();
+        return;
+      }
+    } catch {
+      /* not up yet */
+    }
+  }
+  toast("The dashboard didn't come back. Run selfguard ui again.");
+}
+
 async function render() {
   if (!state.overview) return;
   renderNav();
+  renderUpdate();
   const r = state.route;
   if (r.name === "overview") pageOverview();
   else if (r.name === "repos") pageRepos();

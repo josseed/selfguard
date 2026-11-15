@@ -417,3 +417,12 @@ tr.group-row td { padding: 0; background: color-mix(in srgb, var(--hover) 35%, t
 label.place { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 0; cursor: pointer; }
 label.place input { margin-top: 3px; }
 .find-notes { padding: 10px 20px; border-top: 1px solid var(--border); }
+
+/* ---------- update banner ---------- */
+
+#update-banner { margin: 0 0 16px; }
+#update-banner[hidden] { display: none; }
+.update-banner { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--accent-soft); border-radius: var(--radius); }
+.update-banner .grow { flex: 1; min-width: 0; }
+.update-banner .mono { margin-top: 3px; overflow-wrap: anywhere; }
+.btn.ghost { background: transparent; box-shadow: none; border-color: transparent; }

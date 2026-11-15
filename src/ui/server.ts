@@ -30,6 +30,7 @@ import { groupByPackage } from "../report.ts";
 import { appStatus, installApp, uninstallApp } from "../app.ts";
 import { scheduleOff, scheduleOn, scheduleStatus, updateDiscoverAgent, updateRemoteAgent, updateWatcher } from "../schedule.ts";
 import { loadRepo } from "../store.ts";
+import { cachedUpdate, checkForUpdate, installedVersion } from "../update.ts";
 import { VERSION } from "../version.ts";
 
 const IDLE_MS = 30 * 60 * 1000;
@@ -60,6 +61,8 @@ export interface Overview {
   generatedAt: string;
   settings: api.Settings;
   schedule: { enabled: boolean; watcher: boolean; watchedPaths: number; remote: boolean } | null;
+  /** Newer version on npm / newer code on disk than this running dashboard. */
+  update: unknown;
   /** Other machines and how their last sync went. */
   machines: Array<{ name: string; host: string; os: string | null; lastSync: string | null; error: string | null; trackedProjects: number; roots: number }>;
   /** macOS launcher app (null elsewhere). */
@@ -111,6 +114,7 @@ export function getOverview(): Overview {
     schedule,
     app,
     roots: api.listRoots().roots.length,
+    update: updateStatus(),
     machines: api.listMachines().map((m) => ({
       name: m.name,
       host: m.host,
@@ -246,7 +250,28 @@ function startEverywhere(): unknown {
   return everywhereStatus();
 }
 
-async function route(method: string, url: URL, req: IncomingMessage): Promise<unknown> {
+/** What the page needs to keep the user up to date (no network; a stale check runs in the background). */
+let updateCheckRunning = false;
+function updateStatus(): unknown {
+  const info = cachedUpdate();
+  const installed = installedVersion();
+  if (info.enabled && !updateCheckRunning && (!info.checkedAt || Date.now() - Date.parse(info.checkedAt) > 24 * 60 * 60 * 1000)) {
+    updateCheckRunning = true;
+    void checkForUpdate().finally(() => {
+      updateCheckRunning = false;
+    });
+  }
+  // After `npm i -g selfguard@…` the code on disk is newer than this running dashboard.
+  const restartNeeded = installed !== VERSION;
+  return { ...info, installed, restartNeeded, available: info.available && !(info.latest && installed === info.latest) };
+}
+
+interface RouteContext {
+  /** Restart this dashboard with the code on disk (same port and token). */
+  restart?: () => void;
+}
+
+async function route(method: string, url: URL, req: IncomingMessage, ctx: RouteContext = {}): Promise<unknown> {
   const p = url.pathname;
   if (method === "GET") {
     if (p === "/api/ping") return { ok: true, version: VERSION };
@@ -257,6 +282,7 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
       return api.getRepoMarkdown(url.searchParams.get("key") ?? "", path ? { path } : {});
     }
     if (p === "/api/machines") return { machines: api.listMachines() };
+    if (p === "/api/update") return updateStatus();
     if (p === "/api/everywhere/status") return everywhereStatus();
     if (p === "/api/machines/peers") return { peers: api.tailnetPeers() };
     if (p === "/api/machines/setup") return api.machineSetup(url.searchParams.get("name") ?? "");
@@ -340,6 +366,15 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
     }
     if (p === "/api/discover") return api.discoverNew({ dryRun: body.dryRun === true });
     if (p === "/api/everywhere/start") return startEverywhere();
+    if (p === "/api/update/check") {
+      await checkForUpdate({ force: true });
+      return updateStatus();
+    }
+    if (p === "/api/restart") {
+      if (!ctx.restart) throw new api.ApiError("unsupported", "this dashboard can't restart itself; run selfguard ui again");
+      ctx.restart();
+      return { restarting: true };
+    }
     if (p === "/api/everywhere/cancel") {
       if (everywhere.running) everywhere.cancelled = true;
       return everywhereStatus();
@@ -397,7 +432,7 @@ const STATUS: Record<string, number> = {
   outdated: 502,
 };
 
-export function createUiServer(token: string, onActivity: () => void = () => {}): Server {
+export function createUiServer(token: string, onActivity: () => void = () => {}, ctx: RouteContext = {}): Server {
   const server: Server = createServer((req, res) => {
     const port = (server.address() as AddressInfo | null)?.port ?? 0;
     res.setHeader("x-content-type-options", "nosniff");
@@ -443,7 +478,7 @@ export function createUiServer(token: string, onActivity: () => void = () => {})
       }
     }
     onActivity();
-    route(method, url, req).then(
+    route(method, url, req, ctx).then(
       (data) => sendJson(res, 200, data),
       (e: unknown) => {
         const code = e instanceof api.ApiError ? e.code : "error";
@@ -498,9 +533,27 @@ function openBrowser(url: string): void {
 
 /** Serve in this process until idle for 30 minutes (or Ctrl+C). */
 export async function serve(port: number, onReady: (i: UiInstance) => void): Promise<void> {
-  const token = randomBytes(24).toString("base64url");
+  // A restart (after an update) hands over its token, so the open page keeps working.
+  const inherited = process.env.SELFGUARD_UI_TOKEN;
+  delete process.env.SELFGUARD_UI_TOKEN;
+  const token = inherited && /^[A-Za-z0-9_-]{24,64}$/.test(inherited) ? inherited : randomBytes(24).toString("base64url");
   let timer: NodeJS.Timeout | undefined;
-  const server = createUiServer(token, () => bump());
+  let boundPort = port;
+  const restart = (): void => {
+    setTimeout(() => {
+      stop();
+      server.closeAllConnections();
+      const logFd = openSync(logFile(), "a", 0o600);
+      const child = spawn(process.execPath, [cliEntry(), "ui", "--serve", "--no-open", "--port", String(boundPort)], {
+        detached: true,
+        stdio: ["ignore", logFd, logFd],
+        env: { ...process.env, SELFGUARD_UI_TOKEN: token },
+      });
+      child.unref();
+      process.exit(0);
+    }, 150);
+  };
+  const server = createUiServer(token, () => bump(), { restart });
   const stop = () => {
     server.close();
     const current = readJsonFile<UiInstance>(uiFile());
@@ -511,11 +564,24 @@ export async function serve(port: number, onReady: (i: UiInstance) => void): Pro
     timer = setTimeout(stop, IDLE_MS);
     timer.unref();
   };
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, "127.0.0.1", resolve);
-  });
-  const instance: UiInstance = { pid: process.pid, port: (server.address() as AddressInfo).port, token };
+  // The previous dashboard may still be releasing the port during a restart: retry briefly.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, "127.0.0.1", () => {
+          server.off("error", reject);
+          resolve();
+        });
+      });
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE" || !inherited || attempt >= 40) throw e;
+      await new Promise((r) => setTimeout(r, 125));
+    }
+  }
+  boundPort = (server.address() as AddressInfo).port;
+  const instance: UiInstance = { pid: process.pid, port: boundPort, token };
   atomicWrite(uiFile(), JSON.stringify(instance));
   bump();
   process.once("SIGINT", () => {

@@ -963,6 +963,8 @@ export interface Settings {
   /** Weekly "find my projects" that starts watching new places with active repos. */
   autoDiscover: boolean;
   lastEverywhere: string | null;
+  /** Daily check of npm for a newer selfguard. */
+  updateCheck: boolean;
   lastReminder: string | null;
   lastSync: string | null;
   lastCheck: string | null;
@@ -976,13 +978,14 @@ export function getSettings(): Settings {
     activeDays: cfg.activeDays,
     autoDiscover: cfg.autoDiscover,
     lastEverywhere: st.lastEverywhere ?? null,
+    updateCheck: cfg.updateCheck,
     lastReminder: st.lastReminder ?? null,
     lastSync: st.lastSync ?? null,
     lastCheck: st.lastCheck ?? null,
   };
 }
 
-export function updateSettings(patch: { remind?: unknown; activeDays?: unknown; autoDiscover?: unknown }): Settings {
+export function updateSettings(patch: { remind?: unknown; activeDays?: unknown; autoDiscover?: unknown; updateCheck?: unknown }): Settings {
   const cfg = loadConfig();
   if (patch.remind !== undefined) {
     if (!REMIND_VALUES.includes(patch.remind as RemindEvery)) throw new ApiError("invalid", "remind must be daily, weekly or off");
@@ -996,6 +999,10 @@ export function updateSettings(patch: { remind?: unknown; activeDays?: unknown; 
   if (patch.autoDiscover !== undefined) {
     if (typeof patch.autoDiscover !== "boolean") throw new ApiError("invalid", "autoDiscover must be true or false");
     cfg.autoDiscover = patch.autoDiscover;
+  }
+  if (patch.updateCheck !== undefined) {
+    if (typeof patch.updateCheck !== "boolean") throw new ApiError("invalid", "updateCheck must be true or false");
+    cfg.updateCheck = patch.updateCheck;
   }
   saveConfig(cfg);
   return getSettings();

@@ -90,7 +90,16 @@ Lists the serious open issues in your active repos and sends the reminder notifi
 ones in direct dependencies. Each repo is judged by its main checkout (or its most recently
 active one). `--dry-run` only prints. The scheduled reminder uses the same list.
 
-### `selfguard settings [--remind daily|weekly|off] [--active-days N] [--auto-discover on|off]`
+### `selfguard update`
+
+Asks npm for the latest selfguard right away. If a newer one exists, it prints the release notes
+link, whether the release has npm provenance, and the command to install it
+(`npm i -g selfguard@<version> --ignore-scripts`). selfguard never installs anything by itself.
+Otherwise this check runs at most once a day from the background sync. Each new version gets one
+notification and a banner in the dashboard. `status` also mentions it, from the cache, with no
+network call. After you update, the dashboard offers **Restart dashboard**.
+
+### `selfguard settings [--remind daily|weekly|off] [--active-days N] [--auto-discover on|off] [--update-check on|off]`
 
 Shows or changes alert settings.
 
@@ -322,6 +331,8 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `SELFGUARD_OSV_API` | OSV API base URL. Default `https://api.osv.dev/v1`. For mirrors and tests. |
 | `SELFGUARD_NO_LAUNCHD=1` | Never install or change launchd agents (tests). |
 | `SELFGUARD_SSH` | ssh client to use for other machines. Default `ssh` from `PATH`. |
+| `SELFGUARD_NO_UPDATE_CHECK=1` | Never ask npm for a newer selfguard. |
+| `SELFGUARD_NPM_REGISTRY` | Registry for the update check. Default `https://registry.npmjs.org`. |
 | `NO_COLOR` | Disable colored output ([no-color.org](https://no-color.org)). Color is also off when stdout isn't a terminal. |
 
 ## Files

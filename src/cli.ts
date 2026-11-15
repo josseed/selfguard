@@ -15,6 +15,8 @@ import { runSetup } from "./setup.ts";
 import { loadRepo } from "./store.ts";
 import { confirm, isInteractive, withSpinner } from "./tui.ts";
 import { runUi } from "./ui/server.ts";
+import { cachedUpdate, checkForUpdate, installedVersion, notifyUpdateOnce } from "./update.ts";
+import { notify } from "./notify.ts";
 import { VERSION } from "./version.ts";
 
 const HELP = `selfguard ${VERSION} — keeps an eye on the dependencies of every repo you work on
@@ -34,6 +36,7 @@ Dashboard and alerts:
                                      (Spotlight, Launchpad, Dock)
   selfguard remind                   send the reminder of serious open issues now
   selfguard settings [--remind daily|weekly|off] [--active-days N] [--auto-discover on|off]
+                     [--update-check on|off]
                                      reminder frequency; days of git inactivity before a
                                      checkout stops alerting (default 30)
 
@@ -80,6 +83,10 @@ Other machines (dev servers over SSH; read-only, project code never runs there):
   selfguard machines remove <name> [--keep-remote]
                                      forget a machine, its results and key (and remove the
                                      key line from it with your SSH access)
+
+Updates:
+  selfguard update                   check npm for a newer selfguard and show how to update
+                                     (it never installs anything by itself)
 
 AI / automation:
   --json                             any command: one JSON document on stdout
@@ -226,6 +233,8 @@ function cmdStatus(args: string[]): number {
   }
   if (hiddenRepos) out.write(c.dim(`${hiddenRepos} inactive repo(s) hidden (no git activity in ${api.getSettings().activeDays} days). Show them with --all.\n`));
   if (hiddenDismissed) out.write(c.dim(`${hiddenDismissed} dismissed repo(s) hidden until their next git activity. List them with selfguard dismiss --list.\n`));
+  const upd = cachedUpdate();
+  if (upd.available) out.write(c.yellow(`selfguard ${upd.latest} is available (you have ${upd.current}): ${upd.command}\n`));
   return 0;
 }
 
@@ -248,7 +257,12 @@ async function cmdSync(args: string[]): Promise<number> {
   } catch (e) {
     err.write(`selfguard: could not update the lockfile watcher: ${clean((e as Error).message, 200)}\n`);
   }
-  if (values.background) await maybeRemind(api.getAttention);
+  if (values.background) {
+    await maybeRemind(api.getAttention);
+    // Once a day at most; one notification per new version.
+    const info = await checkForUpdate();
+    await notifyUpdateOnce(info, (title, body) => notify(title, body, "Update"));
+  }
   const { outcomes: _o, ...data } = r;
   const total = data.news.reduce((n, p) => n + p.packages.length, 0);
   if (values.json) emit(data);
@@ -327,8 +341,12 @@ async function cmdRemind(args: string[]): Promise<number> {
 }
 
 function cmdSettings(args: string[]): number {
-  const { values } = parseArgs({ args, options: { ...JSON_OPT, remind: { type: "string" }, "active-days": { type: "string" }, "auto-discover": { type: "string" } } });
-  const patch: { remind?: unknown; activeDays?: unknown; autoDiscover?: unknown } = {};
+  const { values } = parseArgs({ args, options: { ...JSON_OPT, remind: { type: "string" }, "active-days": { type: "string" }, "auto-discover": { type: "string" }, "update-check": { type: "string" } } });
+  const patch: { remind?: unknown; activeDays?: unknown; autoDiscover?: unknown; updateCheck?: unknown } = {};
+  if (values["update-check"] !== undefined) {
+    if (values["update-check"] !== "on" && values["update-check"] !== "off") usage("--update-check must be on or off");
+    patch.updateCheck = values["update-check"] === "on";
+  }
   if (values.remind !== undefined) patch.remind = values.remind;
   if (values["active-days"] !== undefined) patch.activeDays = Number(values["active-days"]);
   if (values["auto-discover"] !== undefined) {
@@ -347,6 +365,7 @@ function cmdSettings(args: string[]): number {
   else {
     out.write(`remind        ${s.remind}${s.lastReminder ? paint(out).dim(`  (last ${s.lastReminder})`) : ""}\n`);
     out.write(`active-days   ${s.activeDays}\n`);
+    out.write(`update-check  ${s.updateCheck ? "on" : "off"}\n`);
     out.write(`auto-discover ${s.autoDiscover ? "on" : "off"}${s.lastEverywhere ? paint(out).dim(`  (last search ${s.lastEverywhere})`) : ""}\n`);
     if (s.lastSync) out.write(paint(out).dim(`last sync     ${s.lastSync}\n`));
   }
@@ -450,6 +469,30 @@ async function cmdDiscoverEverywhere(values: { json?: boolean; "dry-run"?: boole
   const r = await api.applyPlaces(chosen.map((p) => ({ path: p.path, depth: p.depth })));
   if (values.json) emit({ scan, applied: r });
   else out.write(`${c.green("✓")} Watching ${r.watching.length} more folder(s); ${r.discovered?.registered ?? 0} new project(s) registered, ${r.discovered?.withVulnerabilities ?? 0} with vulnerabilities.\n`);
+  return 0;
+}
+
+async function cmdUpdate(args: string[]): Promise<number> {
+  const { values } = parseArgs({ args, options: { ...JSON_OPT } });
+  const info = await checkForUpdate({ force: true });
+  const disk = installedVersion();
+  if (values.json) {
+    emit({ ...info, installed: disk });
+    return 0;
+  }
+  const c = paint(out);
+  if (!info.enabled) out.write(c.dim("Update checks are off (selfguard settings --update-check on).\n"));
+  if (info.available) {
+    out.write(`${c.yellow("●")} selfguard ${c.bold(info.latest ?? "")} is available (you have ${VERSION}).\n`);
+    out.write(`  What's new: ${info.releaseNotes}\n`);
+    if (info.provenance === false) out.write(c.yellow("  Warning: this release has no npm provenance attestation. Check it before installing.\n"));
+    else if (info.provenance) out.write(c.dim("  Built and signed by GitHub Actions (npm provenance).\n"));
+    out.write(`  Update with: ${c.bold(info.command ?? "")}\n`);
+  } else if (info.latest) {
+    out.write(`${c.green("✓")} selfguard ${VERSION} is the latest version.\n`);
+  } else if (info.enabled) {
+    out.write(c.dim("Couldn't reach the npm registry; try again later.\n"));
+  }
   return 0;
 }
 
@@ -857,6 +900,8 @@ async function main(argv: string[]): Promise<number> {
       return cmdDiscover(rest);
     case "machines":
       return cmdMachines(rest);
+    case "update":
+      return cmdUpdate(rest);
     case "roots":
       return cmdRoots(rest);
     case "where":

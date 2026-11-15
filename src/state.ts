@@ -10,15 +10,22 @@ export interface RuntimeState {
   lastEverywhere?: string;
   /** Watched folders the user removed: automatic discovery never adds them back. */
   dismissedPlaces?: string[];
+  /** Update check (see update.ts). */
+  lastUpdateCheck?: string;
+  latestVersion?: string;
+  latestProvenance?: boolean;
+  /** Last version we sent an "update available" notification for. */
+  notifiedVersion?: string;
 }
 
 export function loadState(): RuntimeState {
   const raw = readJsonFile<RuntimeState>(stateFile());
   if (!raw || !isObject(raw)) return {};
   const out: RuntimeState = {};
-  for (const k of ["lastReminder", "lastSync", "lastCheck", "lastEverywhere"] as const) {
+  for (const k of ["lastReminder", "lastSync", "lastCheck", "lastEverywhere", "lastUpdateCheck", "latestVersion", "notifiedVersion"] as const) {
     if (typeof raw[k] === "string") out[k] = raw[k];
   }
+  if (typeof raw.latestProvenance === "boolean") out.latestProvenance = raw.latestProvenance;
   if (Array.isArray(raw.dismissedPlaces)) out.dismissedPlaces = raw.dismissedPlaces.filter((x): x is string => typeof x === "string").slice(-500);
   return out;
 }

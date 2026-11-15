@@ -69,6 +69,8 @@ export interface Config {
   dismissed: Dismissal[];
   /** Weekly search of the whole home folder that starts watching new places with active repos. */
   autoDiscover: boolean;
+  /** Daily check of npm for a newer selfguard (only the package name is sent). */
+  updateCheck: boolean;
 }
 
 export interface Dismissal {
@@ -131,7 +133,8 @@ export function loadConfig(): Config {
     }
   }
   const autoDiscover = !(raw && isObject(raw) && raw.autoDiscover === false);
-  return { schema: 1, roots, exclude, remind, activeDays, machines, dismissed, autoDiscover };
+  const updateCheck = !(raw && isObject(raw) && raw.updateCheck === false);
+  return { schema: 1, roots, exclude, remind, activeDays, machines, dismissed, autoDiscover, updateCheck };
 }
 
 export function isExcluded(path: string, exclude: readonly string[]): boolean {
