@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-15
+
+### Fixed
+
+- A sync no longer announces new worktrees or clones of a known repo as new findings. Other
+  checkouts scanned in the same run now count with what they already had.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added
@@ -59,6 +66,7 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/josseed/selfguard/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/josseed/selfguard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/josseed/selfguard/releases/tag/v0.1.0

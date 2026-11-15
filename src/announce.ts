@@ -16,16 +16,19 @@ const HOUR_MS = 60 * 60 * 1000;
 /**
  * Findings already known in other checkouts of the same repo (current or recently seen).
  * A new worktree or clone of a repo isn't news: only what no checkout had before is.
+ * Checkouts scanned in the same run (a sync scans them all) count with what they already
+ * had: findings that are new for them too (e.g. a fresh advisory) stay news.
  */
 function knownElsewhere(outcomes: ScanOutcome[]): (key: string, path: string) => Set<string> {
-  const scanned = new Set(outcomes.map((o) => o.record.path));
+  const newIn = new Map(outcomes.map((o) => [o.record.path, new Set(o.newFindings.map(findingKey))]));
   let byRepo: Map<string, Array<{ path: string; keys: Set<string> }>> | null = null;
   return (key, path) => {
     if (!byRepo) {
       byRepo = new Map();
       for (const rec of listRepos()) {
         const k = repoIdentity(rec.path)?.key ?? `path:${rec.path}`;
-        const keys = new Set([...Object.keys(rec.seen ?? {}), ...rec.findings.map(findingKey)]);
+        const fresh = newIn.get(rec.path);
+        const keys = new Set([...Object.keys(rec.seen ?? {}), ...rec.findings.map(findingKey)].filter((x) => !fresh?.has(x)));
         const list = byRepo.get(k) ?? [];
         list.push({ path: rec.path, keys });
         byRepo.set(k, list);
@@ -33,8 +36,7 @@ function knownElsewhere(outcomes: ScanOutcome[]): (key: string, path: string) =>
     }
     const out = new Set<string>();
     for (const other of byRepo.get(key) ?? []) {
-      // Other checkouts scanned in this same run don't count: they're news too.
-      if (other.path === path || scanned.has(other.path)) continue;
+      if (other.path === path) continue;
       for (const k of other.keys) out.add(k);
     }
     return out;

@@ -42,4 +42,21 @@ test("a new worktree of a known repo only reports what no other checkout had", a
   assert.equal(e?.kind, "new");
   assert.equal(e?.repo, "acme/web");
   assert.deepEqual(e?.packages.map((p) => p.name), ["axios"]);
+
+  // A sync scans every checkout in one run: the main clone is in the same batch. What it
+  // already had still isn't news for the new worktree; a fresh advisory for both still is.
+  const advisory = f("qs", "GHSA-today");
+  const mainRec = { ...record(main, [known, advisory]), seen: { [`${known.id}|${known.name}@${known.version}`]: new Date().toISOString() } };
+  saveRepo(mainRec);
+  saveRepo(record(wt, [known, advisory]));
+  await announce(
+    [
+      { record: mainRec, newFindings: [advisory], resolvedFindings: [], firstScan: false },
+      { record: record(wt, [known, advisory]), newFindings: [known, advisory], resolvedFindings: [], firstScan: true },
+    ],
+    { notify: false },
+  );
+  const [wtEvent, mainEvent] = readEvents(2);
+  assert.deepEqual(wtEvent?.packages.map((p) => p.name), ["qs"], "worktree: only the fresh advisory");
+  assert.deepEqual(mainEvent?.packages.map((p) => p.name), ["qs"]);
 });
