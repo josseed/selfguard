@@ -21,6 +21,9 @@ project code or package managers.
   A finding usually needs fixing once on the main branch; mention branches that are worse.
 - active: a checkout with git activity in the last N days (default 30). Inactive checkouts are listed
   but only alert for malicious packages. Repo-level counts in status cover active checkouts.
+- machines: other machines (dev servers) checked from here over SSH with a key limited to a read-only reader.
+  Their checkouts carry \`machine\` (null = this machine) and their repo keys start with "<machine>|".
+  Fix on that machine (in the path shown), then verify with selfguard_machines_sync.
 - attention: what the user's daily reminder is about: malicious packages, critical findings outside dev
   dependencies, and high findings in direct dependencies, judged on each repo's main checkout.
 
@@ -33,6 +36,8 @@ project code or package managers.
 | Re-scan one project now | selfguard_scan | selfguard scan <dir> --json |
 | Check everything for new advisories | selfguard_sync | selfguard sync --json |
 | Re-check projects whose lockfile changed | selfguard_check | selfguard check --json |
+| Other machines (dev servers) | selfguard_machines | selfguard machines --json |
+| Re-check other machines now | selfguard_machines_sync | selfguard machines sync [name] --json |
 | Alert settings | (CLI only) | selfguard settings [--remind daily|weekly|off] [--active-days N] --json |
 | Is package X used anywhere? | selfguard_where | selfguard where <pkg> --json |
 | Explain an advisory | selfguard_vulnerability | selfguard vuln <id> --json |

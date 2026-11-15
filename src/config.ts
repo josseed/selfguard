@@ -12,6 +12,46 @@ export interface Root {
 
 export type RemindEvery = "daily" | "weekly" | "off";
 
+/**
+ * Another machine reached over SSH (e.g. a dev server on your tailnet). selfguard only reads
+ * from it: lockfiles, package.json and a few git files. Nothing is installed or run there
+ * besides a fixed read-only /bin/sh script (see remote.ts).
+ */
+export interface Machine {
+  /** Short name shown everywhere ("devbox"). Also a folder name under ~/.selfguard/machines. */
+  name: string;
+  /** SSH destination: host alias, tailnet name or user@host. */
+  host: string;
+  /** SSH port (default: whatever ssh uses, normally 22). */
+  port?: number;
+  /**
+   * "restricted" (default): a dedicated key that the machine only accepts for its read-only
+   * reader script (authorized_keys `restrict,command=…`). "ssh": your own SSH access
+   * (keys or Tailscale SSH), running the same read-only script.
+   */
+  mode: MachineMode;
+  /** Restricted mode: the folder the reader on the machine allows (default "~"). */
+  scope: string;
+  /** Folders on that machine; "~/code" style paths are expanded there. */
+  roots: Root[];
+  exclude: string[];
+}
+
+export type MachineMode = "restricted" | "ssh";
+
+export const MACHINE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
+/** No leading "-" (would be read as an ssh option), no spaces, quotes or shell characters. */
+export const SSH_HOST_RE = /^(?:[A-Za-z0-9._][A-Za-z0-9._-]{0,63}@)?[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252})$/;
+
+/** Remote folder path as typed: absolute or ~-relative, no control characters, no "..". */
+export function validRemotePath(p: string): string | null {
+  const t = p.trim().replace(/\/+$/, "") || (p.trim().startsWith("/") ? "/" : "");
+  if (!t || t.length > 1024 || /[\u0000-\u001f\u007f]/.test(t)) return null;
+  if (!(t === "~" || t.startsWith("~/") || t.startsWith("/"))) return null;
+  if (t.split("/").some((seg) => seg === "..")) return null;
+  return t;
+}
+
 export interface Config {
   schema: 1;
   roots: Root[];
@@ -21,6 +61,7 @@ export interface Config {
   remind: RemindEvery;
   /** Checkouts without git activity for this many days are "inactive" (no alerts). */
   activeDays: number;
+  machines: Machine[];
 }
 
 export const DEFAULT_DEPTH = 5;
@@ -48,7 +89,26 @@ export function loadConfig(): Config {
     raw && isObject(raw) && typeof raw.activeDays === "number" && raw.activeDays >= 1
       ? Math.min(365, Math.trunc(raw.activeDays))
       : DEFAULT_ACTIVE_DAYS;
-  return { schema: 1, roots, exclude, remind, activeDays };
+  const machines: Machine[] = [];
+  if (raw && isObject(raw) && Array.isArray(raw.machines)) {
+    for (const m of raw.machines as unknown[]) {
+      if (!isObject(m) || typeof m.name !== "string" || typeof m.host !== "string") continue;
+      if (!MACHINE_NAME_RE.test(m.name) || !SSH_HOST_RE.test(m.host)) continue;
+      if (machines.some((x) => x.name === m.name)) continue;
+      const mroots: Root[] = [];
+      for (const r of Array.isArray(m.roots) ? m.roots : []) {
+        const path = isObject(r) && typeof r.path === "string" ? validRemotePath(r.path) : null;
+        if (path && !mroots.some((x) => x.path === path))
+          mroots.push({ path, depth: typeof r.depth === "number" ? clampDepth(r.depth) : DEFAULT_DEPTH });
+      }
+      const mexclude = (Array.isArray(m.exclude) ? m.exclude : []).filter((e): e is string => typeof e === "string" && validRemotePath(e) === e);
+      const port = typeof m.port === "number" && Number.isInteger(m.port) && m.port > 0 && m.port < 65536 ? m.port : undefined;
+      const mode: MachineMode = m.mode === "ssh" ? "ssh" : "restricted";
+      const scope = (typeof m.scope === "string" ? validRemotePath(m.scope) : null) ?? "~";
+      machines.push({ name: m.name, host: m.host, ...(port ? { port } : {}), mode, scope, roots: mroots, exclude: mexclude });
+    }
+  }
+  return { schema: 1, roots, exclude, remind, activeDays, machines };
 }
 
 export function isExcluded(path: string, exclude: readonly string[]): boolean {

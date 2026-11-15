@@ -6,10 +6,11 @@ import { activityOf } from "./activity.ts";
 import { buildAlert, buildReminder, buildResolvedAlert, deliver, needsAttention, type AttentionRepo, type ProjectNews } from "./alerts.ts";
 import { loadConfig, type RemindEvery } from "./config.ts";
 import { appendEvents, eventPackages, type SelfguardEvent } from "./events.ts";
-import { repoIdentity } from "./repoid.ts";
 import type { ScanOutcome } from "./scan.ts";
 import { loadState, updateState } from "./state.ts";
-import { findingKey, listRepos } from "./store.ts";
+import { checkoutId, findingKey, identityOf, listAllRepos, type RepoRecord } from "./store.ts";
+
+const keyOf = (rec: RepoRecord): string => identityOf(rec)?.key ?? (rec.machine ? `${rec.machine}|path:${rec.path}` : `path:${rec.path}`);
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -19,44 +20,48 @@ const HOUR_MS = 60 * 60 * 1000;
  * Checkouts scanned in the same run (a sync scans them all) count with what they already
  * had: findings that are new for them too (e.g. a fresh advisory) stay news.
  */
-function knownElsewhere(outcomes: ScanOutcome[]): (key: string, path: string) => Set<string> {
-  const newIn = new Map(outcomes.map((o) => [o.record.path, new Set(o.newFindings.map(findingKey))]));
-  let byRepo: Map<string, Array<{ path: string; keys: Set<string> }>> | null = null;
-  return (key, path) => {
+function knownElsewhere(outcomes: ScanOutcome[]): (key: string, id: string) => Set<string> {
+  const newIn = new Map(outcomes.map((o) => [checkoutId(o.record), new Set(o.newFindings.map(findingKey))]));
+  let byRepo: Map<string, Array<{ id: string; keys: Set<string> }>> | null = null;
+  return (key, id) => {
     if (!byRepo) {
       byRepo = new Map();
-      for (const rec of listRepos()) {
-        const k = repoIdentity(rec.path)?.key ?? `path:${rec.path}`;
-        const fresh = newIn.get(rec.path);
+      for (const rec of listAllRepos(loadConfig().machines.map((m) => m.name))) {
+        const k = keyOf(rec);
+        const fresh = newIn.get(checkoutId(rec));
         const keys = new Set([...Object.keys(rec.seen ?? {}), ...rec.findings.map(findingKey)].filter((x) => !fresh?.has(x)));
         const list = byRepo.get(k) ?? [];
-        list.push({ path: rec.path, keys });
+        list.push({ id: checkoutId(rec), keys });
         byRepo.set(k, list);
       }
     }
     const out = new Set<string>();
     for (const other of byRepo.get(key) ?? []) {
-      if (other.path === path) continue;
+      if (other.id === id) continue;
       for (const k of other.keys) out.add(k);
     }
     return out;
   };
 }
 
-function toNews(outcomes: ScanOutcome[], activeDays: number): Array<ProjectNews & { branch: string | null; firstScan: boolean }> {
+function toNews(outcomes: ScanOutcome[], activeDays: number): Array<ProjectNews & { branch: string | null; firstScan: boolean; machine: string | null }> {
   const known = knownElsewhere(outcomes);
   return outcomes.map((o) => {
-    const repo = repoIdentity(o.record.path);
-    const key = repo?.key ?? `path:${o.record.path}`;
-    const elsewhere = o.newFindings.length ? known(key, o.record.path) : new Set<string>();
+    const identity = identityOf(o.record);
+    const key = keyOf(o.record);
+    const machine = o.record.machine ?? null;
+    // Alerts and the activity feed name the machine: "devbox · acme/api".
+    const repo = identity ? { ...identity, label: machine ? `${machine} · ${identity.label}` : identity.label } : machine ? { key, label: `${machine} · ${o.record.path.split("/").pop()}` } : null;
+    const elsewhere = o.newFindings.length ? known(key, checkoutId(o.record)) : new Set<string>();
     return {
+      machine,
       path: o.record.path,
       newFindings: o.newFindings.filter((f) => !elsewhere.has(findingKey(f))),
       resolvedFindings: o.resolvedFindings,
       findings: o.record.findings,
       repo,
-      active: activityOf(repo, activeDays).active,
-      branch: repo?.branch ?? null,
+      active: activityOf(identity, activeDays).active,
+      branch: identity?.branch ?? null,
       firstScan: o.firstScan,
     };
   });
@@ -73,6 +78,7 @@ export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean
       repo: n.repo?.label ?? n.path.split("/").pop() ?? n.path,
       repoKey: n.repo?.key ?? `path:${n.path}`,
       path: n.path,
+      ...(n.machine ? { machine: n.machine } : {}),
       branch: n.branch,
       active: n.active !== false,
     };

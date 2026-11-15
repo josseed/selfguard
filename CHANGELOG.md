@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-15
+
+### Added
+
+- Other machines: `selfguard machines add <host>` watches repos on dev servers over SSH. By
+  default it uses a dedicated key that the machine accepts only for a small read-only reader
+  (`authorized_keys` `restrict,command=…`, pinned to this Mac's tailnet address). The reader is
+  limited to one folder, so even a leaked key can't open a shell or read anything but
+  lockfiles. It is installed once with your SSH access, or by hand
+  (`selfguard machines setup`). `--mode ssh` uses your own access instead. Lockfiles are
+  scanned locally, and only changed ones are transferred. See the security model.
+- `selfguard machines` (list, peers, test, add, setup, install, verify, roots, sync, remove), and
+  a 15-minute background check of other machines while `schedule on` is active.
+- Dashboard: **Machines** page (add from your tailnet, browse remote folders, sync, status) and a
+  machine filter on Repos. Repos, alerts, reminders and markdown name the machine.
+- MCP: `selfguard_machines` and `selfguard_machines_sync`; repos and projects carry `machine`.
+
 ## [0.5.0] - 2026-11-15
 
 ### Added
@@ -97,7 +114,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/josseed/selfguard/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/josseed/selfguard/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/josseed/selfguard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/josseed/selfguard/compare/v0.2.1...v0.3.0

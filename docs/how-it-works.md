@@ -153,5 +153,6 @@ don't appear.
 | Lockfile changed (checked on every prompt by the hook) | Re-scanned in the background. |
 | Lockfile of an active checkout changed, terminal or not (`git pull`, installs, merges) | The launchd watcher runs `selfguard check` within seconds (macOS). |
 | Entering a project whose last scan is older than 24 hours | Re-scanned in the background. |
-| Scheduled `sync` | Every tracked project is re-checked and new projects are discovered. |
+| Scheduled `sync` | Every tracked project is re-checked and new projects are discovered, on this machine and on [other machines](security-model.md#other-machines). |
+| Every 15 minutes, when you added other machines | `selfguard machines check`: one SSH listing per machine. Changed lockfiles are fetched and re-scanned, and new projects are added. |
 | `selfguard scan` | Immediately, in the foreground. |

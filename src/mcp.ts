@@ -120,6 +120,27 @@ export const TOOLS: Tool[] = [
     run: () => api.check({ notify: false }),
   },
   {
+    name: "selfguard_machines",
+    title: "Other machines",
+    description:
+      "Other machines selfguard watches over SSH (dev servers, e.g. on Tailscale): host, folders, tracked projects and how the last sync went (error if unreachable). Their repos appear in selfguard_status / selfguard_attention with a `machine` field. Local state only, no network.",
+    inputSchema: obj({}),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    run: () => ({ machines: api.listMachines() }),
+  },
+  {
+    name: "selfguard_machines_sync",
+    title: "Check other machines now",
+    description:
+      "Connect to the other machines (or one) over SSH, discover new projects and re-scan changed lockfiles there. Read-only on the machines: only the selfguard reader runs there (restricted key) and never project code. Use it to verify a fix made on a server.",
+    inputSchema: obj({ name: { type: "string", description: "Only this machine (see selfguard_machines)." } }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    run: (a) => {
+      const name = typeof a.name === "string" && a.name ? a.name : undefined;
+      return api.checkMachines({ notify: false, only: name ? [name] : undefined });
+    },
+  },
+  {
     name: "selfguard_where",
     title: "Where is a package used",
     description:

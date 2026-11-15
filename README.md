@@ -31,6 +31,10 @@ HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
 - **A dashboard, not just a terminal.** `selfguard ui` opens a local page with every repo, what
   needs attention, how to fix it, and a feed of what changed. On macOS, `selfguard app install`
   puts it in Spotlight and the Dock.
+- **Your dev servers too.** `selfguard machines add <host>` watches repos on other machines
+  over SSH. It uses a dedicated key that the server accepts only for a small read-only reader
+  limited to one folder: no shell, no forwarding, lockfiles only. The scan runs locally, and
+  alerts and the dashboard name the machine.
 - **Signal over noise.** Only checkouts with recent git activity alert you. Old clones and
   abandoned worktrees stay listed but quiet (except for malicious packages), and a new worktree
   of a known repo isn't reported as news.

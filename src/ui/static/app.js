@@ -10,12 +10,14 @@ const state = {
   overview: null,
   packages: null,
   folders: null,
+  machines: null,
   repo: null, // { key, data }
   route: { name: "overview", arg: null },
   ui: {
     repoFilter: "attention",
     repoSearch: "",
     repoGroupBy: "folder",
+    repoMachine: "all",
     collapsed: new Set(),
     pkgFilter: "serious",
     pkgSearch: "",
@@ -68,6 +70,7 @@ const ICONS = {
   chevron: "m9 6 6 6-6 6",
   copy: "M8 8V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-3M5 8h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
+  machines: "M4 4h16v6H4V4Zm0 10h16v6H4v-6Zm4-7h.01M8 17h.01",
 };
 
 function icon(name) {
@@ -166,6 +169,10 @@ async function loadFolders() {
   state.folders = await call("GET", "/api/folders");
 }
 
+async function loadMachines() {
+  state.machines = (await call("GET", "/api/machines")).machines;
+}
+
 async function loadRepo(key) {
   state.repo = { key, data: await call("GET", `/api/repo?key=${encodeURIComponent(key)}`) };
 }
@@ -184,7 +191,8 @@ function repoGroups(filter) {
   const q = state.ui.repoSearch.trim().toLowerCase();
   return o.repos
     .filter((g) => (filter === "attention" ? att.has(g.key) : filter === "active" ? g.active : filter === "inactive" ? !g.active : true))
-    .filter((g) => !q || g.label.toLowerCase().includes(q) || g.checkouts.some((k) => k.path.toLowerCase().includes(q)))
+    .filter((g) => machineMatch(g.machine))
+    .filter((g) => !q || g.label.toLowerCase().includes(q) || (g.machine || "").includes(q) || g.checkouts.some((k) => k.path.toLowerCase().includes(q)))
     .map((g) => ({ g, rep: representative(g), serious: o.seriousByRepo[g.key] || 0 }))
     .sort((a, b) =>
       b.serious - a.serious ||
@@ -210,6 +218,12 @@ function folderBuckets(rows) {
   }
   return [...buckets.values()].sort((a, b) =>
     Number(a.id === "") - Number(b.id === "") || b.serious - a.serious || a.worst - b.worst || a.label.localeCompare(b.label));
+}
+
+/** Repos page machine filter: "all", "local" or a machine name. */
+function machineMatch(machine) {
+  const f = state.ui.repoMachine;
+  return f === "all" || (f === "local" ? !machine : machine === f);
 }
 
 function seriousPackages() {
@@ -240,6 +254,7 @@ const PAGES = [
   ["packages", "Packages", "#/packages"],
   ["activity", "Activity", "#/activity"],
   ["folders", "Folders", "#/folders"],
+  ["machines", "Machines", "#/machines"],
   ["settings", "Settings", "#/settings"],
 ];
 
@@ -248,6 +263,7 @@ function renderNav() {
   const counts = {
     repos: o ? [o.needsAttention.length, o.needsAttention.length > 0] : null,
     folders: o ? [o.roots, false] : null,
+    machines: o && o.machines ? [o.machines.filter((m) => m.error).length || o.machines.length, o.machines.some((m) => m.error)] : null,
   };
   const current = state.route.name === "repo" ? "repos" : state.route.name;
   $("nav").replaceChildren(
@@ -344,6 +360,10 @@ function pageOverview() {
 
   const status = h("div", { class: "stat-list" },
     statRow("Watched folders", h("a", { href: "#/folders" }, o.roots)),
+    o.machines && o.machines.length
+      ? statRow("Other machines", h("a", { href: "#/machines" },
+          o.machines.some((m) => m.error) ? `${o.machines.filter((m) => m.error).length} of ${o.machines.length} unreachable` : `${o.machines.length} connected`))
+      : statRow("Other machines", h("a", { href: "#/machines" }, "add a dev server")),
     statRow("Active checkouts", `${o.activeCheckouts} of ${o.trackedProjects}`),
     statRow("Background watching", o.schedule
       ? (o.schedule.enabled ? h("span", {}, h("span", { class: "status-dot on" }), o.schedule.watcher ? "on, with lockfile watcher" : "on") : h("a", { href: "#/settings" }, "off: turn on"))
@@ -430,6 +450,19 @@ function pageRepos() {
       ...bodies))));
   }
 
+  const machineNames = (o.machines || []).map((m) => m.name);
+  if (state.ui.repoMachine !== "all" && state.ui.repoMachine !== "local" && !machineNames.includes(state.ui.repoMachine)) state.ui.repoMachine = "all";
+  const machineBar = machineNames.length
+    ? h("div", { class: "segmented machine-filter" },
+        ...[["all", "All machines"], ["local", "This Mac"], ...machineNames.map((n) => [n, n])].map(([v, label]) =>
+          h("button", { type: "button", "aria-pressed": String(state.ui.repoMachine === v), onclick: (e) => {
+            state.ui.repoMachine = v;
+            for (const b of e.currentTarget.parentNode.children) b.setAttribute("aria-pressed", String(b === e.currentTarget));
+            renderChips();
+            renderTable();
+          } }, label)))
+    : null;
+
   const groupToggle = h("div", { class: "segmented" },
     ...[["folder", "By folder"], ["none", "Flat"]].map(([v, label]) =>
       h("button", { type: "button", "aria-pressed": String(state.ui.repoGroupBy === v), onclick: (e) => {
@@ -440,7 +473,9 @@ function pageRepos() {
 
   renderChips();
   renderTable();
-  $("page").replaceChildren(h("div", {}, h("div", { class: "toolbar" }, chips, h("div", { class: "chips" }, groupToggle, search)), tableHost));
+  $("page").replaceChildren(h("div", {},
+    machineBar ? h("div", { class: "toolbar" }, machineBar) : null,
+    h("div", { class: "toolbar" }, chips, h("div", { class: "chips" }, groupToggle, search)), tableHost));
   if (o.roots === 0) toast("No folders watched yet: add one under Folders.");
 }
 
@@ -465,6 +500,7 @@ function pageRepo() {
   }));
   const previewBtn = h("button", { class: "btn", type: "button" }, "Preview");
   previewBtn.addEventListener("click", () => busy(previewBtn, "…", async () => showMarkdown(d.label, (await call("GET", mdQuery())).markdown)));
+  if (d.machine) crumbs.push(h("span", { class: "tag machine" }, icon("machines"), d.machine), " ");
   setHead(d.label, crumbs, d.packages.length ? [previewBtn, copyBtn] : []);
 
   const pkgs = scope === "rep" ? d.packages.filter((p) => p.checkouts.some((c) => c.path === rep.path)) : d.packages;
@@ -553,15 +589,16 @@ function checkoutRow(k) {
   const rescan = h("button", { class: "btn small", type: "button" }, "Re-scan");
   rescan.addEventListener("click", () =>
     busy(rescan, "Scanning…", async () => {
-      const r = await call("POST", "/api/scan", { path: k.path });
+      const r = await call("POST", "/api/scan", { path: k.path, machine: k.machine || undefined });
       toast(r.project.vulnerablePackages ? plural(r.project.vulnerablePackages, "vulnerable package") : "No known vulnerabilities");
       await refresh();
     }));
   const ignore = h("button", { class: "btn small danger", type: "button", title: "Stop tracking this folder and keep it out of discovery" }, "Ignore");
   ignore.addEventListener("click", () => {
-    if (!confirm(`Stop tracking ${k.path}?\n\nIt is excluded from discovery. You can include it again from Folders.`)) return;
+    const where = k.machine ? `${k.machine}:${k.path}` : k.path;
+    if (!confirm(`Stop tracking ${where}?\n\nIt is excluded from discovery. You can include it again from ${k.machine ? "Machines" : "Folders"}.`)) return;
     busy(ignore, "…", async () => {
-      await call("POST", "/api/forget", { path: k.path });
+      await call("POST", "/api/forget", { path: k.path, machine: k.machine || undefined });
       toast("Ignored");
       await refresh();
     });
@@ -576,7 +613,7 @@ function checkoutRow(k) {
         k.worktree ? h("span", { class: "tag" }, "worktree") : null, " ",
         k.active ? null : h("span", { class: "tag" }, `inactive${k.lastActivity ? ` · ${ago(k.lastActivity)}` : ""}`), " ",
         status),
-      h("div", { class: "path mono", title: k.path }, tildify(k.path)),
+      h("div", { class: "path mono", title: k.path }, k.machine ? `${k.machine}:${tildify(k.path)}` : tildify(k.path)),
       k.error ? h("div", { class: "path" }, k.error) : null),
     h("div", { class: "actions" }, rescan, ignore));
 }
@@ -768,7 +805,11 @@ async function runDiscover() {
   await refresh();
 }
 
-function openFolderPicker() {
+/**
+ * Folder browser. Default: this machine. With `machine`, it browses that machine over SSH
+ * (folder names only) and adds the folder to it.
+ */
+function openFolderPicker(machine) {
   const modal = $("modal");
   let current = null;
   let depth = 5;
@@ -784,7 +825,9 @@ function openFolderPicker() {
 
   async function go(path) {
     try {
-      const d = await call("GET", `/api/fs?path=${encodeURIComponent(path || "")}`);
+      const d = machine
+        ? await call("GET", `/api/machines/fs?name=${encodeURIComponent(machine)}&path=${encodeURIComponent(path || "")}`)
+        : await call("GET", `/api/fs?path=${encodeURIComponent(path || "")}`);
       current = d.path;
       pathInput.value = d.path;
       const items = [];
@@ -804,11 +847,15 @@ function openFolderPicker() {
   choose.addEventListener("click", () => busy(choose, "Adding…", async () => {
     const target = current;
     close();
-    await addFolder(target, depth);
+    if (machine) await addMachineFolder(machine, target, depth);
+    else await addFolder(target, depth);
   }));
 
   modal.replaceChildren(h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Add folder" },
-    h("header", {}, h("h2", {}, "Add a folder to watch"), h("p", {}, "Pick the folder where you keep repos. selfguard looks for projects inside it, up to the chosen depth.")),
+    h("header", {}, h("h2", {}, machine ? `Add a folder on ${machine}` : "Add a folder to watch"),
+      h("p", {}, machine
+        ? "Browsing over SSH: only folder names are read. selfguard looks for projects inside the folder, up to the chosen depth."
+        : "Pick the folder where you keep repos. selfguard looks for projects inside it, up to the chosen depth.")),
     h("div", { class: "body" },
       h("div", { class: "pathbar" }, pathInput, h("button", { class: "btn", type: "button", onclick: () => go(pathInput.value) }, "Go")),
       list, note),
@@ -816,6 +863,246 @@ function openFolderPicker() {
   modal.hidden = false;
   modal.onclick = (e) => { if (e.target === modal) close(); };
   go("");
+}
+
+// ---------- machines ----------
+
+async function addMachineFolder(name, path, depth) {
+  await call("POST", "/api/machines/roots/add", { name, path, depth });
+  toast(`Watching ${name}:${tildify(path)}. Scanning…`);
+  await refresh();
+  await syncMachine(name);
+}
+
+async function syncMachine(name) {
+  const r = await call("POST", "/api/machines/sync", { name });
+  const m = r.machines[0];
+  toast(!m ? "Nothing to sync" : m.ok
+    ? `${name}: ${plural(m.projects, "project")}${m.rescanned ? `, ${m.rescanned} scanned` : ", nothing changed"}`
+    : `${name}: ${m.error}`);
+  await refresh();
+}
+
+function machineStatus(m) {
+  const st = m.status;
+  if (st.error) {
+    const label = { auth: "SSH login failed", no_roots: "no folders", not_installed: "reader not installed", outdated: "reader outdated" }[st.errorCode] || "unreachable";
+    return h("span", { class: "tag warn", title: st.error }, label);
+  }
+  if (st.lastSync) return h("span", { class: "badge ok" }, `synced ${ago(st.lastSync)}`);
+  return h("span", { class: "tag" }, "not synced yet");
+}
+
+function pageMachines() {
+  const addBtn = h("button", { class: "btn primary", type: "button", onclick: () => openAddMachine() }, icon("plus"), "Add machine");
+  setHead("Machines", [], [addBtn]);
+  const list = state.machines;
+  if (!list) {
+    $("page").replaceChildren(h("div", { class: "skeleton" }));
+    return;
+  }
+  const intro = card("How it works", null, h("div", { class: "prose small" },
+    h("p", {}, "selfguard checks your dev servers from this Mac over SSH. By default it uses a key made only for this: the machine accepts it just for a small read-only script (the reader) limited to one folder, so even a leaked key can't open a shell or read anything but lockfiles there. The reader lists lockfiles and reads them with a few git files (branch, last activity); it never runs git, package managers or project code."),
+    h("p", {}, "The scan happens here, so advisories are checked once for all machines. Servers are checked every 15 minutes while background watching is on; alerts name the machine.")));
+  if (list.length === 0) {
+    $("page").replaceChildren(h("div", { class: "stack" },
+      card(null, null, empty("No other machines yet", "Add a dev server you reach over SSH or Tailscale to watch its repos here too.")),
+      intro));
+    return;
+  }
+  const cards = list.map((m) => {
+    const sync = h("button", { class: "btn small", type: "button" }, icon("refresh"), "Sync now");
+    sync.addEventListener("click", () => busy(sync, "Syncing…", () => syncMachine(m.name)));
+    const addFolderBtn = h("button", { class: "btn small", type: "button", onclick: () => openFolderPicker(m.name) }, icon("plus"), "Add folder");
+    const remove = h("button", { class: "btn small danger", type: "button" }, "Remove");
+    remove.addEventListener("click", () => {
+      const extra = m.mode === "restricted"
+        ? "Its key is deleted here, and selfguard removes the key line (and the reader) from the machine with your SSH access."
+        : "Nothing changes on the machine.";
+      if (!confirm(`Remove ${m.name}?\n\nselfguard forgets its results and stops checking it. ${extra}`)) return;
+      busy(remove, "…", async () => {
+        const r = await call("POST", "/api/machines/remove", { name: m.name });
+        toast(r.revoked === false ? `${m.name} removed here. Couldn't clean up the machine: remove the "selfguard:" line from its ~/.ssh/authorized_keys.` : `${m.name} removed`);
+        await refresh();
+      });
+    });
+    const needsReader = m.mode === "restricted" && ["not_installed", "outdated"].includes(m.status.errorCode);
+    const installBtn = needsReader ? h("button", { class: "btn small primary", type: "button" }, m.status.errorCode === "outdated" ? "Update reader" : "Install reader") : null;
+    if (installBtn) installBtn.addEventListener("click", () => busy(installBtn, "Installing…", async () => {
+      try {
+        await call("POST", "/api/machines/install", { name: m.name });
+        toast(`Reader installed on ${m.name}`);
+        await refresh();
+      } catch (e) {
+        await refresh();
+        openSetup(m.name, e.message);
+      }
+    }));
+    const setupBtn = m.mode === "restricted" ? h("button", { class: "btn small", type: "button", onclick: () => openSetup(m.name) }, needsReader ? "Install by hand" : "What's installed") : null;
+    const status = m.status.roots || [];
+    const roots = m.roots.length
+      ? h("ul", { class: "list" }, ...m.roots.map((r) => {
+          const ok = status.find((x) => x.path === r.path || tildify(x.path) === r.path || x.path.endsWith(r.path.replace(/^~/, "")));
+          const setD = (d) => busy(null, "", async () => {
+            await call("POST", "/api/machines/roots/add", { name: m.name, path: r.path, depth: d });
+            await refresh();
+          });
+          const stepper = h("div", { class: "stepper", title: "How many folder levels below it to look for projects" },
+            h("button", { type: "button", "aria-label": "Less depth", disabled: r.depth <= 1, onclick: () => setD(r.depth - 1) }, "−"),
+            h("span", {}, `depth ${r.depth}`),
+            h("button", { type: "button", "aria-label": "More depth", disabled: r.depth >= 10, onclick: () => setD(r.depth + 1) }, "+"));
+          const rm = h("button", { class: "btn small danger", type: "button" }, "Remove");
+          rm.addEventListener("click", () => {
+            if (!confirm(`Stop watching ${m.name}:${r.path}?`)) return;
+            busy(rm, "…", async () => {
+              await call("POST", "/api/machines/roots/remove", { name: m.name, path: r.path });
+              await refresh();
+            });
+          });
+          return h("li", {},
+            h("span", { class: "folder-icon" }, icon("folder")),
+            h("div", { class: "grow" },
+              h("div", { class: "title mono" }, tildify(r.path)),
+              h("div", { class: "sub" }, ok && !ok.ok ? "Folder not found on the machine" : "")),
+            stepper, rm);
+        }))
+      : empty("No folders yet", "Choose the folders where you keep repos on this machine.");
+    const excluded = m.exclude.length
+      ? h("div", { class: "gap-top" }, h("div", { class: "small muted" }, "Excluded:"), h("ul", { class: "list" }, ...m.exclude.map((p) => {
+          const b = h("button", { class: "btn small", type: "button" }, "Include again");
+          b.addEventListener("click", () => busy(b, "…", async () => {
+            await call("POST", "/api/machines/unexclude", { name: m.name, path: p });
+            toast("Included again. It will be picked up by the next sync.");
+            await refresh();
+          }));
+          return h("li", {}, h("div", { class: "grow" }, h("div", { class: "title mono" }, tildify(p))), b);
+        })))
+      : null;
+    const head = h("div", { class: "machine-head" },
+      h("span", { class: "folder-icon" }, icon("machines")),
+      h("div", { class: "grow" },
+        h("div", { class: "title" }, h("strong", {}, m.name), " ", machineStatus(m)),
+        h("div", { class: "sub mono" }, `ssh ${m.host}${m.port ? `:${m.port}` : ""}${m.status.os ? ` · ${m.status.os}` : ""} · ${plural(m.trackedProjects, "project")}`),
+        h("div", { class: "sub" }, m.mode === "restricted"
+          ? `Restricted key: can only read lockfiles under ${m.scope}`
+          : "Uses your own SSH access (full shell); consider the restricted mode"),
+        m.status.error ? h("div", { class: "sub warn-text" }, m.status.error) : null),
+      h("div", { class: "actions" }, installBtn, needsReader ? null : sync, needsReader ? null : addFolderBtn, setupBtn, remove));
+    const reposLink = m.trackedProjects
+      ? h("a", { href: "#/repos", onclick: () => { state.ui.repoMachine = m.name; state.ui.repoFilter = "all"; } }, `See its repos →`)
+      : null;
+    return h("section", { class: "card machine" }, head, h("div", { class: "card-body" }, roots, excluded), reposLink ? h("footer", { class: "card-foot" }, reposLink) : null);
+  });
+  $("page").replaceChildren(h("div", { class: "stack" }, ...cards, intro));
+}
+
+function openAddMachine() {
+  const modal = $("modal");
+  const hostInput = h("input", { type: "text", spellcheck: "false", placeholder: "devbox, devbox.tailnet.ts.net or user@host", "aria-label": "SSH host" });
+  const nameInput = h("input", { type: "text", spellcheck: "false", placeholder: "name (optional)", "aria-label": "Name", maxlength: "32" });
+  const scopeInput = h("input", { type: "text", spellcheck: "false", value: "~", "aria-label": "Allowed folder" });
+  const portInput = h("input", { type: "text", inputmode: "numeric", placeholder: "22", "aria-label": "Port", class: "port" });
+  let mode = "restricted";
+  const modeNote = h("div", { class: "small muted" });
+  const scopeRow = h("label", { class: "field" }, h("span", {}, "Allowed folder on the machine"), scopeInput);
+  const modes = h("div", { class: "segmented" },
+    ...[["restricted", "Restricted key (recommended)"], ["ssh", "My SSH access"]].map(([v, label]) =>
+      h("button", { type: "button", "aria-pressed": String(v === mode), onclick: (e) => {
+        mode = v;
+        for (const b of e.currentTarget.parentNode.children) b.setAttribute("aria-pressed", String(b === e.currentTarget));
+        renderModeNote();
+      } }, label)));
+  function renderModeNote() {
+    scopeRow.hidden = mode !== "restricted";
+    modeNote.textContent = mode === "restricted"
+      ? "selfguard creates a key just for this machine and installs the read-only reader once, using your SSH access. The machine only accepts that key for the reader, inside the allowed folder. Needs the machine's regular sshd (Tailscale SSH ignores per-key restrictions)."
+      : "selfguard uses your own SSH access (keys or Tailscale SSH) to pipe the same read-only script. Simpler, but whoever controls selfguard on this Mac gets a full shell there.";
+  }
+  renderModeNote();
+  const peers = h("ul", { class: "dir-list short" }, h("li", {}, h("div", { class: "empty" }, "Looking for Tailscale machines…")));
+  const close = () => { modal.hidden = true; modal.replaceChildren(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  const connect = h("button", { class: "btn primary", type: "button" }, "Add machine");
+  connect.addEventListener("click", () => busy(connect, mode === "restricted" ? "Installing…" : "Connecting…", async () => {
+    const host = hostInput.value.trim();
+    if (!host) { hostInput.focus(); return; }
+    const r = await call("POST", "/api/machines/add", {
+      host, name: nameInput.value.trim() || undefined, mode, scope: scopeInput.value.trim() || "~", port: portInput.value.trim() || undefined,
+    });
+    close();
+    await refresh();
+    if (!r.installed) {
+      openSetup(r.machine.name, r.installError);
+      return;
+    }
+    toast(`Connected to ${r.machine.name} (${r.machine.status.os || "?"}). Now pick its folders.`);
+    openFolderPicker(r.machine.name);
+  }));
+  hostInput.addEventListener("keydown", (e) => { if (e.key === "Enter") connect.click(); });
+  call("GET", "/api/machines/peers").then((r) => {
+    const known = new Set((state.machines || []).map((m) => m.host));
+    const items = r.peers.filter((p) => !known.has(p.dnsName)).map((p) =>
+      h("li", {}, h("button", { type: "button", onclick: () => { hostInput.value = p.dnsName; nameInput.value = p.name.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 32); hostInput.focus(); } },
+        h("span", { class: `status-dot ${p.online ? "on" : "off"}` }), h("span", { class: "grow" }, p.name), h("span", { class: "small muted" }, `${p.os}${p.online ? "" : " · offline"}`))));
+    peers.replaceChildren(...(items.length ? items : [h("li", {}, h("div", { class: "empty" }, "No Tailscale machines found. Type the SSH host instead."))]));
+  }).catch(() => peers.replaceChildren(h("li", {}, h("div", { class: "empty" }, "Tailscale not available. Type the SSH host instead."))));
+
+  modal.replaceChildren(h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Add machine" },
+    h("header", {}, h("h2", {}, "Add a machine"), h("p", {}, "A dev server you reach with SSH from this Mac. selfguard never runs project code there.")),
+    h("div", { class: "body" },
+      h("div", { class: "small muted" }, "On your tailnet:"), peers,
+      h("div", { class: "pathbar" }, hostInput, portInput, nameInput),
+      modes, modeNote, scopeRow),
+    h("footer", {}, h("div", { class: "small muted" }, "Your SSH access is used once, without prompts (BatchMode)."), h("div", { class: "chips" }, h("button", { class: "btn", type: "button", onclick: close }, "Cancel"), connect))));
+  modal.hidden = false;
+  modal.onclick = (e) => { if (e.target === modal) close(); };
+  hostInput.focus();
+}
+
+/** What gets installed on a restricted machine, to review or paste by hand, plus Verify. */
+async function openSetup(name, problem) {
+  let st;
+  try {
+    st = await call("GET", `/api/machines/setup?name=${encodeURIComponent(name)}`);
+  } catch (e) {
+    toast(e.message);
+    return;
+  }
+  const modal = $("modal");
+  const close = () => { modal.hidden = true; modal.replaceChildren(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  const paste = `sh -s <<'SELFGUARD_INSTALL'\n${st.installScript}SELFGUARD_INSTALL\n`;
+  const area = h("textarea", { class: "md-preview short", readonly: true, spellcheck: "false", "aria-label": "Install script" });
+  area.value = paste;
+  const readerArea = h("textarea", { class: "md-preview short", readonly: true, spellcheck: "false", "aria-label": "Reader script" });
+  readerArea.value = st.reader;
+  const copy = h("button", { class: "btn", type: "button" }, icon("copy"), "Copy install command");
+  copy.addEventListener("click", async () => { if (await copyText(paste)) toast("Copied. Paste it in a terminal on the machine."); else { area.focus(); area.select(); } });
+  const verify = h("button", { class: "btn primary", type: "button" }, "Verify");
+  verify.addEventListener("click", () => busy(verify, "Checking…", async () => {
+    await call("POST", "/api/machines/verify", { name });
+    close();
+    toast(`${name} answers through the restricted reader. Now pick its folders.`);
+    await refresh();
+    openFolderPicker(name);
+  }));
+  modal.replaceChildren(h("div", { class: "modal wide", role: "dialog", "aria-modal": "true", "aria-label": "Install the reader" },
+    h("header", {}, h("h2", {}, `Reader for ${name}`),
+      h("p", {}, problem ? `selfguard couldn't install it with your SSH access: ${problem}` : "This is everything selfguard installs on the machine.")),
+    h("div", { class: "body" },
+      h("ol", { class: "steps small" },
+        h("li", {}, "Open a terminal on ", h("strong", {}, st.host), " as the user selfguard connects as, and paste the command below. It writes ~/.selfguard-reader/reader.sh and adds one line to ~/.ssh/authorized_keys."),
+        h("li", {}, "Come back and press Verify.")),
+      area,
+      h("div", { class: "small muted" }, "The key line (restrict: no shell, no forwarding; command: only the reader):"),
+      h("code", { class: "keyline" }, st.authorizedKeysLine),
+      st.pinnedTo.length ? h("div", { class: "small muted" }, `Pinned to this Mac's tailnet address: ${st.pinnedTo.join(", ")}`) : null,
+      h("details", {}, h("summary", { class: "small" }, "Read the reader script"), readerArea)),
+    h("footer", {}, copy, h("div", { class: "chips" }, h("button", { class: "btn", type: "button", onclick: close }, "Close"), verify))));
+  modal.hidden = false;
+  modal.onclick = (e) => { if (e.target === modal) close(); };
 }
 
 function pageSettings() {
@@ -908,6 +1195,7 @@ async function render() {
   else if (r.name === "packages") pagePackages();
   else if (r.name === "activity") pageActivity();
   else if (r.name === "folders") pageFolders();
+  else if (r.name === "machines") pageMachines();
   else if (r.name === "settings") pageSettings();
 }
 
@@ -916,6 +1204,7 @@ async function loadForRoute() {
   const jobs = [];
   if (r.name === "overview" || r.name === "packages") jobs.push(loadPackages());
   if (r.name === "folders") jobs.push(loadFolders());
+  if (r.name === "machines") jobs.push(loadMachines());
   if (r.name === "repo" && r.arg) jobs.push(loadRepo(r.arg).catch((e) => { toast(e.message); location.hash = "#/repos"; }));
   await Promise.all(jobs);
 }

@@ -197,6 +197,71 @@ Removes a path from the exclusion list so discovery can find it again.
 
 ---
 
+## Other machines
+
+Watch dev servers from this machine over SSH. By default selfguard uses a dedicated key that
+the machine accepts only for a small read-only *reader*, limited to one folder. Lockfiles are
+scanned here. See [Other machines](security-model.md#other-machines) in the security model.
+
+### `selfguard machines [list]`
+
+Machines, their folders, how many projects each has and how the last sync went.
+
+### `selfguard machines peers`
+
+Machines on your tailnet (`tailscale status`), to pick a host from.
+
+### `selfguard machines test <host>`
+
+Checks that `ssh <host>` works without prompts and prints the remote OS and home folder.
+
+### `selfguard machines add <host> [options]`
+
+`<host>` is anything `ssh` accepts as a destination: an alias, a tailnet name or `user@host`.
+
+| Option | |
+|---|---|
+| `--name N` | Name shown everywhere. Default: the first label of the host (`devbox.tail123.ts.net` → `devbox`). |
+| `--scope DIR` | Restricted mode: the only folder the reader allows. Default `~`. |
+| `--root DIR` (repeatable), `--depth N` | Folders to watch (inside the scope). Absolute or `~/…`. |
+| `--port N` | SSH port. |
+| `--manual` | Don't install the reader now; see `setup`. |
+| `--mode ssh` | Use your own SSH access (keys or Tailscale SSH) instead of a restricted key. |
+
+In restricted mode it creates the key and installs the reader with your SSH access, which must
+work without prompts. If it can't, the machine is saved and `setup` shows what to paste on it.
+
+```sh
+selfguard machines add devbox.tail123.ts.net --scope ~/code --root ~/code --depth 4
+```
+
+### `selfguard machines setup <name>`
+
+Prints the install command for a restricted machine: the reader, the `authorized_keys` line
+and where they go. Paste it in a terminal on the machine, then run `verify`.
+
+### `selfguard machines install <name>` / `verify <name>`
+
+`install` (re)installs the reader with your SSH access, for example after a selfguard update
+reports it outdated. `verify` checks that the machine answers through the restricted key.
+
+### `selfguard machines roots <name> add <dir> [--depth N] | remove <dir>`
+
+Manage the folders watched on a machine.
+
+### `selfguard machines sync [name]`
+
+Lists projects on the machines (one SSH session each). It fetches only lockfiles that changed
+and scans new and changed projects. `selfguard sync` also re-checks every remote project against
+new advisories, reusing the dependencies it already parsed. A machine that doesn't answer keeps
+its last results and shows the error. The first sync of a machine is logged but doesn't notify.
+
+### `selfguard machines remove <name> [--keep-remote]`
+
+Forgets the machine, its results and its key. In restricted mode it also removes the key line
+(and the reader, if no other selfguard key uses it) from the machine with your SSH access,
+unless `--keep-remote`.
+
 ## AI and automation
 
 ### `selfguard mcp`
@@ -230,21 +295,26 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `SELFGUARD_NO_NOTIFY=1` | Disable notifications and dialogs (useful in tests and CI). |
 | `SELFGUARD_OSV_API` | OSV API base URL. Default `https://api.osv.dev/v1`. For mirrors and tests. |
 | `SELFGUARD_NO_LAUNCHD=1` | Never install or change launchd agents (tests). |
+| `SELFGUARD_SSH` | ssh client to use for other machines. Default `ssh` from `PATH`. |
 | `NO_COLOR` | Disable colored output ([no-color.org](https://no-color.org)). Color is also off when stdout isn't a terminal. |
 
 ## Files
 
 | Path | |
 |---|---|
-| `~/.selfguard/config.json` | Watched folders (`roots`), exclusions (`exclude`), `remind` and `activeDays`. |
+| `~/.selfguard/config.json` | Watched folders (`roots`), exclusions (`exclude`), `remind`, `activeDays` and other `machines`. |
 | `~/.selfguard/state.json` | When the last reminder, sync and check ran. |
 | `~/.selfguard/events.jsonl` | Activity log shown in the dashboard (new findings, fixes, reminders). Capped. |
 | `~/.selfguard/ui.json` | Port, PID and token of the running dashboard. Removed when it stops. |
 | `~/.selfguard/repos/*.json` | One record per tracked project: dependencies, findings, last scan. |
+| `~/.selfguard/machines/<name>/` | Records and last sync status of another machine. |
+| `~/.selfguard/ssh/<name>_ed25519` | Restricted key for that machine (only runs its reader). |
+| `~/.selfguard-reader/reader.sh` (on the machine) | The read-only reader, run by sshd for the restricted key. |
 | `~/.selfguard/cache/vulns/*.json` | Cached advisories, refreshed when OSV reports a change. |
 | `~/.selfguard/selfguard.log` | Log of background scans and syncs. |
 | `~/Library/LaunchAgents/dev.selfguard.sync.plist` | macOS scheduled sync (`schedule on`). |
 | `~/Library/LaunchAgents/dev.selfguard.watch.plist` | macOS lockfile watcher (`schedule on`). |
+| `~/Library/LaunchAgents/dev.selfguard.remote.plist` | Checks other machines every 15 minutes (`schedule on`, when you have machines). |
 | `~/Applications/selfguard.app` | macOS launcher for the dashboard (`app install`). |
 
 The state directory is created with mode `0700` and its files with `0600`.

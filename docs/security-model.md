@@ -42,6 +42,74 @@ file plus rename), and concurrent scans are serialized with lock files.
 To identify repositories, selfguard reads `.git/HEAD`, `.git/config`, `.git/commondir` and the
 worktree pointer file, each capped at 64 KB. It never runs `git`.
 
+## Other machines
+
+`selfguard machines add <host>` lets this machine also watch dev servers. The goal is that
+neither side can hurt the other: a compromised server can't attack this Mac, and someone in
+control of selfguard on this Mac can't use it to get into the servers.
+
+### Restricted mode (default): a key that can only read lockfiles
+
+1. selfguard creates an ed25519 key just for that machine in `~/.selfguard/ssh/<name>_ed25519`
+   (mode `0600`).
+2. Using your own SSH access **once**, it installs two things on the machine:
+   - `~/.selfguard-reader/reader.sh`, the *reader*: about 150 lines of POSIX `sh`. You can
+     read it with `selfguard machines setup <name>`, or install it by hand with the same
+     command.
+   - one line in `~/.ssh/authorized_keys`:
+     ```
+     restrict,command="/bin/sh .selfguard-reader/reader.sh",from="<this Mac's tailnet IPs>" ssh-ed25519 AAAA… selfguard:<name>@<this-mac>
+     ```
+3. From then on, every connection uses only that key: `IdentitiesOnly`, no agent, no password.
+
+What the key can do on the machine:
+
+- **Only the reader.** sshd runs the forced command whatever command is requested. `restrict`
+  turns off the shell (no PTY) and agent, X11 and port forwarding. If the key leaked, it would
+  not open a shell, copy files or reach other hosts.
+- **Only inside one folder.** The reader is installed for one folder (`--scope`, default `~`).
+  It resolves every requested path with `pwd -P` and refuses anything outside, including
+  through symlinks or `..`. The dashboard's folder picker stops at that folder.
+- **Only lockfiles.** Answers contain lockfile names, sizes and dates, the bytes of files
+  named like a lockfile or `package.json` (never symlinks, at most 50 MB each), and a few git
+  facts: branch, worktree pointer, remote URL and last activity. No `.env`, keys or source
+  files.
+- **Only from this Mac.** When the machine is on your tailnet, the line is pinned to this Mac's
+  Tailscale addresses (`from=`).
+- **Requests are data.** The reader reads a request (`SGREQ1 list` plus folder lines) from
+  stdin with `read -r` and never evaluates it.
+
+Removing the machine (`selfguard machines remove`) deletes the key here and, with your SSH
+access, its line and the reader there. If that cleanup can't connect, the line left behind
+can't be used without the deleted private key.
+
+Tailscale SSH authorizes connections with tailnet policy and ignores `authorized_keys`.
+Restricted mode therefore needs the machine's regular `sshd` (reachable over the tailnet). With
+Tailscale SSH enabled on the machine, the reader isn't reached and selfguard reports it.
+
+### ssh mode: your own access
+
+`--mode ssh` (or "My SSH access" in the dashboard) uses your own keys or Tailscale SSH. It pipes
+the same read-only functions into `ssh -T -a -x -o BatchMode=yes -- <host> /bin/sh -s`, with
+folder paths passed as single-quoted literals. It installs nothing, but anyone in control of
+selfguard on this Mac would have your full shell access there. Prefer the restricted mode.
+
+### Both modes
+
+- The remote side only uses `find`, `stat`, `sed`, `sort`, `head`, `wc`, `cat` and `gzip`. It
+  never runs `git`, a package manager or anything from a project. Apart from installing and
+  removing the reader, it never writes.
+- ssh never prompts (`BatchMode`) and never disables host key verification. Host names are
+  validated (no leading `-`, no shell characters) and come after `--`.
+- **The answer is untrusted.** It is size-capped (16 MB per listing, 200 MB per transfer) and
+  time-limited, then parsed strictly: absolute paths only, no `..`, expected file names only.
+  Text is cleaned like any advisory text. A compromised machine can still hide its own
+  vulnerabilities, and no design can prevent that.
+- Lockfiles are parsed and checked here, so OSV only sees package names and versions,
+  de-duplicated across machines. Git remotes are stored as `host/owner/repo`, so credentials
+  embedded in a URL are dropped.
+- Results live in `~/.selfguard/machines/<name>/`.
+
 ## Dashboard
 
 `selfguard ui` starts a small HTTP server from Node's standard library:

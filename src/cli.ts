@@ -10,7 +10,7 @@ import { findProject } from "./lockfile/detect.ts";
 import { runMcpServer } from "./mcp.ts";
 import { groupByPackage, paint, renderFindings, severityLabel, tildify } from "./report.ts";
 import { clean } from "./sanitize.ts";
-import { parseInterval, scheduleOff, scheduleOn, scheduleStatus, updateWatcher } from "./schedule.ts";
+import { parseInterval, scheduleOff, scheduleOn, scheduleStatus, updateRemoteAgent, updateWatcher } from "./schedule.ts";
 import { runSetup } from "./setup.ts";
 import { loadRepo } from "./store.ts";
 import { isInteractive } from "./tui.ts";
@@ -56,6 +56,22 @@ Folders:
                                      stop tracking (and exclude) a project or folder
   selfguard unexclude <dir>          allow an excluded path to be discovered again
 
+Other machines (dev servers over SSH; read-only, project code never runs there):
+  selfguard machines                 list machines and their last sync
+  selfguard machines peers           machines on your tailnet (Tailscale)
+  selfguard machines add <host> [--name N] [--root DIR]... [--depth N] [--scope DIR]
+                                     [--port N] [--manual] [--mode restricted|ssh]
+                                     restricted (default): a dedicated key that the machine
+                                     accepts only for a read-only reader limited to --scope
+                                     (default ~), installed once with your SSH access
+  selfguard machines setup <name>    print the reader and key line to install by hand
+  selfguard machines install <name> | verify <name>
+  selfguard machines roots <name> add <dir> [--depth N] | remove <dir>
+  selfguard machines sync [name]     new projects + changed lockfiles now
+  selfguard machines remove <name> [--keep-remote]
+                                     forget a machine, its results and key (and remove the
+                                     key line from it with your SSH access)
+
 AI / automation:
   --json                             any command: one JSON document on stdout
   selfguard mcp                      MCP server over stdio (claude mcp add selfguard -- selfguard mcp)
@@ -66,6 +82,11 @@ leave your machine. Nothing in your projects is executed. State: ~/.selfguard (S
 Exit codes: 0 ok, 1 vulnerabilities found (scan/report), 2 error.`;
 
 const out = process.stdout;
+// `selfguard status | head`: the reader went away; stop quietly instead of crashing.
+out.on("error", (e: NodeJS.ErrnoException) => {
+  if (e.code === "EPIPE") process.exit(process.exitCode ?? 0);
+  throw e;
+});
 const err = process.stderr;
 const jsonMode = process.argv.includes("--json");
 const JSON_OPT = { json: { type: "boolean" } } as const;
@@ -149,7 +170,7 @@ function cmdStatus(args: string[]): number {
         : p.error
           ? c.dim(clean(p.error, 80))
           : c.dim(`${p.packages} packages, clean`);
-      out.write(`${badge(p.worstSeverity, p.error)} ${c.bold(tildify(p.path))}${p.exists ? "" : c.dim(" (missing)")}  ${detail}\n`);
+      out.write(`${badge(p.worstSeverity, p.error)} ${c.bold(`${p.machine ? `${p.machine}:` : ""}${tildify(p.path)}`)}${p.exists ? "" : c.dim(" (missing)")}  ${detail}\n`);
     }
     return 0;
   }
@@ -182,7 +203,7 @@ function cmdStatus(args: string[]): number {
     const where = many ? c.dim(`${g.checkouts.length} checkouts`) : c.dim(tildify(g.checkouts[0]!.path));
     const more = hiddenCheckouts ? c.dim(` +${hiddenCheckouts} inactive`) : "";
     const dimIf = (s: string) => (g.active ? s : c.dim(s));
-    out.write(`${badge(g.worstSeverity, firstError)} ${c.bold(dimIf(clean(g.label, 80)))}  ${head}  ${where}${more}\n`);
+    out.write(`${badge(g.worstSeverity, firstError)} ${g.machine ? c.dim(`${g.machine} · `) : ""}${c.bold(dimIf(clean(g.label, 80)))}  ${head}  ${where}${more}\n`);
     if (!many) continue;
     g.checkouts.forEach((k, i) => {
       const branch = k.branch ? c.cyan(clean(k.branch, 50)) : c.dim("(no branch)");
@@ -230,9 +251,12 @@ async function cmdSync(args: string[]): Promise<number> {
     out.write(`Synced ${data.projects} project(s). ${total ? c.red(`${total} newly vulnerable package(s).`) : c.green("Nothing new.")}\n`);
     for (const p of data.news) {
       const pkgs = p.packages.map((g) => `${clean(g.name)}@${clean(g.version)} ${c.dim(`(${g.advisories.length})`)}`);
-      out.write(`  ${c.bold(tildify(p.path))}: ${pkgs.join(", ")}\n`);
+      out.write(`  ${c.bold(`${p.machine ? `${p.machine}:` : ""}${tildify(p.path)}`)}: ${pkgs.join(", ")}\n`);
     }
-    for (const e of data.errors) out.write(c.dim(`  ! ${tildify(e.path)}: ${clean(e.error)}\n`));
+    for (const e of data.errors) out.write(c.dim(`  ! ${e.machine ? `${e.machine}:` : ""}${tildify(e.path)}: ${clean(e.error)}\n`));
+    for (const m of data.machines) {
+      out.write(m.ok ? c.dim(`  ${m.name}: ${m.projects} project(s)\n`) : c.yellow(`  ! ${m.name}: ${clean(m.error ?? "")}\n`));
+    }
   }
   return 0;
 }
@@ -377,6 +401,178 @@ function printRoots(r: api.RootsResult): void {
   }
 }
 
+function refreshRemoteAgent(): void {
+  try {
+    updateRemoteAgent(api.hasMachines());
+  } catch (e) {
+    err.write(`selfguard: could not update the background agent: ${clean((e as Error).message, 200)}\n`);
+  }
+}
+
+function printMachines(list: api.MachineInfo[]): void {
+  const c = paint(out);
+  if (list.length === 0) {
+    out.write(`No other machines yet. Add one with ${c.bold("selfguard machines add <host>")} (see ${c.bold("selfguard machines peers")}).\n`);
+    return;
+  }
+  for (const m of list) {
+    const st = m.status;
+    const state = st.error ? c.yellow(`! ${clean(st.error, 120)}`) : st.lastSync ? c.green(`synced ${clean(st.lastSync.slice(0, 16).replace("T", " "))} UTC`) : c.dim("never synced");
+    const how = m.mode === "restricted" ? `restricted to ${clean(m.scope)}` : "your SSH access";
+    out.write(`${c.bold(m.name)} ${c.dim(`ssh ${m.host}${m.port ? `:${m.port}` : ""}${st.os ? ` · ${clean(st.os)}` : ""} · ${how}`)}  ${m.trackedProjects} project(s)  ${state}\n`);
+    for (const r of m.roots) out.write(`  ${clean(r.path)} ${c.dim(`(depth ${r.depth})`)}\n`);
+    if (m.roots.length === 0) out.write(c.dim(`  no folders yet: selfguard machines roots ${m.name} add ~/code\n`));
+  }
+}
+
+async function cmdMachines(args: string[]): Promise<number> {
+  const { values, positionals } = parseArgs({
+    args,
+    allowPositionals: true,
+    options: {
+      ...JSON_OPT,
+      name: { type: "string" },
+      root: { type: "string", multiple: true },
+      depth: { type: "string" },
+      scope: { type: "string" },
+      port: { type: "string" },
+      mode: { type: "string" },
+      manual: { type: "boolean" },
+      "keep-remote": { type: "boolean" },
+      background: { type: "boolean" },
+    },
+  });
+  const [action, a1, a2, a3] = positionals;
+  const depth = values.depth === undefined ? undefined : Number(values.depth);
+  if (depth !== undefined && !Number.isInteger(depth)) usage("--depth must be an integer");
+  const c = paint(out);
+  switch (action) {
+    case undefined:
+    case "list": {
+      const list = api.listMachines();
+      if (values.json) emit({ machines: list });
+      else printMachines(list);
+      return 0;
+    }
+    case "peers": {
+      const peers = api.tailnetPeers();
+      if (values.json) emit({ peers });
+      else if (peers.length === 0) out.write("No Tailscale peers found (is Tailscale installed and running?).\n");
+      else for (const p of peers) out.write(`${p.online ? c.green("●") : c.dim("○")} ${c.bold(p.name)} ${c.dim(`${p.dnsName} ${p.os}`)}\n`);
+      return 0;
+    }
+    case "test": {
+      if (!a1) usage("usage: selfguard machines test <host>");
+      const r = await api.testMachine(a1);
+      if (values.json) emit(r);
+      else out.write(`${c.green("✓")} ${clean(a1)} answers: ${clean(r.os)}, home ${clean(r.home)}\n`);
+      return 0;
+    }
+    case "add": {
+      if (!a1) usage("usage: selfguard machines add <host> [--name N] [--root DIR]... [--depth N] [--scope DIR] [--port N] [--manual] [--mode restricted|ssh]");
+      const name = values.name ?? api.suggestName(a1);
+      const port = values.port === undefined ? undefined : Number(values.port);
+      if (port !== undefined && !Number.isInteger(port)) usage("--port must be an integer");
+      if (values.mode !== undefined && values.mode !== "restricted" && values.mode !== "ssh") usage("--mode must be restricted or ssh");
+      const r = await api.addMachine(name, a1, {
+        mode: values.mode as "restricted" | "ssh" | undefined,
+        port,
+        scope: values.scope,
+        roots: (values.root ?? []).map((path) => ({ path, depth })),
+        install: !values.manual,
+      });
+      refreshRemoteAgent();
+      if (values.json) {
+        emit(r);
+        return r.installed ? 0 : 2;
+      }
+      const m = r.machine;
+      if (r.installed) {
+        const how = m.mode === "restricted" ? `restricted key, reader limited to ${clean(m.scope)}` : "your SSH access";
+        out.write(`${c.green("✓")} Added ${c.bold(m.name)} (${clean(m.status.os ?? "")}, ${how}).\n`);
+        if (r.setup?.pinnedTo.length) out.write(c.dim(`  The key only works from this Mac's tailnet address (${r.setup.pinnedTo.join(", ")}).\n`));
+        if (m.roots.length === 0) out.write(`Now choose its folders: ${c.bold(`selfguard machines roots ${m.name} add ~/code`)}\n`);
+        else out.write(`Run ${c.bold(`selfguard machines sync ${m.name}`)} to scan it now.\n`);
+        return 0;
+      }
+      out.write(`${c.yellow("!")} Saved ${c.bold(m.name)}, but the reader isn't installed yet.\n`);
+      if (r.installError) out.write(c.dim(`  ${clean(r.installError, 300)}\n`));
+      out.write(`Install it by hand: ${c.bold(`selfguard machines setup ${m.name}`)} shows what to paste on the machine; then ${c.bold(`selfguard machines verify ${m.name}`)}.\n`);
+      return 2;
+    }
+    case "setup": {
+      if (!a1) usage("usage: selfguard machines setup <name>");
+      const st = api.machineSetup(a1);
+      if (values.json) emit(st);
+      else {
+        out.write(`${c.bold(`# Install the selfguard reader on ${st.host}`)}\n`);
+        out.write(c.dim(`# Paste this in a terminal on that machine (as the user selfguard connects as). It writes\n# ~/.selfguard-reader/reader.sh and adds one line to ~/.ssh/authorized_keys:\n#   ${st.authorizedKeysLine}\n# Then run: selfguard machines verify ${st.name}\n\n`));
+        out.write(`sh -s <<'SELFGUARD_INSTALL'\n${st.installScript}SELFGUARD_INSTALL\n`);
+      }
+      return 0;
+    }
+    case "install":
+    case "verify": {
+      if (!a1) usage(`usage: selfguard machines ${action} <name>`);
+      const m = action === "install" ? await api.installMachine(a1) : await api.verifyMachine(a1);
+      if (values.json) emit(m);
+      else out.write(`${c.green("✓")} ${c.bold(m.name)} answers${m.mode === "restricted" ? " through the restricted reader" : ""} (${clean(m.status.os ?? "")}).\n`);
+      return 0;
+    }
+    case "remove": {
+      if (!a1) usage("usage: selfguard machines remove <name> [--keep-remote]");
+      const r = await api.removeMachine(a1, { revoke: !values["keep-remote"] });
+      refreshRemoteAgent();
+      if (values.json) emit(r);
+      else if (!r.removed) out.write(`No machine named ${clean(a1)}.\n`);
+      else {
+        out.write(`Removed ${clean(a1)}, its results and its key.\n`);
+        if (r.revoked) out.write(c.dim("  Key line and reader removed from the machine.\n"));
+        else if (r.revoked === false) out.write(c.dim(`  Couldn't clean up the machine (${clean(r.revokeError ?? "", 200)}). The key line there is useless now; remove the "selfguard:" line from ~/.ssh/authorized_keys when you can.\n`));
+      }
+      return 0;
+    }
+    case "roots": {
+      if (!a1 || (a2 !== "add" && a2 !== "remove") || !a3) usage("usage: selfguard machines roots <name> add <dir> [--depth N] | remove <dir>");
+      const m = a2 === "add" ? api.addMachineRoot(a1, a3, depth) : api.removeMachineRoot(a1, a3);
+      if (values.json) emit(m);
+      else for (const r of m.roots) out.write(`${clean(r.path)} ${c.dim(`(depth ${r.depth})`)}\n`);
+      return 0;
+    }
+    case "sync":
+    case "check": {
+      let r: api.MachinesCheckResult;
+      try {
+        r = await api.checkMachines({ notify: true, only: a1 ? [a1] : undefined });
+      } catch (e) {
+        if (values.background && e instanceof api.ApiError && e.code === "busy") return 0;
+        throw e;
+      }
+      if (values.background) {
+        const bad = r.machines.filter((m) => !m.ok);
+        out.write(`${new Date().toISOString()} machines: ${r.machines.map((m) => `${m.name} ${m.ok ? `${m.rescanned} re-scanned` : "unreachable"}`).join(", ")}\n`);
+        for (const m of bad) out.write(`  ${m.name}: ${clean(m.error ?? "")}\n`);
+        await maybeRemind(api.getAttention);
+      } else if (values.json) emit(r);
+      else {
+        for (const m of r.machines) {
+          out.write(m.ok
+            ? `${c.green("✓")} ${c.bold(m.name)}: ${m.projects} project(s), ${m.discovered} new, ${m.rescanned} re-scanned\n`
+            : `${c.yellow("!")} ${c.bold(m.name)}: ${clean(m.error ?? "")}\n`);
+        }
+        for (const p of r.news) {
+          const pkgs = p.packages.map((g) => `${clean(g.name)}@${clean(g.version)}`);
+          out.write(`  ${c.bold(`${p.machine}:${tildify(p.path)}`)}: ${c.red(pkgs.join(", "))}\n`);
+        }
+        if (r.machines.length === 0) printMachines([]);
+      }
+      return r.machines.some((m) => !m.ok) && !values.background ? 2 : 0;
+    }
+    default:
+      usage("usage: selfguard machines [list | peers | test <host> | add <host> | setup|install|verify <name> | roots <name> add|remove <dir> | sync [name] | remove <name>]");
+  }
+}
+
 function cmdRoots(args: string[]): number {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { ...JSON_OPT, depth: { type: "string" } } });
   const [action, target] = positionals;
@@ -483,7 +679,7 @@ function cmdSchedule(args: string[]): number {
     case "on": {
       const seconds = parseInterval(values.every ?? "6h");
       const targets = api.watchTargets();
-      const plist = scheduleOn(seconds, targets);
+      const plist = scheduleOn(seconds, targets, { machines: api.hasMachines() });
       // Same Node-path concern as the agents: keep the launcher app in sync.
       if (appStatus().installed && !appStatus().upToDate) installApp();
       if (values.json) emit({ enabled: true, intervalSeconds: seconds, plist, node: process.execPath, watchedPaths: targets.length });
@@ -506,6 +702,7 @@ function cmdSchedule(args: string[]): number {
       else {
         out.write(s.loaded ? `enabled (${tildify(s.plist)})\n` : s.installed ? "installed but not loaded\n" : "disabled\n");
         if (s.loaded) out.write(s.watcher.loaded ? `lockfile watcher: ${s.watcher.paths} path(s)\n` : "lockfile watcher: not running (run selfguard sync)\n");
+        if (s.loaded && api.hasMachines()) out.write(s.remote.loaded ? "other machines: checked every 15 minutes\n" : "other machines: not scheduled (run selfguard schedule on)\n");
       }
       return 0;
     }
@@ -549,6 +746,8 @@ async function main(argv: string[]): Promise<number> {
       return cmdApp(rest);
     case "discover":
       return cmdDiscover(rest);
+    case "machines":
+      return cmdMachines(rest);
     case "roots":
       return cmdRoots(rest);
     case "where":

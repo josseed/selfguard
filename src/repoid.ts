@@ -4,7 +4,7 @@
  */
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 
 export interface RepoIdentity {
   /** Grouping key: same repo (remote or common git dir) + same subfolder. */
@@ -176,4 +176,53 @@ export function repoIdentity(projectRoot: string): RepoIdentity | null {
     dir = parent;
   }
   return null;
+}
+
+/** What a remote machine reports about the git checkout around a project (see remote.ts). */
+export interface GitFacts {
+  projectRoot: string;
+  /** Folder holding .git (dir, or file for linked worktrees). */
+  gitRoot: string;
+  worktree: boolean;
+  /** For worktrees: does the main repository still exist? */
+  gitDirExists: boolean;
+  /** First line of HEAD. */
+  head: string | null;
+  /** Physical path of the common git dir (null if unknown). */
+  commonDir: string | null;
+  /** Section headers and url lines of the common git config. */
+  config: string;
+  /** Newest mtime (ms) of HEAD, index and logs/HEAD; 0 if unknown. */
+  lastActivityMs: number;
+}
+
+/**
+ * Same identity as repoIdentity(), computed from facts read on another machine. Keys are
+ * prefixed with the machine name so repos of different machines never merge.
+ */
+export function identityFromFacts(f: GitFacts, machine: string): RepoIdentity {
+  const sub = posix.relative(f.gitRoot, f.projectRoot);
+  const subPart = sub && !sub.startsWith("..") ? sub : "";
+  if (f.worktree && !f.gitDirExists) {
+    return {
+      key: `${machine}|orphan:${f.gitRoot}${subPart ? `#${subPart}` : ""}`,
+      label: `${posix.basename(f.gitRoot)}${subPart ? `/${subPart}` : ""} (orphaned worktree)`,
+      branch: null,
+      worktree: true,
+      orphaned: true,
+      lastActivity: null,
+    };
+  }
+  const remote = remoteFromConfig(f.config);
+  const normalized = remote ? normalizeRemote(remote) : null;
+  const commonDir = f.commonDir ?? posix.join(f.gitRoot, ".git");
+  const base = normalized ?? `local:${commonDir}`;
+  const repoName = normalized ? normalized.slice(normalized.indexOf("/") + 1) : posix.basename(posix.dirname(commonDir));
+  return {
+    key: `${machine}|${subPart ? `${base}#${subPart}` : base}`,
+    label: subPart ? `${repoName}/${subPart}` : repoName,
+    branch: branchFrom(f.head),
+    worktree: f.worktree,
+    lastActivity: f.lastActivityMs > 0 ? new Date(f.lastActivityMs).toISOString() : null,
+  };
 }

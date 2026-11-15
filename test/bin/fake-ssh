@@ -1,0 +1,22 @@
+#!/bin/sh
+# Stand-in for ssh + sshd in tests. Records the arguments and runs locally:
+# - with "-i <key>" (restricted mode) it behaves like sshd with a forced command: only if
+#   authorized_keys has the selfguard line for that public key, it runs the reader with the
+#   request on stdin; the requested command is ignored;
+# - otherwise it runs the script from stdin, like "ssh host /bin/sh -s".
+# SG_FAKE_HOME plays the remote user's home.
+key=
+prev=
+for a; do
+  [ "$prev" = "-i" ] && key=$a
+  prev=$a
+done
+if [ -n "${SG_FAKE_SSH_LOG:-}" ]; then printf '%s\n' "$*" >> "$SG_FAKE_SSH_LOG"; fi
+if [ -n "${SG_FAKE_HOME:-}" ]; then HOME=$SG_FAKE_HOME; export HOME; cd "$HOME" || exit 255; fi
+if [ -n "$key" ]; then
+  pub=$(cut -d' ' -f2 "$key.pub")
+  line=$(grep -F "$pub" "$HOME/.ssh/authorized_keys" 2>/dev/null) || { echo "Permission denied (publickey)." >&2; exit 255; }
+  case $line in 'restrict,command="/bin/sh .selfguard-reader/reader.sh"'*) ;; *) echo "unexpected key line" >&2; exit 255 ;; esac
+  exec /bin/sh .selfguard-reader/reader.sh
+fi
+exec /bin/sh -s

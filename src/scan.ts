@@ -6,11 +6,24 @@ import { isSupported, parseLockfile } from "./lockfile/index.ts";
 import type { Dependency } from "./lockfile/types.ts";
 import { evaluate, severityOf, severityRank } from "./match.ts";
 import { getVulns, queryBatch, type OsvVuln } from "./osv.ts";
-import { repoIdentity } from "./repoid.ts";
+import { repoIdentity, type RepoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import { findingKey, loadRepo, type Finding, type RepoRecord } from "./store.ts";
 
-const MAX_LOCKFILE_BYTES = 100 * 1024 * 1024;
+export const MAX_LOCKFILE_BYTES = 100 * 1024 * 1024;
+
+/**
+ * What to scan. Local projects are read from disk. Remote ones (another machine) carry
+ * the lockfile bytes fetched over SSH, or `reuse` the dependencies parsed last time when
+ * the lockfile didn't change (a sync then only re-checks them against OSV).
+ */
+export type ScanInput = Project & {
+  machine?: string;
+  identity?: RepoIdentity | null;
+  /** Remote lockfile and package.json (null: unreadable or too large). */
+  content?: { lock: Buffer; manifest: Buffer | null; mtimeMs: number; size: number } | null;
+  reuse?: boolean;
+};
 
 export interface LockState {
   hash: string;
@@ -47,8 +60,9 @@ interface Inventory {
 }
 
 /** Parse a project's lockfile into a fresh (findings-less) record. Never executes project code. */
-function inventory(project: Project): Inventory {
-  const previous = loadRepo(project.root);
+function inventory(project: ScanInput): Inventory {
+  const remote = project.machine !== undefined;
+  const previous = loadRepo(project.root, project.machine);
   const now = new Date().toISOString();
   const record: RepoRecord = {
     schema: 1,
@@ -63,15 +77,38 @@ function inventory(project: Project): Inventory {
     deps: [],
     skipped: 0,
     findings: [],
-    branch: repoIdentity(project.root)?.branch ?? null,
+    branch: (remote ? project.identity : repoIdentity(project.root))?.branch ?? null,
   };
+  if (remote) {
+    record.machine = project.machine;
+    record.identity = project.identity ?? null;
+  }
 
   if (!project.lockfile || !project.lockType) {
     record.error = "no lockfile found (run your package manager's install to create one)";
     record.scannedAt = now;
     return { record, previous };
   }
-  const st = lockState(project.lockfile);
+  if (remote && project.reuse && previous && previous.lockfile === project.lockfile) {
+    // Unchanged on that machine: re-check the same dependencies.
+    Object.assign(record, {
+      lockHash: previous.lockHash,
+      lockMtimeMs: previous.lockMtimeMs,
+      lockSize: previous.lockSize,
+      deps: previous.deps,
+      skipped: previous.skipped,
+    });
+    if (previous.error && !previous.error.startsWith("could not reach OSV")) {
+      record.error = previous.error;
+      record.scannedAt = now;
+    }
+    return { record, previous };
+  }
+  const st: LockState | null = remote
+    ? project.content && project.content.lock.length <= MAX_LOCKFILE_BYTES
+      ? { hash: sha256(project.content.lock), mtimeMs: project.content.mtimeMs, size: project.content.size }
+      : null
+    : lockState(project.lockfile);
   if (!st) {
     record.error = "lockfile unreadable or too large";
     record.scannedAt = now;
@@ -87,11 +124,13 @@ function inventory(project: Project): Inventory {
   try {
     let manifest: unknown;
     try {
-      manifest = JSON.parse(readFileSync(join(project.root, "package.json"), "utf8"));
+      const raw = remote ? project.content?.manifest : readFileSync(join(project.root, "package.json"));
+      manifest = raw ? JSON.parse(raw.toString("utf8")) : undefined;
     } catch {
       manifest = undefined;
     }
-    const parsed = parseLockfile(project.lockType, readFileSync(project.lockfile, "utf8"), manifest);
+    const text = remote ? project.content!.lock.toString("utf8") : readFileSync(project.lockfile, "utf8");
+    const parsed = parseLockfile(project.lockType, text, manifest);
     record.deps = parsed.deps;
     record.skipped = parsed.skipped;
   } catch (err) {
@@ -172,7 +211,7 @@ function updateSeen(previous: RepoRecord | null, findings: Finding[], now: strin
  * Scan one or many projects with a single deduplicated OSV query.
  * Records are returned, not saved: the caller decides.
  */
-export async function scanProjects(projects: Project[]): Promise<ScanOutcome[]> {
+export async function scanProjects(projects: ScanInput[]): Promise<ScanOutcome[]> {
   const inventories = projects.map(inventory);
 
   const unique = new Map<string, { name: string; version: string }>();

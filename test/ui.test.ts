@@ -130,3 +130,14 @@ test("repo markdown endpoint needs the token and a known repo", async () => {
   assert.equal((await call("/api/repo/markdown?key=nope")).status, 401);
   assert.equal((await call("/api/repo/markdown?key=nope", { headers: auth() })).status, 404);
 });
+
+test("machine endpoints: token, validation, only configured machines", async () => {
+  const json = { ...auth(), "content-type": "application/json" };
+  assert.equal((await call("/api/machines")).status, 401);
+  assert.deepEqual(JSON.parse((await call("/api/machines", { headers: auth() })).body), { machines: [] });
+  const bad = await call("/api/machines/add", { method: "POST", headers: json, body: JSON.stringify({ host: "-oProxyCommand=id" }) });
+  assert.equal(bad.status, 400);
+  const unknown = await call("/api/scan", { method: "POST", headers: json, body: JSON.stringify({ path: "/x", machine: "nope" }) });
+  assert.equal(unknown.status, 404);
+  assert.equal((await call("/api/machines/fs?name=nope", { headers: auth() })).status, 404);
+});

@@ -109,6 +109,34 @@ Desktop apps don't load your shell profile, so they may not find Node or selfgua
 paths in the client config. See
 [AI and automation](ai-and-automation.md#mcp-server).
 
+## A machine shows "reader not installed"
+
+The restricted key reached the machine, but the selfguard reader didn't answer:
+
+- The install never happened. Run `selfguard machines install <name>` (it uses your own SSH
+  access), or `selfguard machines setup <name>` and paste the command on the machine yourself.
+- **Tailscale SSH is on for that machine.** It authorizes by tailnet policy and ignores
+  `authorized_keys`, so the forced reader never runs. Turn it off there with
+  `tailscale set --ssh=false` so the regular `sshd` answers over the tailnet, or add the
+  machine with `--mode ssh`.
+- "reader outdated": selfguard was updated and the protocol changed. Run
+  `selfguard machines install <name>`.
+
+## A machine shows "unreachable" or "SSH login failed"
+
+selfguard connects with `ssh -o BatchMode=yes`, so anything that would prompt fails instead:
+
+1. Run `ssh <host> true` yourself. It must finish without asking anything. Accept the host key
+   once if it is new, and load your key into the agent or use a key without a passphrase
+   prompt.
+2. Tailscale SSH in "check" mode asks you to re-authenticate in the browser from time to time.
+   Run `ssh <host> true` once to do it, or use an "accept" rule in your tailnet policy for
+   your own devices.
+3. `selfguard machines test <host>` shows the exact error. Background runs use the same `ssh`
+   from `/usr/bin`. If you rely on a different client or config, set `SELFGUARD_SSH`.
+
+A machine that doesn't answer keeps its last results. The next sync updates it.
+
 ## Reset everything
 
 ```sh

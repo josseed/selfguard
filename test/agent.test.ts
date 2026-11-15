@@ -95,7 +95,7 @@ test("MCP server: initialize, list tools, call a tool, report tool errors", asyn
 
   send({ id: 2, method: "tools/list" });
   const names = (await waitFor(2)).result.tools.map((t: any) => t.name);
-  for (const n of ["selfguard_status", "selfguard_attention", "selfguard_check", "selfguard_project_report", "selfguard_scan", "selfguard_where", "selfguard_forget"]) {
+  for (const n of ["selfguard_status", "selfguard_attention", "selfguard_check", "selfguard_project_report", "selfguard_scan", "selfguard_where", "selfguard_forget", "selfguard_machines", "selfguard_machines_sync"]) {
     assert.ok(names.includes(n), n);
   }
 

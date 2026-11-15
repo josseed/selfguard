@@ -2,7 +2,9 @@
  * Background work via per-user launchd agents (macOS):
  * - dev.selfguard.sync: `selfguard sync` every N hours (discovery, new advisories, reminders);
  * - dev.selfguard.watch: `selfguard check` as soon as a lockfile of an active checkout changes
- *   (git pull, installs, merges), so fixes and new risks show up in seconds.
+ *   (git pull, installs, merges), so fixes and new risks show up in seconds;
+ * - dev.selfguard.remote: `selfguard machines check` every 15 minutes, only when you added
+ *   other machines (new projects and changed lockfiles there).
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -14,6 +16,8 @@ import { logFile } from "./paths.ts";
 
 const SYNC_LABEL = "dev.selfguard.sync";
 const WATCH_LABEL = "dev.selfguard.watch";
+const REMOTE_LABEL = "dev.selfguard.remote";
+export const REMOTE_INTERVAL = 15 * 60;
 /** launchd watches each path with a kqueue descriptor; keep the set bounded. */
 export const MAX_WATCH_PATHS = 200;
 
@@ -89,11 +93,34 @@ function isLoaded(label: string): boolean {
   }
 }
 
-export function scheduleOn(seconds: number, watchPaths: string[]): string {
+export function scheduleOn(seconds: number, watchPaths: string[], opts: { machines?: boolean } = {}): string {
   assertMac();
   install(SYNC_LABEL, agentPlist(SYNC_LABEL, [process.execPath, cliEntry(), "sync", "--background"], { interval: seconds }, logFile()));
   updateWatcher(watchPaths, { force: true });
+  updateRemoteAgent(opts.machines ?? false);
   return plistPath(SYNC_LABEL);
+}
+
+/** Install or remove the remote-machines agent (only while the schedule is on). */
+export function updateRemoteAgent(enabled: boolean): { changed: boolean } {
+  if (process.platform !== "darwin" || process.env.SELFGUARD_NO_LAUNCHD === "1") return { changed: false };
+  const exists = existsSync(plistPath(REMOTE_LABEL));
+  if (!enabled || !existsSync(plistPath(SYNC_LABEL))) {
+    if (!exists) return { changed: false };
+    unload(REMOTE_LABEL);
+    rmSync(plistPath(REMOTE_LABEL), { force: true });
+    return { changed: true };
+  }
+  const plist = agentPlist(REMOTE_LABEL, [process.execPath, cliEntry(), "machines", "check", "--background"], { interval: REMOTE_INTERVAL }, logFile());
+  let current = "";
+  try {
+    current = readFileSync(plistPath(REMOTE_LABEL), "utf8");
+  } catch {
+    /* not installed */
+  }
+  if (current === plist && isLoaded(REMOTE_LABEL)) return { changed: false };
+  install(REMOTE_LABEL, plist);
+  return { changed: true };
 }
 
 /**
@@ -125,7 +152,7 @@ export function updateWatcher(paths: string[], opts: { force?: boolean } = {}): 
 export function scheduleOff(): boolean {
   assertMac();
   let existed = false;
-  for (const label of [SYNC_LABEL, WATCH_LABEL]) {
+  for (const label of [SYNC_LABEL, WATCH_LABEL, REMOTE_LABEL]) {
     unload(label);
     existed = existsSync(plistPath(label)) || existed;
     rmSync(plistPath(label), { force: true });
@@ -138,6 +165,7 @@ export interface ScheduleStatus {
   loaded: boolean;
   plist: string;
   watcher: { installed: boolean; loaded: boolean; paths: number };
+  remote: { installed: boolean; loaded: boolean };
 }
 
 export function scheduleStatus(): ScheduleStatus {
@@ -154,5 +182,6 @@ export function scheduleStatus(): ScheduleStatus {
     loaded: isLoaded(SYNC_LABEL),
     plist: plistPath(SYNC_LABEL),
     watcher: { installed: existsSync(plistPath(WATCH_LABEL)), loaded: isLoaded(WATCH_LABEL), paths },
+    remote: { installed: existsSync(plistPath(REMOTE_LABEL)), loaded: isLoaded(REMOTE_LABEL) },
   };
 }

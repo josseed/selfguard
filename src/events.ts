@@ -24,6 +24,8 @@ export interface SelfguardEvent {
   repo: string;
   repoKey: string;
   path: string | null;
+  /** Remote machine of the checkout (absent: this machine). */
+  machine?: string;
   branch: string | null;
   active: boolean;
   /** First scan of this project: everything is "new" but it isn't news. */

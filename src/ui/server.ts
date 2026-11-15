@@ -27,7 +27,7 @@ import { severityRank, type Severity } from "../match.ts";
 import { logFile, stateRoot, uiFile } from "../paths.ts";
 import { groupByPackage } from "../report.ts";
 import { appStatus, installApp, uninstallApp } from "../app.ts";
-import { scheduleOff, scheduleOn, scheduleStatus, updateWatcher } from "../schedule.ts";
+import { scheduleOff, scheduleOn, scheduleStatus, updateRemoteAgent, updateWatcher } from "../schedule.ts";
 import { loadRepo } from "../store.ts";
 import { VERSION } from "../version.ts";
 
@@ -58,7 +58,9 @@ export interface Overview {
   version: string;
   generatedAt: string;
   settings: api.Settings;
-  schedule: { enabled: boolean; watcher: boolean; watchedPaths: number } | null;
+  schedule: { enabled: boolean; watcher: boolean; watchedPaths: number; remote: boolean } | null;
+  /** Other machines and how their last sync went. */
+  machines: Array<{ name: string; host: string; os: string | null; lastSync: string | null; error: string | null; trackedProjects: number; roots: number }>;
   /** macOS launcher app (null elsewhere). */
   app: { installed: boolean; upToDate: boolean } | null;
   roots: number;
@@ -91,7 +93,7 @@ export function getOverview(): Overview {
   if (process.platform === "darwin") {
     try {
       const s = scheduleStatus();
-      schedule = { enabled: s.loaded, watcher: s.watcher.loaded, watchedPaths: s.watcher.paths };
+      schedule = { enabled: s.loaded, watcher: s.watcher.loaded, watchedPaths: s.watcher.paths, remote: s.remote.loaded };
     } catch {
       schedule = null;
     }
@@ -108,6 +110,15 @@ export function getOverview(): Overview {
     schedule,
     app,
     roots: api.listRoots().roots.length,
+    machines: api.listMachines().map((m) => ({
+      name: m.name,
+      host: m.host,
+      os: m.status.os,
+      lastSync: m.status.lastSync,
+      error: m.status.error,
+      trackedProjects: m.trackedProjects,
+      roots: m.roots.length,
+    })),
     totals,
     needsAttention: attention.filter((r) => r.findings.some(needsAttention)).map((r) => r.key),
     seriousByRepo: Object.fromEntries(
@@ -175,6 +186,28 @@ function trackedPath(body: Record<string, unknown>): string {
   return path;
 }
 
+/** Machine named in the body, if any (must be a configured one). */
+function machineOf(body: Record<string, unknown>): string | null {
+  const m = body.machine;
+  if (m === undefined || m === null) return null;
+  if (typeof m !== "string" || !api.listMachines().some((x) => x.name === m)) throw new api.ApiError("not_found", "unknown machine");
+  return m;
+}
+
+function depthOf(body: Record<string, unknown>): number | undefined {
+  const depth = body.depth === undefined ? undefined : Number(body.depth);
+  if (depth !== undefined && !Number.isInteger(depth)) throw new api.ApiError("invalid", "depth must be an integer");
+  return depth;
+}
+
+function refreshRemoteAgent(): void {
+  try {
+    updateRemoteAgent(api.hasMachines());
+  } catch {
+    /* best effort */
+  }
+}
+
 async function route(method: string, url: URL, req: IncomingMessage): Promise<unknown> {
   const p = url.pathname;
   if (method === "GET") {
@@ -185,6 +218,10 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
       const path = url.searchParams.get("path");
       return api.getRepoMarkdown(url.searchParams.get("key") ?? "", path ? { path } : {});
     }
+    if (p === "/api/machines") return { machines: api.listMachines() };
+    if (p === "/api/machines/peers") return { peers: api.tailnetPeers() };
+    if (p === "/api/machines/setup") return api.machineSetup(url.searchParams.get("name") ?? "");
+    if (p === "/api/machines/fs") return api.browseOnMachine(url.searchParams.get("name") ?? "", url.searchParams.get("path") ?? undefined);
     if (p === "/api/vuln") return api.getVulnerability(url.searchParams.get("id") ?? "");
     if (p === "/api/packages") return { packages: api.getPackagesOverview() };
     if (p === "/api/folders") return api.getFolders();
@@ -192,7 +229,10 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
   }
   if (method === "POST") {
     const body = await readBody(req);
-    if (p === "/api/scan") return api.scanPath(trackedPath(body), { notify: false });
+    if (p === "/api/scan") {
+      const machine = machineOf(body);
+      return machine ? api.scanRemote(machine, str(body, "path")) : api.scanPath(trackedPath(body), { notify: false });
+    }
     if (p === "/api/sync") {
       const { outcomes: _o, ...r } = await api.sync({ notify: true });
       try {
@@ -202,7 +242,38 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
       }
       return r;
     }
-    if (p === "/api/forget") return api.forget(trackedPath(body), { exclude: true });
+    if (p === "/api/forget") {
+      const machine = machineOf(body);
+      return machine ? api.excludeOnMachine(machine, str(body, "path")) : api.forget(trackedPath(body), { exclude: true });
+    }
+    if (p === "/api/machines/test") return api.testMachine(str(body, "host"));
+    if (p === "/api/machines/add") {
+      const host = str(body, "host");
+      const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : api.suggestName(host);
+      const port = body.port === undefined || body.port === "" ? undefined : Number(body.port);
+      const r = await api.addMachine(name, host, {
+        mode: body.mode === "ssh" ? "ssh" : "restricted",
+        port,
+        scope: typeof body.scope === "string" && body.scope.trim() ? body.scope.trim() : undefined,
+        install: body.install !== false,
+      });
+      refreshRemoteAgent();
+      return r;
+    }
+    if (p === "/api/machines/install") return api.installMachine(str(body, "name"));
+    if (p === "/api/machines/verify") return api.verifyMachine(str(body, "name"));
+    if (p === "/api/machines/remove") {
+      const r = await api.removeMachine(str(body, "name"), { revoke: body.revoke !== false });
+      refreshRemoteAgent();
+      return r;
+    }
+    if (p === "/api/machines/roots/add") return api.addMachineRoot(str(body, "name"), str(body, "path"), depthOf(body));
+    if (p === "/api/machines/roots/remove") return api.removeMachineRoot(str(body, "name"), str(body, "path"));
+    if (p === "/api/machines/unexclude") return { removed: api.unexcludeOnMachine(str(body, "name"), str(body, "path")) };
+    if (p === "/api/machines/sync") {
+      const name = typeof body.name === "string" ? body.name : undefined;
+      return api.checkMachines({ notify: true, only: name ? [name] : undefined });
+    }
     if (p === "/api/settings") return api.updateSettings({ remind: body.remind, activeDays: body.activeDays });
     if (p === "/api/remind") return { sent: await maybeRemind(api.getAttention, { force: true }) };
     if (p === "/api/folders/add") {
@@ -219,7 +290,7 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
     if (p === "/api/discover") return api.discoverNew({ dryRun: body.dryRun === true });
     if (p === "/api/schedule") {
       if (process.platform !== "darwin") throw new api.ApiError("unsupported", "background watching is macOS-only for now");
-      if (body.enabled === true) scheduleOn(6 * 3600, api.watchTargets());
+      if (body.enabled === true) scheduleOn(6 * 3600, api.watchTargets(), { machines: api.hasMachines() });
       else if (body.enabled === false) scheduleOff();
       else throw new api.ApiError("invalid", "enabled must be true or false");
       return getOverview().schedule;
@@ -235,7 +306,21 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
   throw new api.ApiError("not_found", "no such endpoint");
 }
 
-const STATUS: Record<string, number> = { not_found: 404, not_tracked: 404, busy: 409, too_large: 413, unsupported: 501, no_roots: 400 };
+const STATUS: Record<string, number> = {
+  not_found: 404,
+  not_tracked: 404,
+  busy: 409,
+  too_large: 413,
+  unsupported: 501,
+  no_roots: 400,
+  invalid: 400,
+  unreachable: 502,
+  auth: 502,
+  failed: 502,
+  protocol: 502,
+  not_installed: 502,
+  outdated: 502,
+};
 
 export function createUiServer(token: string, onActivity: () => void = () => {}): Server {
   const server: Server = createServer((req, res) => {

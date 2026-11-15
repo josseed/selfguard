@@ -34,15 +34,12 @@ import { repoIdentity, type RepoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import { lockChanged, scanProjects, type ScanOutcome } from "./scan.ts";
 import { loadState, updateState } from "./state.ts";
-import { forgetRepo, listRepos, loadRepo, saveRepo, type Finding, type RepoRecord } from "./store.ts";
+import { checkoutId, forgetRepo, identityOf, listAllRepos, listRepos, loadRepo, saveRepo, type Finding, type RepoRecord } from "./store.ts";
+import { expandRemote, loadMachineStatus, syncMachine, syncMachines, getMachine, type MachineSyncResult } from "./machines.ts";
 
-export class ApiError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.code = code;
-  }
-}
+import { ApiError } from "./errors.ts";
+
+export { ApiError };
 
 const advisoryUrl = (id: string): string => `https://osv.dev/vulnerability/${encodeURIComponent(id)}`;
 
@@ -50,6 +47,8 @@ const advisoryUrl = (id: string): string => `https://osv.dev/vulnerability/${enc
 
 export interface ProjectSummary {
   path: string;
+  /** Remote machine name (config.machines), null for this machine. */
+  machine: string | null;
   exists: boolean;
   lockfile: string | null;
   lockType: LockfileType | null;
@@ -72,6 +71,8 @@ export interface ProjectSummary {
 export interface RepoGroup {
   key: string;
   label: string;
+  /** Remote machine of these checkouts (null: this machine). Repos never span machines. */
+  machine: string | null;
   /** At least one checkout has recent git activity. */
   active: boolean;
   /** Worst severity across active checkouts (all checkouts if none is active). */
@@ -87,6 +88,7 @@ export interface RepoGroup {
   folder: { path: string; label: string } | null;
   checkouts: Array<{
     path: string;
+    machine: string | null;
     branch: string | null;
     worktree: boolean;
     orphaned: boolean;
@@ -128,12 +130,16 @@ export interface ProjectReport extends ProjectSummary {
 
 // ---------- helpers ----------
 
+const machineNames = (): string[] => loadConfig().machines.map((m) => m.name);
+
 function summarize(rec: RepoRecord, activeDays = loadConfig().activeDays): ProjectSummary {
-  const exists = existsSync(rec.path);
-  const repo = exists ? repoIdentity(rec.path) : null;
+  // Remote checkouts exist as long as the last sync of their machine found them.
+  const exists = rec.machine ? true : existsSync(rec.path);
+  const repo = exists ? identityOf(rec) : null;
   const activity = exists ? activityOf(repo, activeDays) : { active: false, lastActivity: null };
   return {
     path: rec.path,
+    machine: rec.machine ?? null,
     exists,
     lockfile: rec.lockfile,
     lockType: rec.lockType,
@@ -203,18 +209,19 @@ export function folderOf(path: string, roots: string[]): { path: string; label: 
 
 export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: RepoGroup[]; projects: ProjectSummary[] } {
   const rank = (w: Severity | null): number => (w ? severityRank(w) : 99);
-  const records = listRepos();
-  const activeDays = loadConfig().activeDays;
+  const cfg = loadConfig();
+  const records = listAllRepos(cfg.machines.map((m) => m.name));
+  const activeDays = cfg.activeDays;
   const summaries = records.map((r) => summarize(r, activeDays));
   const groups = new Map<string, { group: RepoGroup; active: Finding[]; all: Finding[] }>();
   summaries.forEach((p, i) => {
     const rec = records[i]!;
-    const key = p.repo?.key ?? `path:${p.path}`;
+    const key = p.repo?.key ?? (p.machine ? `${p.machine}|path:${p.path}` : `path:${p.path}`);
     let g = groups.get(key);
     if (!g) {
       const label = p.repo?.label ?? (p.path.split("/").pop() || p.path);
       g = {
-        group: { key, label, active: false, worstSeverity: null, vulnerablePackages: 0, inactiveCheckouts: 0, folder: null, checkouts: [] },
+        group: { key, label, machine: p.machine, active: false, worstSeverity: null, vulnerablePackages: 0, inactiveCheckouts: 0, folder: null, checkouts: [] },
         active: [],
         all: [],
       };
@@ -222,6 +229,7 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
     }
     g.group.checkouts.push({
       path: p.path,
+      machine: p.machine,
       branch: p.repo?.branch ?? null,
       worktree: p.repo?.worktree ?? false,
       orphaned: p.repo?.orphaned ?? false,
@@ -237,7 +245,13 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
     else g.group.inactiveCheckouts++;
     g.all.push(...rec.findings);
   });
-  const roots = loadConfig().roots.map((r) => r.path);
+  const rootsOf = new Map<string | null, string[]>([[null, cfg.roots.map((r) => r.path)]]);
+  for (const m of cfg.machines) {
+    // Folders as the machine reported them (physical paths in restricted mode), else expanded.
+    const st = loadMachineStatus(m.name);
+    const reported = st.roots.filter((r) => r.ok).map((r) => r.path);
+    rootsOf.set(m.name, [...reported, ...m.roots.map((r) => expandRemote(r.path, st.home))]);
+  }
   const repos = [...groups.values()]
     .map(({ group, active, all }) => {
       group.active = group.checkouts.some((k) => k.active);
@@ -253,7 +267,9 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
           a.path.localeCompare(b.path),
       );
       const home = group.checkouts.find((k) => !k.worktree) ?? group.checkouts[0];
-      group.folder = home ? folderOf(home.path, roots) : null;
+      const f = home ? folderOf(home.path, rootsOf.get(group.machine) ?? []) : null;
+      group.folder = f && group.machine ? { path: `${group.machine}:${f.path}`, label: `${group.machine} › ${f.label}` } : f;
+      if (!f && group.machine) group.folder = { path: `${group.machine}:`, label: group.machine };
       return group;
     })
     .filter((g) => !opts.onlyVulnerable || g.checkouts.some((k) => k.vulnerablePackages > 0))
@@ -275,15 +291,16 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
  * clone if it is active, otherwise the most recently active checkout. Feature worktrees
  * branched from an old base get fixed when they merge, so they don't count twice.
  */
-export function getAttention(): Array<AttentionRepo & { key: string; path: string; branch: string | null }> {
-  const activeDays = loadConfig().activeDays;
+export function getAttention(): Array<AttentionRepo & { key: string; path: string; machine: string | null; branch: string | null }> {
+  const cfg = loadConfig();
+  const activeDays = cfg.activeDays;
   const best = new Map<string, { rec: RepoRecord; repo: RepoIdentity | null; main: boolean; at: number }>();
-  for (const rec of listRepos()) {
-    if (!existsSync(rec.path)) continue;
-    const repo = repoIdentity(rec.path);
+  for (const rec of listAllRepos(cfg.machines.map((m) => m.name))) {
+    if (!rec.machine && !existsSync(rec.path)) continue;
+    const repo = identityOf(rec);
     const act = activityOf(repo, activeDays);
     if (!act.active) continue;
-    const key = repo?.key ?? `path:${rec.path}`;
+    const key = repo?.key ?? (rec.machine ? `${rec.machine}|path:${rec.path}` : `path:${rec.path}`);
     const cand = { rec, repo, main: !(repo?.worktree ?? false), at: act.lastActivity ? Date.parse(act.lastActivity) : 0 };
     const cur = best.get(key);
     if (!cur || (cand.main && !cur.main) || (cand.main === cur.main && cand.at > cur.at)) best.set(key, cand);
@@ -292,8 +309,9 @@ export function getAttention(): Array<AttentionRepo & { key: string; path: strin
     .filter(([, b]) => b.rec.findings.length > 0)
     .map(([key, b]) => ({
       key,
-      label: b.repo?.label ?? (b.rec.path.split("/").pop() || b.rec.path),
+      label: `${b.rec.machine ? `${b.rec.machine} · ` : ""}${b.repo?.label ?? (b.rec.path.split("/").pop() || b.rec.path)}`,
       path: b.rec.path,
+      machine: b.rec.machine ?? null,
       branch: b.repo?.branch ?? null,
       findings: b.rec.findings,
     }));
@@ -301,12 +319,13 @@ export function getAttention(): Array<AttentionRepo & { key: string; path: strin
 
 export interface RepoPackage extends VulnerablePackage {
   /** Checkouts where this exact version is installed. */
-  checkouts: Array<{ path: string; branch: string | null; active: boolean }>;
+  checkouts: Array<{ path: string; machine: string | null; branch: string | null; active: boolean }>;
 }
 
 export interface RepoDetail {
   key: string;
   label: string;
+  machine: string | null;
   checkouts: RepoGroup["checkouts"];
   packages: RepoPackage[];
 }
@@ -317,7 +336,7 @@ export function getRepoDetail(key: string): RepoDetail {
   if (!group) throw new ApiError("not_found", "unknown repo");
   const byPkg = new Map<string, RepoPackage>();
   for (const k of group.checkouts) {
-    const rec = loadRepo(k.path);
+    const rec = loadRepo(k.path, k.machine);
     if (!rec) continue;
     for (const p of toReport(rec).vulnerable) {
       const id = `${p.name}@${p.version}`;
@@ -326,7 +345,7 @@ export function getRepoDetail(key: string): RepoDetail {
         entry = { ...p, checkouts: [] };
         byPkg.set(id, entry);
       }
-      entry.checkouts.push({ path: k.path, branch: k.branch, active: k.active });
+      entry.checkouts.push({ path: k.path, machine: k.machine, branch: k.branch, active: k.active });
     }
   }
   const rank = (p: RepoPackage): number => (p.checkouts.some((c) => c.active) ? 0 : 1);
@@ -338,7 +357,7 @@ export function getRepoDetail(key: string): RepoDetail {
       Number(b.direct) - Number(a.direct) ||
       a.name.localeCompare(b.name),
   );
-  return { key: group.key, label: group.label, checkouts: group.checkouts, packages };
+  return { key: group.key, label: group.label, machine: group.machine, checkouts: group.checkouts, packages };
 }
 
 /**
@@ -351,8 +370,8 @@ export function getRepoMarkdown(key: string, opts: { path?: string } = {}): { ma
   if (scoped.length === 0) throw new ApiError("not_found", "unknown checkout");
   const paths = new Set(scoped.map((k) => k.path));
   const checkouts: MarkdownCheckout[] = scoped.map((k) => {
-    const rec = loadRepo(k.path);
-    return { path: k.path, branch: k.branch, lockfile: rec?.lockfile ?? null, lockType: rec?.lockType ?? null, scannedAt: rec?.scannedAt ?? null };
+    const rec = loadRepo(k.path, k.machine);
+    return { path: k.path, machine: k.machine, host: k.machine ? machineHost(k.machine) : null, branch: k.branch, lockfile: rec?.lockfile ?? null, lockType: rec?.lockType ?? null, scannedAt: rec?.scannedAt ?? null };
   });
   const packages = detail.packages
     .map((p) => ({ ...p, checkouts: p.checkouts.map((c) => c.path).filter((c) => paths.has(c)) }))
@@ -360,12 +379,16 @@ export function getRepoMarkdown(key: string, opts: { path?: string } = {}): { ma
   return { markdown: renderMarkdown({ label: detail.label, checkouts, packages }), packages: packages.length };
 }
 
+function machineHost(name: string): string | null {
+  return loadConfig().machines.find((m) => m.name === name)?.host ?? null;
+}
+
 /** Same report for a single project path (CLI `report --markdown`). */
 export function getReportMarkdown(path: string): { markdown: string; packages: number } {
   const report = getReport(path);
   const markdown = renderMarkdown({
     label: report.repo?.label ?? (report.path.split("/").pop() || report.path),
-    checkouts: [{ path: report.path, branch: report.repo?.branch ?? null, lockfile: report.lockfile, lockType: report.lockType, scannedAt: report.scannedAt }],
+    checkouts: [{ path: report.path, machine: null, host: null, branch: report.repo?.branch ?? null, lockfile: report.lockfile, lockType: report.lockType, scannedAt: report.scannedAt }],
     packages: report.vulnerable,
   });
   return { markdown, packages: report.vulnerable.length };
@@ -405,11 +428,49 @@ export interface SyncResult {
   /** Tracked folders that no longer exist (e.g. removed worktrees); no longer tracked. */
   pruned: string[];
   /** Per project, vulnerable packages with advisories not seen before. */
-  news: Array<{ path: string; packages: Array<{ name: string; version: string; worstSeverity: Severity; advisories: string[] }> }>;
-  errors: Array<{ path: string; error: string }>;
+  news: Array<{ path: string; machine: string | null; packages: Array<{ name: string; version: string; worstSeverity: Severity; advisories: string[] }> }>;
+  errors: Array<{ path: string; machine: string | null; error: string }>;
+  /** Remote machines (config.machines): whether each one answered. */
+  machines: MachineSummary[];
   /** Raw outcomes for notifications (not serialized). */
   outcomes: ScanOutcome[];
 }
+
+export interface MachineSummary {
+  name: string;
+  ok: boolean;
+  error: string | null;
+  projects: number;
+  discovered: number;
+  rescanned: number;
+}
+
+const summarizeMachine = (r: MachineSyncResult): MachineSummary => ({
+  name: r.name,
+  ok: r.ok,
+  error: r.error,
+  projects: r.projects,
+  discovered: r.discovered.length,
+  rescanned: r.outcomes.length,
+});
+
+function newsOf(outcomes: ScanOutcome[]): SyncResult["news"] {
+  return outcomes
+    .filter((o) => o.newFindings.length > 0)
+    .map((o) => ({
+      path: o.record.path,
+      machine: o.record.machine ?? null,
+      packages: groupByPackage(o.newFindings).map((g) => ({
+        name: g.name,
+        version: g.version,
+        worstSeverity: g.worst,
+        advisories: g.findings.map((f) => f.id),
+      })),
+    }));
+}
+
+const errorsOf = (outcomes: ScanOutcome[]): SyncResult["errors"] =>
+  outcomes.filter((o) => o.record.error).map((o) => ({ path: o.record.path, machine: o.record.machine ?? null, error: o.record.error! }));
 
 export async function sync(opts: { notify?: boolean } = {}): Promise<SyncResult> {
   const release = tryLock("sync");
@@ -436,26 +497,21 @@ export async function sync(opts: { notify?: boolean } = {}): Promise<SyncResult>
     const discovered = (await discoverAll(cfg.roots, { exclude: cfg.exclude })).filter((p) => !seen.has(p.root));
     projects.push(...discovered);
 
-    const outcomes = await scanProjects(projects);
-    for (const o of outcomes) saveRepo(o.record);
-    await announce(outcomes, { notify: opts.notify ?? false });
+    const local = await scanProjects(projects);
+    for (const o of local) saveRepo(o.record);
+    // Other machines: same checks, one SSH session at a time; a machine that doesn't answer
+    // keeps its last results and shows the error.
+    const remote = await syncMachines({ full: true });
+    const outcomes = [...local, ...remote.flatMap((r) => r.outcomes)];
+    await announceMachines(local, remote, opts.notify ?? false);
     updateState({ lastSync: new Date().toISOString() });
     return {
-      projects: projects.length,
+      projects: projects.length + remote.reduce((n, r) => n + r.projects, 0),
       discovered: discovered.map((p) => p.root),
       pruned,
-      news: outcomes
-        .filter((o) => o.newFindings.length > 0)
-        .map((o) => ({
-          path: o.record.path,
-          packages: groupByPackage(o.newFindings).map((g) => ({
-            name: g.name,
-            version: g.version,
-            worstSeverity: g.worst,
-            advisories: g.findings.map((f) => f.id),
-          })),
-        })),
-      errors: outcomes.filter((o) => o.record.error).map((o) => ({ path: o.record.path, error: o.record.error! })),
+      news: newsOf(outcomes),
+      errors: errorsOf(outcomes),
+      machines: remote.map(summarizeMachine),
       outcomes,
     };
   } finally {
@@ -490,12 +546,12 @@ export async function discoverNew(opts: { dryRun?: boolean } = {}): Promise<Disc
 
 export interface WhereResult {
   package: string;
-  usedIn: Array<{ path: string; versions: Array<{ version: string; direct: boolean; dev: boolean; vulnerable: boolean }> }>;
+  usedIn: Array<{ path: string; machine: string | null; versions: Array<{ version: string; direct: boolean; dev: boolean; vulnerable: boolean }> }>;
 }
 
 export function whereUsed(name: string): WhereResult {
   const usedIn: WhereResult["usedIn"] = [];
-  for (const r of listRepos()) {
+  for (const r of listAllRepos(machineNames())) {
     const versions = r.deps
       .filter((d) => d.name === name)
       .map((d) => ({
@@ -504,7 +560,7 @@ export function whereUsed(name: string): WhereResult {
         dev: d.dev,
         vulnerable: r.findings.some((f) => f.name === name && f.version === d.version),
       }));
-    if (versions.length) usedIn.push({ path: r.path, versions });
+    if (versions.length) usedIn.push({ path: r.path, machine: r.machine ?? null, versions });
   }
   return { package: name, usedIn };
 }
@@ -570,6 +626,66 @@ export function unexclude(path: string): RootsResult & { removed: boolean } {
   cfg.exclude = cfg.exclude.filter((e) => e !== abs);
   saveConfig(cfg);
   return { roots: cfg.roots, exclude: cfg.exclude, removed: cfg.exclude.length < before };
+}
+
+/** A machine's first sync is logged (Activity) but not notified: it is the baseline. */
+async function announceMachines(local: ScanOutcome[], remote: MachineSyncResult[], notify: boolean): Promise<void> {
+  const baseline = remote.filter((r) => r.initial).flatMap((r) => r.outcomes);
+  const live = [...local, ...remote.filter((r) => !r.initial).flatMap((r) => r.outcomes)];
+  if (baseline.length) await announce(baseline, { notify: false });
+  await announce(live, { notify });
+}
+
+export interface MachinesCheckResult {
+  machines: MachineSummary[];
+  news: SyncResult["news"];
+  errors: SyncResult["errors"];
+}
+
+/**
+ * Quick pass over remote machines: new projects and changed lockfiles only (one SSH
+ * listing per machine, files fetched only when they changed). Run every 15 minutes by
+ * the background agent; `sync` does the full re-check.
+ */
+export async function checkMachines(opts: { notify?: boolean; only?: string[] } = {}): Promise<MachinesCheckResult> {
+  const release = tryLock("sync");
+  if (!release) throw new ApiError("busy", "a sync is already running");
+  try {
+    if (opts.only) for (const n of opts.only) getMachineOrThrow(n);
+    const remote = await syncMachines({ full: false, only: opts.only });
+    const outcomes = remote.flatMap((r) => r.outcomes);
+    await announceMachines([], remote, opts.notify ?? false);
+    return { machines: remote.map(summarizeMachine), news: newsOf(outcomes), errors: errorsOf(outcomes) };
+  } finally {
+    release();
+  }
+}
+
+function getMachineOrThrow(name: string): ReturnType<typeof getMachine> {
+  try {
+    return getMachine(name);
+  } catch {
+    throw new ApiError("not_found", `unknown machine: ${name}`);
+  }
+}
+
+/** Re-fetch and re-scan one checkout of a remote machine. */
+export async function scanRemote(machine: string, path: string, opts: { notify?: boolean } = {}): Promise<ScanResult> {
+  const m = getMachineOrThrow(machine);
+  if (!loadRepo(path, machine)) throw new ApiError("not_tracked", "not a tracked project");
+  const release = tryLock("sync");
+  if (!release) throw new ApiError("busy", "a sync is already running");
+  try {
+    const r = await syncMachine(m, { force: [path] });
+    if (!r.ok) throw new ApiError("unreachable", `${machine}: ${r.error}`);
+    await announce(r.outcomes, { notify: opts.notify ?? false });
+    const o = r.outcomes.find((x) => x.record.path === path);
+    const rec = o?.record ?? loadRepo(path, machine);
+    if (!rec) throw new ApiError("not_found", "the project is gone from that machine");
+    return { project: toReport(rec), firstScan: o?.firstScan ?? false, newAdvisories: o?.newFindings.length ?? 0 };
+  } finally {
+    release();
+  }
 }
 
 export interface CheckResult {
@@ -724,7 +840,7 @@ export interface PackageOverview {
   /** Per installed vulnerable version: the version to upgrade to (null: no fix, or malicious). */
   fixes: Array<{ version: string; upgradeTo: string | null; worstSeverity: Severity }>;
   advisories: string[];
-  repos: Array<{ key: string; label: string; path: string; branch: string | null; version: string; direct: boolean; dev: boolean }>;
+  repos: Array<{ key: string; label: string; path: string; machine: string | null; branch: string | null; version: string; direct: boolean; dev: boolean }>;
 }
 
 /**
@@ -745,7 +861,7 @@ export function getPackagesOverview(): PackageOverview[] {
       p.dev &&= g.dev;
       p.fixMap.set(g.version, { version: g.version, upgradeTo: g.worst === "malicious" ? null : (g.upgradeTo ?? null), worstSeverity: g.worst });
       for (const f of g.findings) p.adv.add(f.id);
-      p.repos.push({ key: r.key, label: r.label, path: r.path, branch: r.branch, version: g.version, direct: g.direct, dev: g.dev });
+      p.repos.push({ key: r.key, label: r.label, path: r.path, machine: r.machine, branch: r.branch, version: g.version, direct: g.direct, dev: g.dev });
     }
   }
   return [...byName.values()]
@@ -775,7 +891,7 @@ export interface VulnerabilityDetail {
   references: string[];
   url: string;
   /** Tracked projects affected by this advisory. */
-  affectsYourProjects: Array<{ path: string; package: string; version: string; fixedIn: string | null }>;
+  affectsYourProjects: Array<{ path: string; machine: string | null; package: string; version: string; fixedIn: string | null }>;
 }
 
 export async function getVulnerability(id: string): Promise<VulnerabilityDetail> {
@@ -785,10 +901,10 @@ export async function getVulnerability(id: string): Promise<VulnerabilityDetail>
   if (!v) throw new ApiError("not_found", `advisory ${id} not found`);
   const s = (x: unknown, n: number): string => clean(x ?? "", n);
   const affectsYourProjects: VulnerabilityDetail["affectsYourProjects"] = [];
-  for (const r of listRepos()) {
+  for (const r of listAllRepos(machineNames())) {
     for (const d of r.deps) {
       const ev = evaluate(v, d.name, d.version);
-      if (ev.affected) affectsYourProjects.push({ path: r.path, package: d.name, version: d.version, fixedIn: ev.fixedIn ?? null });
+      if (ev.affected) affectsYourProjects.push({ path: r.path, machine: r.machine ?? null, package: d.name, version: d.version, fixedIn: ev.fixedIn ?? null });
     }
   }
   const raw = v as unknown as Record<string, unknown>;
@@ -820,3 +936,27 @@ export async function getVulnerability(id: string): Promise<VulnerabilityDetail>
     affectsYourProjects,
   };
 }
+
+// ---------- other machines ----------
+
+export {
+  addMachine,
+  addMachineRoot,
+  browseOnMachine,
+  excludeOnMachine,
+  installMachine,
+  listMachines,
+  machineSetup,
+  verifyMachine,
+  removeMachine,
+  removeMachineRoot,
+  suggestName,
+  testMachine,
+  unexcludeOnMachine,
+  type AddMachineResult,
+  type MachineInfo,
+  type MachineSetup,
+} from "./machines.ts";
+export { tailnetPeers, type TailnetPeer } from "./remote.ts";
+
+export const hasMachines = (): boolean => loadConfig().machines.length > 0;

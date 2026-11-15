@@ -99,6 +99,8 @@ Opens a local page in your browser (served from `127.0.0.1` only, with a per-ses
 - **Activity**: what appeared, what got fixed and which reminders were sent.
 - **Folders**: add folders to watch with a folder browser, change how deep to look, remove them,
   look for new projects, and include excluded paths again.
+- **Machines**: dev servers watched over SSH: connection status, their folders (with the same
+  folder browser), sync now, remove.
 - **Settings**: reminder frequency, the active window, background watching on/off and
   selfguard.app.
 
@@ -134,6 +136,34 @@ selfguard vuln GHSA-35jh-r3h4-6jhm
 ```
 
 See the [CLI reference](cli.md) for every command.
+
+## Dev servers and other machines
+
+If you also code on servers (for example, agents working on a dev box on your tailnet), add them
+from **Machines → Add machine** in the dashboard, or from the terminal:
+
+```sh
+selfguard machines peers                       # machines on your tailnet
+selfguard machines add devbox.tail123.ts.net --scope ~/code --root ~/code
+selfguard machines sync devbox
+```
+
+By default selfguard creates a key just for that machine and, using your SSH access once,
+installs a small read-only *reader* there. The machine accepts that key only for the reader,
+only inside `--scope`, and only from this Mac's tailnet address. Even if the key leaked, it
+couldn't open a shell or read anything but lockfiles. See the
+[security model](security-model.md#other-machines).
+
+Requirements:
+
+- `ssh <host>` works from this Mac without a password prompt, once, for the install. If it
+  doesn't, `selfguard machines setup <name>` prints what to paste on the machine.
+- The machine runs the regular `sshd` and has a POSIX `/bin/sh` (any Linux or macOS).
+  Tailscale SSH ignores per-key restrictions; with it, use `--mode ssh`.
+
+Their repos then show up everywhere, labeled with the machine: the Repos page (filter by
+machine), alerts ("devbox · acme/api"), the daily reminder and **Copy markdown**. With
+background watching on, they are checked every 15 minutes.
 
 ## Fixing what selfguard finds
 

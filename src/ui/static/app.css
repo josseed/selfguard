@@ -383,3 +383,29 @@ tr.group-row td { padding: 0; background: color-mix(in srgb, var(--hover) 35%, t
 .modal.wide { width: min(880px, 100%); }
 .md-preview { width: 100%; min-height: 52vh; resize: vertical; box-sizing: border-box; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
 .group-toggle .grow { flex: 1; }
+
+/* ---------- machines ---------- */
+
+.machine-filter { margin-bottom: 2px; }
+.tag.machine { display: inline-flex; align-items: center; gap: 4px; }
+.tag.machine svg { width: 12px; height: 12px; }
+.tag.warn { color: var(--moderate); border-color: color-mix(in srgb, var(--moderate) 50%, transparent); }
+.warn-text { color: var(--moderate); }
+.machine-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.machine-head .title { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.machine-head .sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.machine-head .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.machine .card-body { padding: 4px 0; }
+.machine .card-body > .empty { padding: 18px 20px; }
+.machine .card-foot { padding: 10px 20px; border-top: 1px solid var(--border); font-size: 13px; }
+.prose p { margin: 0 0 8px; line-height: 1.5; }
+.prose p:last-child { margin-bottom: 0; }
+.pathbar input[aria-label="Name"] { max-width: 180px; }
+.prose { padding: 14px 20px; }
+.dir-list.short { max-height: 170px; }
+.md-preview.short { min-height: 180px; max-height: 300px; }
+.field { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
+.field[hidden] { display: none; }
+.pathbar input.port { max-width: 70px; }
+.steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.keyline { display: block; font-size: 11.5px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); word-break: break-all; }
