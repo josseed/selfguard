@@ -11,6 +11,7 @@
  *   advisory summaries) is rendered with textContent only;
  * - actions only apply to projects selfguard already tracks.
  */
+import { homedir } from "node:os";
 import { spawn } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { fchmodSync, openSync, readFileSync, rmSync } from "node:fs";
@@ -27,7 +28,7 @@ import { severityRank, type Severity } from "../match.ts";
 import { logFile, stateRoot, uiFile } from "../paths.ts";
 import { groupByPackage } from "../report.ts";
 import { appStatus, installApp, uninstallApp } from "../app.ts";
-import { scheduleOff, scheduleOn, scheduleStatus, updateRemoteAgent, updateWatcher } from "../schedule.ts";
+import { scheduleOff, scheduleOn, scheduleStatus, updateDiscoverAgent, updateRemoteAgent, updateWatcher } from "../schedule.ts";
 import { loadRepo } from "../store.ts";
 import { VERSION } from "../version.ts";
 
@@ -208,6 +209,43 @@ function refreshRemoteAgent(): void {
   }
 }
 
+// "Find my projects" runs for a while: one job at a time, progress polled by the page.
+const everywhere: {
+  running: boolean;
+  cancelled: boolean;
+  progress: { visited: number; found: number; current: string } | null;
+  result: api.EverywhereScan | null;
+  error: string | null;
+  startedAt: string | null;
+} = { running: false, cancelled: false, progress: null, result: null, error: null, startedAt: null };
+
+function everywhereStatus(): unknown {
+  const { cancelled: _c, ...rest } = everywhere;
+  return rest;
+}
+
+function startEverywhere(): unknown {
+  if (everywhere.running) return everywhereStatus();
+  Object.assign(everywhere, { running: true, cancelled: false, progress: { visited: 0, found: 0, current: "" }, result: null, error: null, startedAt: new Date().toISOString() });
+  api
+    .findEverywhere({
+      onProgress: (pr) => {
+        everywhere.progress = { visited: pr.visited, found: pr.found, current: pr.current.replace(homedir(), "~") };
+      },
+      isCancelled: () => everywhere.cancelled,
+    })
+    .then((r) => {
+      everywhere.result = r;
+    })
+    .catch((e: unknown) => {
+      everywhere.error = e instanceof Error ? e.message : String(e);
+    })
+    .finally(() => {
+      everywhere.running = false;
+    });
+  return everywhereStatus();
+}
+
 async function route(method: string, url: URL, req: IncomingMessage): Promise<unknown> {
   const p = url.pathname;
   if (method === "GET") {
@@ -219,6 +257,7 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
       return api.getRepoMarkdown(url.searchParams.get("key") ?? "", path ? { path } : {});
     }
     if (p === "/api/machines") return { machines: api.listMachines() };
+    if (p === "/api/everywhere/status") return everywhereStatus();
     if (p === "/api/machines/peers") return { peers: api.tailnetPeers() };
     if (p === "/api/machines/setup") return api.machineSetup(url.searchParams.get("name") ?? "");
     if (p === "/api/machines/fs") return api.browseOnMachine(url.searchParams.get("name") ?? "", url.searchParams.get("path") ?? undefined);
@@ -274,7 +313,17 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
       const name = typeof body.name === "string" ? body.name : undefined;
       return api.checkMachines({ notify: true, only: name ? [name] : undefined });
     }
-    if (p === "/api/settings") return api.updateSettings({ remind: body.remind, activeDays: body.activeDays });
+    if (p === "/api/settings") {
+      const r = api.updateSettings({ remind: body.remind, activeDays: body.activeDays, autoDiscover: body.autoDiscover });
+      if (body.autoDiscover !== undefined) {
+        try {
+          updateDiscoverAgent(r.autoDiscover);
+        } catch {
+          /* best effort */
+        }
+      }
+      return r;
+    }
     if (p === "/api/remind") return { sent: await maybeRemind(api.getAttention, { force: true }) };
     if (p === "/api/folders/add") {
       const depth = body.depth === undefined ? undefined : Number(body.depth);
@@ -282,15 +331,41 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
       return api.addRoot(str(body, "path"), depth);
     }
     if (p === "/api/folders/remove") return api.removeRoot(str(body, "path"));
+    if (p === "/api/repo/dismiss") return api.dismissRepo(str(body, "key"));
+    if (p === "/api/repo/undismiss") return api.undismissRepo(str(body, "key"));
     if (p === "/api/unexclude") {
       const path = str(body, "path");
       if (!api.listRoots().exclude.includes(path)) throw new api.ApiError("not_found", "that path is not excluded");
       return api.unexclude(path);
     }
     if (p === "/api/discover") return api.discoverNew({ dryRun: body.dryRun === true });
+    if (p === "/api/everywhere/start") return startEverywhere();
+    if (p === "/api/everywhere/cancel") {
+      if (everywhere.running) everywhere.cancelled = true;
+      return everywhereStatus();
+    }
+    if (p === "/api/everywhere/apply") {
+      const watch = Array.isArray(body.watch) ? body.watch : [];
+      const ignore = Array.isArray(body.ignore) ? body.ignore.filter((x): x is string => typeof x === "string") : [];
+      const places = everywhere.result?.places ?? [];
+      // Only places from the last search can be applied (never arbitrary paths).
+      const chosen = watch
+        .filter((w): w is string => typeof w === "string")
+        .map((path) => places.find((pl) => pl.path === path))
+        .filter((pl): pl is NonNullable<typeof pl> => Boolean(pl))
+        .map((pl) => ({ path: pl.path, depth: pl.depth }));
+      const rejected = ignore.filter((path) => places.some((pl) => pl.path === path));
+      const r = await api.applyPlaces(chosen, rejected);
+      try {
+        updateWatcher(api.watchTargets());
+      } catch {
+        /* watcher is best effort */
+      }
+      return r;
+    }
     if (p === "/api/schedule") {
       if (process.platform !== "darwin") throw new api.ApiError("unsupported", "background watching is macOS-only for now");
-      if (body.enabled === true) scheduleOn(6 * 3600, api.watchTargets(), { machines: api.hasMachines() });
+      if (body.enabled === true) scheduleOn(6 * 3600, api.watchTargets(), { machines: api.hasMachines(), autoDiscover: api.getSettings().autoDiscover });
       else if (body.enabled === false) scheduleOff();
       else throw new api.ApiError("invalid", "enabled must be true or false");
       return getOverview().schedule;

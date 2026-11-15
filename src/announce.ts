@@ -8,9 +8,10 @@ import { loadConfig, type RemindEvery } from "./config.ts";
 import { appendEvents, eventPackages, type SelfguardEvent } from "./events.ts";
 import type { ScanOutcome } from "./scan.ts";
 import { loadState, updateState } from "./state.ts";
-import { checkoutId, findingKey, identityOf, listAllRepos, type RepoRecord } from "./store.ts";
+import { liveDismissals, trackedActivity } from "./dismiss.ts";
+import { checkoutId, findingKey, identityOf, listAllRepos, repoKeyOf, type RepoRecord } from "./store.ts";
 
-const keyOf = (rec: RepoRecord): string => identityOf(rec)?.key ?? (rec.machine ? `${rec.machine}|path:${rec.path}` : `path:${rec.path}`);
+const keyOf = (rec: RepoRecord): string => repoKeyOf(rec, identityOf(rec));
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -44,7 +45,7 @@ function knownElsewhere(outcomes: ScanOutcome[]): (key: string, id: string) => S
   };
 }
 
-function toNews(outcomes: ScanOutcome[], activeDays: number): Array<ProjectNews & { branch: string | null; firstScan: boolean; machine: string | null }> {
+function toNews(outcomes: ScanOutcome[], activeDays: number, dismissed: Map<string, string> = new Map()): Array<ProjectNews & { branch: string | null; firstScan: boolean; machine: string | null }> {
   const known = knownElsewhere(outcomes);
   return outcomes.map((o) => {
     const identity = identityOf(o.record);
@@ -60,7 +61,7 @@ function toNews(outcomes: ScanOutcome[], activeDays: number): Array<ProjectNews 
       resolvedFindings: o.resolvedFindings,
       findings: o.record.findings,
       repo,
-      active: activityOf(identity, activeDays).active,
+      active: activityOf(identity, activeDays, Date.now(), dismissed.get(key) ?? null).active,
       branch: identity?.branch ?? null,
       firstScan: o.firstScan,
     };
@@ -69,7 +70,10 @@ function toNews(outcomes: ScanOutcome[], activeDays: number): Array<ProjectNews 
 
 /** Log and notify what changed. Returns true if something was notified. */
 export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean } = {}): Promise<boolean> {
-  const news = toNews(outcomes, loadConfig().activeDays);
+  const cfg = loadConfig();
+  // Dismissed repos count as inactive (malicious only) until git activity brings them back.
+  const dismissed = cfg.dismissed.length ? liveDismissals(cfg.dismissed, trackedActivity(cfg)) : new Map<string, string>();
+  const news = toNews(outcomes, cfg.activeDays, dismissed);
   const at = new Date().toISOString();
   const events: SelfguardEvent[] = [];
   for (const n of news) {

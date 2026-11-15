@@ -62,6 +62,20 @@ export interface Config {
   /** Checkouts without git activity for this many days are "inactive" (no alerts). */
   activeDays: number;
   machines: Machine[];
+  /**
+   * Repos the user turned off (by repo group key). A dismissed repo counts as inactive
+   * until one of its checkouts has git activity after `at`; then it comes back on its own.
+   */
+  dismissed: Dismissal[];
+  /** Weekly search of the whole home folder that starts watching new places with active repos. */
+  autoDiscover: boolean;
+}
+
+export interface Dismissal {
+  key: string;
+  label: string;
+  /** When it was dismissed (ISO). */
+  at: string;
 }
 
 export const DEFAULT_DEPTH = 5;
@@ -108,7 +122,16 @@ export function loadConfig(): Config {
       machines.push({ name: m.name, host: m.host, ...(port ? { port } : {}), mode, scope, roots: mroots, exclude: mexclude });
     }
   }
-  return { schema: 1, roots, exclude, remind, activeDays, machines };
+  const dismissed: Dismissal[] = [];
+  if (raw && isObject(raw) && Array.isArray(raw.dismissed)) {
+    for (const d of raw.dismissed as unknown[]) {
+      if (!isObject(d) || typeof d.key !== "string" || !d.key || typeof d.at !== "string" || Number.isNaN(Date.parse(d.at))) continue;
+      if (dismissed.some((x) => x.key === d.key)) continue;
+      dismissed.push({ key: d.key, label: typeof d.label === "string" ? d.label : d.key, at: d.at });
+    }
+  }
+  const autoDiscover = !(raw && isObject(raw) && raw.autoDiscover === false);
+  return { schema: 1, roots, exclude, remind, activeDays, machines, dismissed, autoDiscover };
 }
 
 export function isExcluded(path: string, exclude: readonly string[]): boolean {

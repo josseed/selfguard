@@ -34,10 +34,15 @@ import { repoIdentity, type RepoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import { lockChanged, scanProjects, type ScanOutcome } from "./scan.ts";
 import { loadState, updateState } from "./state.ts";
-import { checkoutId, forgetRepo, identityOf, listAllRepos, listRepos, loadRepo, saveRepo, type Finding, type RepoRecord } from "./store.ts";
+import { checkoutId, forgetRepo, identityOf, listAllRepos, listRepos, loadRepo, repoKeyOf, saveRepo, type Finding, type RepoRecord } from "./store.ts";
+import { liveDismissals, pruneDismissals, trackedActivity } from "./dismiss.ts";
 import { expandRemote, loadMachineStatus, syncMachine, syncMachines, getMachine, type MachineSyncResult } from "./machines.ts";
 
 import { ApiError } from "./errors.ts";
+import { appendEvents } from "./events.ts";
+import { discoverEverywhere, groupPlaces, PROTECTED, type EverywhereProgress, type Place } from "./everywhere.ts";
+import { notify } from "./notify.ts";
+import { tildify } from "./report.ts";
 
 export { ApiError };
 
@@ -65,6 +70,8 @@ export interface ProjectSummary {
   /** Git activity in the last `activeDays` days. Inactive checkouts only alert for malicious packages. */
   active: boolean;
   lastActivity: string | null;
+  /** Its repo was turned off by the user and has had no git activity since (implies !active). */
+  dismissed: boolean;
 }
 
 /** Worktrees / clones of the same repo (and same subfolder) grouped together. */
@@ -75,6 +82,8 @@ export interface RepoGroup {
   machine: string | null;
   /** At least one checkout has recent git activity. */
   active: boolean;
+  /** When the user turned this repo off (null: not dismissed). Comes back with new git activity. */
+  dismissedAt: string | null;
   /** Worst severity across active checkouts (all checkouts if none is active). */
   worstSeverity: Severity | null;
   /** Distinct vulnerable name@version across active checkouts (all checkouts if none is active). */
@@ -132,11 +141,19 @@ export interface ProjectReport extends ProjectSummary {
 
 const machineNames = (): string[] => loadConfig().machines.map((m) => m.name);
 
-function summarize(rec: RepoRecord, activeDays = loadConfig().activeDays): ProjectSummary {
+/** Dismissals still in effect (no git activity since), from the given checkouts' activity. */
+function dismissalsFor(cfg: ReturnType<typeof loadConfig>, checkouts: Array<{ rec: RepoRecord; repo: RepoIdentity | null }>): Map<string, string> {
+  if (cfg.dismissed.length === 0) return new Map();
+  return liveDismissals(cfg.dismissed, checkouts.map(({ rec, repo }) => ({ key: repoKeyOf(rec, repo), lastActivity: repo?.lastActivity ?? null })));
+}
+
+function summarize(rec: RepoRecord, activeDays = loadConfig().activeDays, dismissed: Map<string, string> = new Map(), repoIn?: RepoIdentity | null): ProjectSummary {
   // Remote checkouts exist as long as the last sync of their machine found them.
   const exists = rec.machine ? true : existsSync(rec.path);
-  const repo = exists ? identityOf(rec) : null;
-  const activity = exists ? activityOf(repo, activeDays) : { active: false, lastActivity: null };
+  const repo = exists ? (repoIn !== undefined ? repoIn : identityOf(rec)) : null;
+  const activity = exists
+    ? activityOf(repo, activeDays, Date.now(), dismissed.get(repoKeyOf(rec, repo)) ?? null)
+    : { active: false, lastActivity: null, dismissed: false };
   return {
     path: rec.path,
     machine: rec.machine ?? null,
@@ -154,6 +171,7 @@ function summarize(rec: RepoRecord, activeDays = loadConfig().activeDays): Proje
     repo,
     active: activity.active,
     lastActivity: activity.lastActivity,
+    dismissed: activity.dismissed,
   };
 }
 
@@ -212,16 +230,18 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
   const cfg = loadConfig();
   const records = listAllRepos(cfg.machines.map((m) => m.name));
   const activeDays = cfg.activeDays;
-  const summaries = records.map((r) => summarize(r, activeDays));
+  const withRepo = records.map((rec) => ({ rec, repo: rec.machine || existsSync(rec.path) ? identityOf(rec) : null }));
+  const dismissed = dismissalsFor(cfg, withRepo);
+  const summaries = withRepo.map(({ rec, repo }) => summarize(rec, activeDays, dismissed, repo));
   const groups = new Map<string, { group: RepoGroup; active: Finding[]; all: Finding[] }>();
   summaries.forEach((p, i) => {
     const rec = records[i]!;
-    const key = p.repo?.key ?? (p.machine ? `${p.machine}|path:${p.path}` : `path:${p.path}`);
+    const key = repoKeyOf(p, p.repo);
     let g = groups.get(key);
     if (!g) {
       const label = p.repo?.label ?? (p.path.split("/").pop() || p.path);
       g = {
-        group: { key, label, machine: p.machine, active: false, worstSeverity: null, vulnerablePackages: 0, inactiveCheckouts: 0, folder: null, checkouts: [] },
+        group: { key, label, machine: p.machine, active: false, dismissedAt: dismissed.get(key) ?? null, worstSeverity: null, vulnerablePackages: 0, inactiveCheckouts: 0, folder: null, checkouts: [] },
         active: [],
         all: [],
       };
@@ -295,12 +315,14 @@ export function getAttention(): Array<AttentionRepo & { key: string; path: strin
   const cfg = loadConfig();
   const activeDays = cfg.activeDays;
   const best = new Map<string, { rec: RepoRecord; repo: RepoIdentity | null; main: boolean; at: number }>();
-  for (const rec of listAllRepos(cfg.machines.map((m) => m.name))) {
-    if (!rec.machine && !existsSync(rec.path)) continue;
-    const repo = identityOf(rec);
-    const act = activityOf(repo, activeDays);
+  const present = listAllRepos(cfg.machines.map((m) => m.name))
+    .filter((rec) => rec.machine || existsSync(rec.path))
+    .map((rec) => ({ rec, repo: identityOf(rec) }));
+  const dismissed = dismissalsFor(cfg, present);
+  for (const { rec, repo } of present) {
+    const key = repoKeyOf(rec, repo);
+    const act = activityOf(repo, activeDays, Date.now(), dismissed.get(key) ?? null);
     if (!act.active) continue;
-    const key = repo?.key ?? (rec.machine ? `${rec.machine}|path:${rec.path}` : `path:${rec.path}`);
     const cand = { rec, repo, main: !(repo?.worktree ?? false), at: act.lastActivity ? Date.parse(act.lastActivity) : 0 };
     const cur = best.get(key);
     if (!cur || (cand.main && !cur.main) || (cand.main === cur.main && cand.at > cur.at)) best.set(key, cand);
@@ -326,6 +348,7 @@ export interface RepoDetail {
   key: string;
   label: string;
   machine: string | null;
+  dismissedAt: string | null;
   checkouts: RepoGroup["checkouts"];
   packages: RepoPackage[];
 }
@@ -357,7 +380,7 @@ export function getRepoDetail(key: string): RepoDetail {
       Number(b.direct) - Number(a.direct) ||
       a.name.localeCompare(b.name),
   );
-  return { key: group.key, label: group.label, machine: group.machine, checkouts: group.checkouts, packages };
+  return { key: group.key, label: group.label, machine: group.machine, dismissedAt: group.dismissedAt, checkouts: group.checkouts, packages };
 }
 
 /**
@@ -505,6 +528,7 @@ export async function sync(opts: { notify?: boolean } = {}): Promise<SyncResult>
     const outcomes = [...local, ...remote.flatMap((r) => r.outcomes)];
     await announceMachines(local, remote, opts.notify ?? false);
     updateState({ lastSync: new Date().toISOString() });
+    pruneDismissed(loadConfig());
     return {
       projects: projects.length + remote.reduce((n, r) => n + r.projects, 0),
       discovered: discovered.map((p) => p.root),
@@ -591,7 +615,132 @@ export function removeRoot(path: string): RootsResult & { removed: boolean } {
   const before = cfg.roots.length;
   cfg.roots = cfg.roots.filter((r) => r.path !== abs);
   saveConfig(cfg);
-  return { roots: cfg.roots, exclude: cfg.exclude, removed: cfg.roots.length < before };
+  const removed = cfg.roots.length < before;
+  // Removed on purpose: automatic discovery won't add it back.
+  if (removed) updateState({ dismissedPlaces: [...new Set([...(loadState().dismissedPlaces ?? []), abs])] });
+  return { roots: cfg.roots, exclude: cfg.exclude, removed };
+}
+
+// ---------- find my projects (whole home folder) ----------
+
+export interface EverywhereScan {
+  home: string;
+  places: Place[];
+  projects: number;
+  visited: number;
+  ms: number;
+  /** Zones cut short (too many folders, no project). */
+  heavy: string[];
+  /** Folders we couldn't read (permissions / macOS privacy). */
+  denied: string[];
+  /** Protected folders skipped on purpose. */
+  skipped: string[];
+}
+
+/** Search the whole home folder and group what's found into places. Read-only. */
+export async function findEverywhere(
+  opts: { skipProtected?: boolean; onProgress?: (p: EverywhereProgress) => void; isCancelled?: () => boolean } = {},
+): Promise<EverywhereScan> {
+  const cfg = loadConfig();
+  const r = await discoverEverywhere({ exclude: cfg.exclude, skipProtected: opts.skipProtected, onProgress: opts.onProgress, isCancelled: opts.isCancelled });
+  updateState({ lastEverywhere: new Date().toISOString() });
+  return {
+    home: r.home,
+    places: groupPlaces(r.projects, r.home, cfg.roots, cfg.activeDays, Date.now(), cfg.dismissed.length ? liveDismissals(cfg.dismissed, trackedActivity(cfg)) : new Map()),
+    projects: r.projects.length,
+    visited: r.visited,
+    ms: r.ms,
+    heavy: r.heavy,
+    denied: r.denied,
+    skipped: r.skipped,
+  };
+}
+
+export interface ApplyPlacesResult {
+  watching: Root[];
+  excluded: string[];
+  discovered: DiscoverResult | null;
+}
+
+/**
+ * Watch the chosen places (folders + depth) and exclude the rejected ones, then register and
+ * scan the new projects. Paths must be existing folders.
+ */
+export async function applyPlaces(watch: Array<{ path: string; depth: number }>, ignore: string[] = []): Promise<ApplyPlacesResult> {
+  const watching: Root[] = [];
+  for (const w of watch) {
+    const dir = normalizeDir(w.path);
+    if (!dir) throw new ApiError("not_found", `not a directory: ${w.path}`);
+    if (!Number.isInteger(w.depth)) throw new ApiError("invalid", "depth must be an integer");
+    const cfg = loadConfig();
+    const existing = cfg.roots.find((r) => r.path === dir);
+    const depth = Math.max(clampDepth(w.depth), existing?.depth ?? 0);
+    addRoot(dir, depth);
+    watching.push({ path: dir, depth });
+  }
+  const excluded: string[] = [];
+  if (ignore.length) {
+    const cfg = loadConfig();
+    for (const path of ignore) {
+      const dir = normalizeDir(path);
+      if (!dir || cfg.exclude.includes(dir) || cfg.roots.some((r) => r.path === dir)) continue;
+      cfg.exclude.push(dir);
+      excluded.push(dir);
+    }
+    saveConfig(cfg);
+  }
+  const discovered = loadConfig().roots.length ? await discoverNew() : null;
+  return { watching, excluded, discovered };
+}
+
+export interface AutoDiscoverResult {
+  ran: boolean;
+  reason: string | null;
+  added: Array<{ path: string; depth: number; active: number; projects: number }>;
+  scan: EverywhereScan | null;
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The weekly background pass: search the home folder and start watching new places that
+ * have repos with recent git activity (unless excluded or removed by the user before),
+ * with a notification. Their current findings are the baseline: logged, not alerted.
+ * Protected macOS folders are only searched if a watched folder already lives there.
+ */
+export async function autoDiscover(opts: { force?: boolean; notify?: boolean } = {}): Promise<AutoDiscoverResult> {
+  const cfg = loadConfig();
+  if (!cfg.autoDiscover && !opts.force) return { ran: false, reason: "automatic discovery is off", added: [], scan: null };
+  const last = loadState().lastEverywhere;
+  if (!opts.force && last && Date.now() - Date.parse(last) < WEEK_MS - 12 * 60 * 60 * 1000) {
+    return { ran: false, reason: "ran less than a week ago", added: [], scan: null };
+  }
+  const release = tryLock("everywhere");
+  if (!release) throw new ApiError("busy", "a search is already running");
+  try {
+    const home = homedir();
+    const protectedAllowed = cfg.roots.some((r) => PROTECTED.some((p) => r.path === join(home, p) || r.path.startsWith(join(home, p) + "/")));
+    const scan = await findEverywhere({ skipProtected: process.platform === "darwin" && !protectedAllowed });
+    const dismissed = loadState().dismissedPlaces ?? [];
+    const fresh = scan.places.filter((p) => p.recommended && !dismissed.some((d) => p.path === d || p.path.startsWith(d + "/")));
+    if (fresh.length === 0) return { ran: true, reason: null, added: [], scan };
+    const res = await applyPlaces(fresh.map((p) => ({ path: p.path, depth: p.depth })));
+    const added = fresh.map((p) => ({ path: p.path, depth: p.depth, active: p.active, projects: p.projects }));
+    const at = new Date().toISOString();
+    appendEvents(added.map((a) => ({
+      at, kind: "watching" as const, repo: tildify(a.path), repoKey: `place:${a.path}`, path: a.path, branch: null, active: true, total: a.projects, packages: [],
+    })));
+    if (opts.notify !== false) {
+      const title = added.length === 1 ? `selfguard: now watching ${tildify(added[0]!.path)}` : `selfguard: now watching ${added.length} new folders`;
+      const body = added.length === 1
+        ? `${added[0]!.active} active repo(s) found there${res.discovered?.withVulnerabilities ? `, ${res.discovered.withVulnerabilities} with vulnerabilities` : ""}. Remove it in Folders if you don't want it.`
+        : added.map((a) => tildify(a.path)).join(", ");
+      await notify(title, body, "Find my projects");
+    }
+    return { ran: true, reason: null, added, scan };
+  } finally {
+    release();
+  }
 }
 
 /**
@@ -626,6 +775,72 @@ export function unexclude(path: string): RootsResult & { removed: boolean } {
   cfg.exclude = cfg.exclude.filter((e) => e !== abs);
   saveConfig(cfg);
   return { roots: cfg.roots, exclude: cfg.exclude, removed: cfg.exclude.length < before };
+}
+
+// ---------- dismissed repos ----------
+
+export interface DismissedRepo {
+  key: string;
+  label: string;
+  dismissedAt: string;
+}
+
+/** Repos the user turned off that haven't come back yet. */
+export function listDismissed(): DismissedRepo[] {
+  const cfg = loadConfig();
+  const live = liveDismissals(cfg.dismissed, trackedActivity(cfg));
+  return cfg.dismissed.filter((d) => live.has(d.key)).map((d) => ({ key: d.key, label: d.label, dismissedAt: d.at }));
+}
+
+/**
+ * Turn a repo off (all its checkouts): it keeps being scanned but counts as inactive (no
+ * reminders, alerts only for malicious packages) until any of its checkouts has git
+ * activity again (a commit, checkout, pull...). Dismissing again restarts the clock.
+ */
+export function dismissRepo(key: string): DismissedRepo {
+  const group = getStatus().repos.find((g) => g.key === key);
+  if (!group) throw new ApiError("not_found", "unknown repo");
+  const cfg = loadConfig();
+  // The label names the machine like everywhere else ("devbox · acme/api").
+  const label = group.machine ? `${group.machine} · ${group.label}` : group.label;
+  const at = new Date().toISOString();
+  cfg.dismissed = [...cfg.dismissed.filter((d) => d.key !== key), { key, label, at }];
+  saveConfig(cfg);
+  return { key, label, dismissedAt: at };
+}
+
+/**
+ * Repo group key from what a user types: a key as listed by status/dismissed, or the path
+ * of (or inside) a local checkout.
+ */
+export function resolveRepoKey(target: string): string {
+  const repos = getStatus().repos;
+  if (repos.some((g) => g.key === target) || loadConfig().dismissed.some((d) => d.key === target)) return target;
+  const abs = normalizeDir(target) ?? resolve(target);
+  const inside = (dir: string): boolean => abs === dir || abs.startsWith(`${dir}/`);
+  const hit = repos
+    .flatMap((g) => g.checkouts.filter((k) => !k.machine && inside(k.path)).map((k) => ({ key: g.key, len: k.path.length })))
+    .sort((x, y) => y.len - x.len)[0];
+  if (!hit) throw new ApiError("not_found", `no tracked repo at ${abs}`);
+  return hit.key;
+}
+
+/** Turn a dismissed repo back on right away. */
+export function undismissRepo(key: string): { key: string; removed: boolean } {
+  const cfg = loadConfig();
+  const before = cfg.dismissed.length;
+  cfg.dismissed = cfg.dismissed.filter((d) => d.key !== key);
+  if (cfg.dismissed.length < before) saveConfig(cfg);
+  return { key, removed: cfg.dismissed.length < before };
+}
+
+/** Forget dismissals of repos that came back (git activity since). Never fails a scan. */
+function pruneDismissed(cfg: ReturnType<typeof loadConfig>): void {
+  try {
+    if (cfg.dismissed.length && pruneDismissals(cfg, trackedActivity(cfg)).length) saveConfig(cfg);
+  } catch {
+    /* best effort */
+  }
 }
 
 /** A machine's first sync is logged (Activity) but not notified: it is the baseline. */
@@ -710,6 +925,7 @@ export async function check(opts: { notify?: boolean } = {}): Promise<CheckResul
       if (p && p.root === r.path && p.lockfile && lockChanged(r, p)) changed.push(p);
     }
     updateState({ lastCheck: new Date().toISOString() });
+    pruneDismissed(cfg);
     if (changed.length === 0) return { rescanned: [], errors: [] };
     const outcomes = await scanProjects(changed);
     for (const o of outcomes) saveRepo(o.record);
@@ -727,9 +943,12 @@ export async function check(opts: { notify?: boolean } = {}): Promise<CheckResul
 export function watchTargets(): string[] {
   const cfg = loadConfig();
   const items: Array<{ paths: string[]; at: number }> = [];
-  for (const r of listRepos()) {
-    if (!existsSync(r.path) || isExcluded(r.path, cfg.exclude)) continue;
-    const act = activityOf(repoIdentity(r.path), cfg.activeDays);
+  const local = listRepos()
+    .filter((r) => existsSync(r.path) && !isExcluded(r.path, cfg.exclude))
+    .map((rec) => ({ rec, repo: repoIdentity(rec.path) }));
+  const dismissed = dismissalsFor(cfg, local);
+  for (const { rec: r, repo } of local) {
+    const act = activityOf(repo, cfg.activeDays, Date.now(), dismissed.get(repoKeyOf(r, repo)) ?? null);
     if (!act.active) continue;
     const paths = [r.path];
     if (r.lockfile && existsSync(r.lockfile)) paths.push(r.lockfile);
@@ -741,6 +960,9 @@ export function watchTargets(): string[] {
 export interface Settings {
   remind: RemindEvery;
   activeDays: number;
+  /** Weekly "find my projects" that starts watching new places with active repos. */
+  autoDiscover: boolean;
+  lastEverywhere: string | null;
   lastReminder: string | null;
   lastSync: string | null;
   lastCheck: string | null;
@@ -752,13 +974,15 @@ export function getSettings(): Settings {
   return {
     remind: cfg.remind,
     activeDays: cfg.activeDays,
+    autoDiscover: cfg.autoDiscover,
+    lastEverywhere: st.lastEverywhere ?? null,
     lastReminder: st.lastReminder ?? null,
     lastSync: st.lastSync ?? null,
     lastCheck: st.lastCheck ?? null,
   };
 }
 
-export function updateSettings(patch: { remind?: unknown; activeDays?: unknown }): Settings {
+export function updateSettings(patch: { remind?: unknown; activeDays?: unknown; autoDiscover?: unknown }): Settings {
   const cfg = loadConfig();
   if (patch.remind !== undefined) {
     if (!REMIND_VALUES.includes(patch.remind as RemindEvery)) throw new ApiError("invalid", "remind must be daily, weekly or off");
@@ -768,6 +992,10 @@ export function updateSettings(patch: { remind?: unknown; activeDays?: unknown }
     const n = patch.activeDays;
     if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > 365) throw new ApiError("invalid", "activeDays must be an integer between 1 and 365");
     cfg.activeDays = n;
+  }
+  if (patch.autoDiscover !== undefined) {
+    if (typeof patch.autoDiscover !== "boolean") throw new ApiError("invalid", "autoDiscover must be true or false");
+    cfg.autoDiscover = patch.autoDiscover;
   }
   saveConfig(cfg);
   return getSettings();

@@ -137,6 +137,23 @@ selfguard vuln GHSA-35jh-r3h4-6jhm
 
 See the [CLI reference](cli.md) for every command.
 
+## If your code isn't in one folder
+
+Click **Find my projects** on the dashboard's Folders page, or run:
+
+```sh
+selfguard discover --everywhere
+```
+
+selfguard searches your home folder and skips dependencies, build output, caches, hidden and
+system folders, cloud drives and other disks. It then proposes a few folders to watch, with the
+ones holding active repos already checked. On macOS, the first search may ask whether node can
+access Desktop, Documents or Downloads; allow it to include projects there.
+
+After that, a weekly background search starts watching new folders with active repos and tells
+you ("now watching ~/Desktop/new-client"). Remove a folder and it isn't added back. Turn it off
+in Settings or with `selfguard settings --auto-discover off`.
+
 ## Dev servers and other machines
 
 If you also code on servers (for example, agents working on a dev box on your tailnet), add them

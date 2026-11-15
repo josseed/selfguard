@@ -6,6 +6,36 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-15
+
+### Added
+
+- Dismiss a repo: `selfguard dismiss [dir]`, **Dismiss** on a repo's page in the dashboard, or
+  `selfguard_dismiss` over MCP. The repo stays tracked but is treated as inactive (no reminders,
+  alerts only for malicious packages) until any of its checkouts has git activity again; then it
+  turns back on by itself. `selfguard undismiss` and `dismiss --list`, a **Dismissed** filter on
+  Repos, and `dismissedAt` on repos in `status --json`.
+- Find my projects: `selfguard discover --everywhere`, **Find my projects** on the dashboard's
+  Folders page, and a new first question in `selfguard setup`. It searches the whole home folder
+  read-only and skips:
+  - dependencies, build output and caches (anywhere);
+  - hidden, system and media folders;
+  - cloud drives, other disks and symlinks;
+  - whatever a repo's own `.gitignore` marks as disposable;
+  - zones that burn through their budget without a project.
+
+  Worktrees that tools keep in hidden folders (`~/.t3/worktrees`, `.worktrees`) are found from
+  their repo's `.git/worktrees`. Samples inside repos (`examples/`, `fixtures/`…) and copies
+  (`evidence/`, `backups/`…) are marked and don't decide anything. Results come as a handful of
+  places to approve, with folders that have active repos pre-selected; unchecked ones are
+  excluded.
+- Automatic discovery: once a week, while `schedule on` is active, selfguard runs the same
+  search and starts watching new places with active repos, with a notification and an Activity
+  entry ("Now watching …"). Folders you remove are never added back. On macOS, the background
+  pass only enters Desktop, Documents and Downloads once a watched folder lives there, so no
+  privacy prompts appear out of nowhere. Turn it off with `selfguard settings --auto-discover off`
+  or in Settings.
+
 ## [0.6.0] - 2026-11-15
 
 ### Added
@@ -114,7 +144,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/josseed/selfguard/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/josseed/selfguard/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/josseed/selfguard/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/josseed/selfguard/compare/v0.3.0...v0.4.0

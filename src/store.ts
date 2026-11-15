@@ -54,6 +54,11 @@ export function identityOf(rec: RepoRecord): RepoIdentity | null {
   return rec.machine ? (rec.identity ?? null) : repoIdentity(rec.path);
 }
 
+/** Repo group key of a checkout: its git identity key, else its path (prefixed by machine). */
+export function repoKeyOf(rec: { path: string; machine?: string | null }, identity: RepoIdentity | null): string {
+  return identity?.key ?? (rec.machine ? `${rec.machine}|path:${rec.path}` : `path:${rec.path}`);
+}
+
 export const findingKey = (f: Pick<Finding, "id" | "name" | "version">): string => `${f.id}|${f.name}@${f.version}`;
 
 const dirFor = (machine?: string | null): string => (machine ? machineReposDir(machine) : reposDir());

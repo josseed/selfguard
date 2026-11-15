@@ -189,10 +189,14 @@ export const TOOLS: Tool[] = [
   {
     name: "selfguard_discover",
     title: "Discover new projects",
-    description: "Find projects in the watched folders that are not tracked yet. With dryRun=false they are registered and scanned.",
-    inputSchema: obj({ dryRun: { type: "boolean", description: "Only list them (default true)." } }),
+    description:
+      "Find projects in the watched folders that are not tracked yet. With dryRun=false they are registered and scanned. With everywhere=true it instead searches the whole home folder (a minute or two, read-only, skipping dependencies, caches, hidden/system folders and cloud drives) and returns `places`: folders to watch with project/active counts and a `recommended` flag. Propose them to the user and add the chosen ones with selfguard_roots_add (path + depth).",
+    inputSchema: obj({
+      dryRun: { type: "boolean", description: "Only list them (default true)." },
+      everywhere: { type: "boolean", description: "Search the whole home folder and return places (always a dry run)." },
+    }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    run: (a) => api.discoverNew({ dryRun: bool(a, "dryRun") ?? true }),
+    run: (a) => (bool(a, "everywhere") ? api.findEverywhere() : api.discoverNew({ dryRun: bool(a, "dryRun") ?? true })),
   },
   {
     name: "selfguard_forget",
@@ -210,6 +214,31 @@ export const TOOLS: Tool[] = [
     inputSchema: obj({ path: { type: "string" } }, ["path"]),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     run: (a) => api.unexclude(str(a, "path")),
+  },
+  {
+    name: "selfguard_dismiss",
+    title: "Turn a repo off",
+    description:
+      "Turn a repo off (all its checkouts) until it has git activity again: it stays tracked and scanned but counts as inactive (no reminders, alerts only for malicious packages, hidden from active lists). Any later commit, checkout or pull in one of its checkouts turns it back on automatically. `repo`: a repo key from selfguard_status or the path of a local checkout. Use when the user says they don't care about a repo for now; prefer it over selfguard_forget for repos they may come back to.",
+    inputSchema: obj({ repo: { type: "string", description: "Repo key (selfguard_status repos[].key) or path of a local checkout." } }, ["repo"]),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    run: (a) => api.dismissRepo(api.resolveRepoKey(str(a, "repo"))),
+  },
+  {
+    name: "selfguard_undismiss",
+    title: "Turn a repo back on",
+    description: "Turn a dismissed repo back on now instead of waiting for its next git activity.",
+    inputSchema: obj({ repo: { type: "string", description: "Repo key or path of a local checkout." } }, ["repo"]),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    run: (a) => api.undismissRepo(api.resolveRepoKey(str(a, "repo"))),
+  },
+  {
+    name: "selfguard_dismissed",
+    title: "Dismissed repos",
+    description: "Repos the user turned off that have not had git activity since. Local state only.",
+    inputSchema: obj({}),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    run: () => ({ dismissed: api.listDismissed() }),
   },
 ];
 

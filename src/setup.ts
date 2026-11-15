@@ -9,7 +9,7 @@ import { groupByPackage, paint, summarizeCounts, tildify, worstSeverity } from "
 import { scanProjects, type ScanOutcome } from "./scan.ts";
 import { scheduleOn, scheduleStatus } from "./schedule.ts";
 import { appStatus, installApp } from "./app.ts";
-import { watchTargets } from "./api.ts";
+import { findEverywhere, watchTargets } from "./api.ts";
 import { announce } from "./announce.ts";
 import { listRepos, saveRepo } from "./store.ts";
 import { confirm, fitStart, isPrintable, readKeys, Screen, withSpinner } from "./tui.ts";
@@ -25,7 +25,7 @@ interface Item {
 }
 
 /** Interactive folder picker. Resolves to the chosen roots, or null if cancelled. */
-async function pickRoots(initial: Root[], exclude: string[]): Promise<Root[] | null> {
+async function pickRoots(initial: Root[], exclude: string[], suggested: Root[] = []): Promise<Root[] | null> {
   const c = paint(out);
   const items: Item[] = [];
   const add = (path: string, selected: boolean, depth: number): void => {
@@ -33,6 +33,7 @@ async function pickRoots(initial: Root[], exclude: string[]): Promise<Root[] | n
     items.push({ path, selected, depth, count: null, generation: 0 });
   };
   for (const r of initial) add(r.path, true, r.depth);
+  for (const r of suggested) add(r.path, false, r.depth);
   for (const p of candidateRoots()) add(p, false, DEFAULT_DEPTH);
 
   let cursor = 0; // items.length = the "add folder" row
@@ -195,7 +196,17 @@ export async function runSetup(): Promise<number> {
   out.write(`\n${c.bold(c.cyan("selfguard setup"))}\n\n`);
 
   const cfg = loadConfig();
-  const roots = await pickRoots(cfg.roots, cfg.exclude);
+  // People who don't keep code in one folder: search the whole home folder first and
+  // pre-select the places with active repos.
+  let initial = cfg.roots;
+  let suggested: Root[] = [];
+  if (await confirm("Search your whole home folder for projects first? (recommended if your code isn't all in one folder)", cfg.roots.length === 0)) {
+    const scan = await withSpinner("Searching your home folder (a minute or two; macOS may ask for access to Desktop/Documents/Downloads)…", () => findEverywhere());
+    out.write(`\r${c.green("✓")} ${scan.projects} project(s) in ${scan.places.length} place(s).\n\n`);
+    initial = [...cfg.roots, ...scan.places.filter((p) => p.recommended).map((p) => ({ path: p.path, depth: p.depth }))];
+    suggested = scan.places.filter((p) => !p.recommended && !p.watched).map((p) => ({ path: p.path, depth: p.depth }));
+  }
+  const roots = await pickRoots(initial, cfg.exclude, suggested);
   if (!roots) {
     out.write("Cancelled, nothing changed.\n");
     return 0;
@@ -232,7 +243,7 @@ export async function runSetup(): Promise<number> {
     if (scheduleStatus().loaded) {
       out.write(`${c.green("✓")} Background sync already enabled\n`);
     } else if (await confirm("Watch your repos in the background (macOS notifications, daily reminder of serious issues)?")) {
-      scheduleOn(6 * 3600, watchTargets());
+      scheduleOn(6 * 3600, watchTargets(), { autoDiscover: loadConfig().autoDiscover });
       out.write(`${c.green("✓")} Enabled. Lockfile changes are checked right away; new repos are picked up every 6h.\n`);
     }
   }

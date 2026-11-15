@@ -18,6 +18,15 @@ what it sends, and how it is built and released. To report a vulnerability, see
 | selfguard's own dependencies get compromised | Zero runtime dependencies, enforced in CI. Dev tooling updates go through Dependabot with a 7-day cooldown and review. |
 | A compromised CI or stolen token publishes a malicious selfguard | See [Releases](#releases). |
 
+## Finding projects on your disk
+
+The whole-home search ("find my projects") only lists folders and reads a few small files:
+`.gitignore` and `.git/worktrees/*/gitdir`, each capped at 64 KB. It never opens your other
+files or runs anything. It stays inside your home folder, on the same disk, doesn't follow
+symlinks, and skips cloud drives, because listing them can trigger downloads. Results stay in
+`~/.selfguard`. On macOS, the weekly background pass doesn't enter Desktop, Documents or
+Downloads unless you already watch a folder there, so it never shows a privacy prompt on its own.
+
 ## What leaves your machine
 
 Only calls to the OSV.dev API at `https://api.osv.dev/v1`:

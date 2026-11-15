@@ -11,6 +11,8 @@ const state = {
   packages: null,
   folders: null,
   machines: null,
+  find: null, // "find my projects" job: { running, progress, result, error }
+  findChoice: null,
   repo: null, // { key, data }
   route: { name: "overview", arg: null },
   ui: {
@@ -190,7 +192,7 @@ function repoGroups(filter) {
   const att = new Set(o.needsAttention);
   const q = state.ui.repoSearch.trim().toLowerCase();
   return o.repos
-    .filter((g) => (filter === "attention" ? att.has(g.key) : filter === "active" ? g.active : filter === "inactive" ? !g.active : true))
+    .filter((g) => (filter === "attention" ? att.has(g.key) : filter === "active" ? g.active : filter === "inactive" ? !g.active && !g.dismissedAt : filter === "dismissed" ? !!g.dismissedAt : true))
     .filter((g) => machineMatch(g.machine))
     .filter((g) => !q || g.label.toLowerCase().includes(q) || (g.machine || "").includes(q) || g.checkouts.some((k) => k.path.toLowerCase().includes(q)))
     .map((g) => ({ g, rep: representative(g), serious: o.seriousByRepo[g.key] || 0 }))
@@ -390,7 +392,7 @@ function statRow(label, value) {
 function pageRepos() {
   const o = state.overview;
   setHead("Repos", [], [syncButton()]);
-  const filters = [["attention", "Needs attention"], ["active", "Active"], ["inactive", "Inactive"], ["all", "All"]];
+  const filters = [["attention", "Needs attention"], ["active", "Active"], ["inactive", "Inactive"], ["dismissed", "Dismissed"], ["all", "All"]];
   const search = h("input", { type: "search", placeholder: "Filter by name or path…", value: state.ui.repoSearch, "aria-label": "Filter repos" });
   search.addEventListener("input", () => { state.ui.repoSearch = search.value; renderTable(); });
   const chips = h("div", { class: "chips" });
@@ -416,7 +418,7 @@ function pageRepos() {
       return h("tr", { class: `clickable${g.active ? "" : " dim"}`, onclick: () => { location.hash = `#/repo/${encodeURIComponent(g.key)}`; } },
         h("td", {}, h("div", { class: "name-cell" },
           h("span", { class: "dot", "data-sev": rep.worstSeverity || (rep.error ? "error" : "ok") }),
-          h("div", {}, h("div", { class: "name" }, g.label), h("div", { class: "small muted" }, rep.branch ? `on ${rep.branch}` : tildify(rep.path))))),
+          h("div", {}, h("div", { class: "name" }, g.label, g.dismissedAt ? [" ", h("span", { class: "tag", title: "Turned off until its next git activity" }, "dismissed")] : null), h("div", { class: "small muted" }, rep.branch ? `on ${rep.branch}` : tildify(rep.path))))),
         h("td", {}, rep.worstSeverity ? sevBadge(rep.worstSeverity) : rep.error ? h("span", { class: "tag", title: rep.error }, "error") : h("span", { class: "badge ok" }, "clean")),
         h("td", { class: "right num" }, serious ? h("span", { class: "tag serious" }, serious) : h("span", { class: "faint" }, "–")),
         h("td", { class: "right num" }, rep.vulnerablePackages || h("span", { class: "faint" }, "0")),
@@ -500,8 +502,17 @@ function pageRepo() {
   }));
   const previewBtn = h("button", { class: "btn", type: "button" }, "Preview");
   previewBtn.addEventListener("click", () => busy(previewBtn, "…", async () => showMarkdown(d.label, (await call("GET", mdQuery())).markdown)));
+  const dismissBtn = d.dismissedAt
+    ? h("button", { class: "btn", type: "button", title: `Dismissed ${ago(d.dismissedAt)}. It also turns back on by itself with its next git activity.` }, "Turn back on")
+    : h("button", { class: "btn", type: "button", title: "No reminders and alerts only for malicious packages, until this repo has git activity again (commit, checkout, pull…)" }, "Dismiss");
+  dismissBtn.addEventListener("click", () => busy(dismissBtn, "…", async () => {
+    await call("POST", d.dismissedAt ? "/api/repo/undismiss" : "/api/repo/dismiss", { key: d.key });
+    toast(d.dismissedAt ? "Turned back on" : "Dismissed until its next git activity");
+    await refresh();
+  }));
   if (d.machine) crumbs.push(h("span", { class: "tag machine" }, icon("machines"), d.machine), " ");
-  setHead(d.label, crumbs, d.packages.length ? [previewBtn, copyBtn] : []);
+  if (d.dismissedAt) crumbs.push(h("span", { class: "tag", title: "Turned off until its next git activity" }, `dismissed ${ago(d.dismissedAt)}`), " ");
+  setHead(d.label, crumbs, d.packages.length ? [dismissBtn, previewBtn, copyBtn] : [dismissBtn]);
 
   const pkgs = scope === "rep" ? d.packages.filter((p) => p.checkouts.some((c) => c.path === rep.path)) : d.packages;
   const serious = pkgs.filter((p) => isSerious(p.worstSeverity, p.direct, p.dev)).length;
@@ -680,17 +691,19 @@ function pagePackages() {
 }
 
 function feedList(events) {
-  const ICON = { new: "alert", resolved: "check", reminder: "bell" };
+  const ICON = { new: "alert", resolved: "check", reminder: "bell", watching: "folder" };
   return h("ul", { class: "list" },
     ...events.map((e) => {
       const what =
         e.kind === "new" ? `${plural(e.total, "new vulnerable package")} in ${e.repo}`
         : e.kind === "resolved" ? `${plural(e.total, "vulnerable package")} fixed in ${e.repo}`
+        : e.kind === "watching" ? `Now watching ${e.repo} (${plural(e.total, "project")} found)`
         : `Reminder: ${e.repo}`;
       const pkgs = (e.packages || []).slice(0, 4).map((p) => `${p.name}@${p.version}`).join(", ");
       const more = e.total > 4 && e.packages?.length ? ` +${e.total - 4}` : "";
       const clickable = e.repoKey && e.repoKey !== "reminder";
-      return h("li", { class: clickable ? "clickable" : null, onclick: clickable ? () => { location.hash = `#/repo/${encodeURIComponent(e.repoKey)}`; } : null },
+      const target = e.kind === "watching" ? "#/folders" : `#/repo/${encodeURIComponent(e.repoKey)}`;
+      return h("li", { class: clickable ? "clickable" : null, onclick: clickable ? () => { location.hash = target; } : null },
         h("span", { class: `feed-icon ${e.kind}` }, icon(ICON[e.kind] || "alert")),
         h("div", { class: "grow" },
           h("div", { class: "title" }, what),
@@ -704,7 +717,7 @@ function feedList(events) {
 function pageActivity() {
   const o = state.overview;
   setHead("Activity", [], []);
-  const filters = [["all", "All"], ["new", "New"], ["resolved", "Fixed"], ["reminder", "Reminders"], ["first", "First scans"]];
+  const filters = [["all", "All"], ["new", "New"], ["resolved", "Fixed"], ["reminder", "Reminders"], ["watching", "New folders"], ["first", "First scans"]];
   const match = (e, f) => (f === "first" ? e.kind === "new" && e.firstScan : !(e.kind === "new" && e.firstScan) && (f === "all" || e.kind === f));
   const chips = h("div", { class: "chips" });
   const host = h("div", {});
@@ -777,9 +790,109 @@ function pageFolders() {
     : empty("Nothing excluded", "Ignored projects and folders show up here.");
 
   $("page").replaceChildren(h("div", { class: "stack" },
+    findCard(),
     card("Watched folders", "selfguard discovers projects in these folders and below, skipping node_modules and similar.", roots,
       suggestions ? h("div", {}, h("div", { class: "small muted" }, "Suggestions found on this machine:"), h("div", { class: "gap-top" }, suggestions)) : null),
     card("Excluded", "Never tracked or discovered, including everything inside.", excluded)));
+}
+
+// ---------- find my projects ----------
+
+let findPoll = null;
+
+/** Card on Folders: search the whole home folder, then pick the places to watch. */
+function findCard() {
+  const host = h("div", {});
+  const job = state.find;
+  const start = h("button", { class: "btn primary", type: "button" }, "Find my projects");
+  start.addEventListener("click", () => busy(start, "Starting…", async () => {
+    state.find = await call("POST", "/api/everywhere/start", {});
+    state.findChoice = null;
+    pollFind();
+    pageFolders();
+  }));
+
+  if (!job || (!job.running && !job.result && !job.error)) {
+    const mac = navigator.platform.startsWith("Mac");
+    host.append(h("div", { class: "prose small" },
+      h("p", {}, "Don't keep your code in one folder? selfguard can search your whole home folder and group what it finds into a few places to watch. It skips dependencies, build output, caches, hidden and system folders, cloud drives and other disks; worktrees that tools keep in hidden folders are found through their repos. It only lists folders, never opens your files, and takes a minute or two."),
+      mac ? h("p", {}, "macOS may ask once whether selfguard (node) can access Desktop, Documents or Downloads. Allow it to include projects there; if you don't, those folders are skipped.") : null));
+    return card("Find my projects", null, host, null, start);
+  }
+  if (job.running) {
+    const p = job.progress || { visited: 0, found: 0, current: "" };
+    const cancel = h("button", { class: "btn small", type: "button" }, "Cancel");
+    cancel.addEventListener("click", () => busy(cancel, "…", async () => { state.find = await call("POST", "/api/everywhere/cancel", {}); }));
+    host.append(h("div", { class: "find-progress" },
+      h("span", { class: "spinner" }),
+      h("div", { class: "grow" },
+        h("div", {}, `${p.visited.toLocaleString()} folders searched · ${plural(p.found, "project")} found`),
+        h("div", { class: "small muted mono path" }, p.current || "…"))));
+    return card("Find my projects", "Searching your home folder…", host, null, cancel);
+  }
+  if (job.error) {
+    host.append(empty("The search failed", job.error));
+    return card("Find my projects", null, host, null, start);
+  }
+
+  const r = job.result;
+  const places = r.places.filter((pl) => !pl.watched);
+  state.findChoice ??= new Set(places.filter((pl) => pl.recommended).map((pl) => pl.path));
+  const choice = state.findChoice;
+  const rows = places.map((pl) => {
+    const box = h("input", { type: "checkbox", checked: choice.has(pl.path), "aria-label": `Watch ${pl.path}` });
+    box.addEventListener("change", () => { if (box.checked) choice.add(pl.path); else choice.delete(pl.path); applyBtn.textContent = applyLabel(); });
+    const bits = [plural(pl.projects, "project"), `${pl.active} active`];
+    if (pl.secondary) bits.push(`${pl.secondary} samples/copies`);
+    if (pl.noGit) bits.push(`${pl.noGit} without git`);
+    if (pl.lastActivity) bits.push(`last activity ${ago(pl.lastActivity)}`);
+    return h("li", {},
+      h("label", { class: "place" }, box,
+        h("div", { class: "grow" },
+          h("div", { class: "title mono" }, tildify(pl.path), h("span", { class: "faint" }, ` · depth ${pl.depth}`)),
+          h("div", { class: "sub" }, bits.join(" · ")),
+          pl.examples.length ? h("div", { class: "sub mono faint" }, pl.examples.map((x) => tildify(x).replace(tildify(pl.path), "…")).join("  ")) : null)),
+      pl.recommended ? h("span", { class: "badge ok" }, "recommended") : null);
+  });
+  const applyLabel = () => (choice.size ? `Watch ${plural(choice.size, "folder")}` : "Done");
+  const applyBtn = h("button", { class: "btn primary", type: "button" }, applyLabel());
+  applyBtn.addEventListener("click", () => busy(applyBtn, "Applying…", async () => {
+    const watch = [...choice];
+    const ignore = places.map((pl) => pl.path).filter((pth) => !choice.has(pth));
+    if (watch.length === 0 && ignore.length && !confirm("Exclude all these folders from discovery?\n\nselfguard won't track or suggest them again (you can include them again below).")) return;
+    const res = await call("POST", "/api/everywhere/apply", { watch, ignore });
+    toast(watch.length
+      ? `Watching ${plural(res.watching.length, "more folder")}; ${plural(res.discovered?.registered ?? 0, "new project")} registered.`
+      : "Nothing new to watch.");
+    state.find = null;
+    state.findChoice = null;
+    await refresh();
+  }));
+  const again = h("button", { class: "btn small", type: "button" }, "Search again");
+  again.addEventListener("click", () => busy(again, "Starting…", async () => { state.find = await call("POST", "/api/everywhere/start", {}); state.findChoice = null; pollFind(); pageFolders(); }));
+  const already = r.places.filter((pl) => pl.watched).length;
+  const notes = [
+    r.denied.length ? `Not allowed to read: ${r.denied.slice(0, 3).map(tildify).join(", ")}${r.denied.length > 3 ? "…" : ""}.` : null,
+    r.heavy.length ? `Cut short (many folders, no project): ${r.heavy.map(tildify).join(", ")}.` : null,
+  ].filter(Boolean);
+  host.append(
+    places.length ? h("ul", { class: "list" }, ...rows) : empty("Everything is already watched", `${plural(r.projects, "project")} found, all inside your watched folders.`),
+    notes.length ? h("div", { class: "small muted find-notes" }, notes.join(" ")) : null);
+  const sub = `${plural(r.projects, "project")} in ${plural(r.places.length, "place")} · ${Math.round(r.ms / 1000)} s · ${r.visited.toLocaleString()} folders${already ? ` · ${already} already watched` : ""}. Unchecked folders are excluded from discovery.`;
+  return card("Find my projects", sub, host, places.length ? applyBtn : null, again);
+}
+
+function pollFind() {
+  clearInterval(findPoll);
+  findPoll = setInterval(async () => {
+    try {
+      state.find = await call("GET", "/api/everywhere/status");
+    } catch {
+      return;
+    }
+    if (!state.find.running) clearInterval(findPoll);
+    if (state.route.name === "folders") pageFolders();
+  }, 1000);
 }
 
 async function setDepth(root, depth) {
@@ -1132,6 +1245,18 @@ function pageSettings() {
     settingRow("Reminder", "A notification about open malicious, critical, or high (direct) issues in active repos. Sent between 9:00 and 21:00, only if there is something serious.", [remind, sendNow]),
     settingRow("Active window", "Checkouts without git activity for longer are inactive: still listed, but they only alert for malicious packages.", [days, h("span", { class: "muted small" }, "days")]),
   ];
+  {
+    const on = o.settings.autoDiscover;
+    const toggle = h("button", { class: `btn small${on ? "" : " primary"}`, type: "button" }, on ? "Turn off" : "Turn on");
+    toggle.addEventListener("click", () => busy(toggle, "…", async () => {
+      await call("POST", "/api/settings", { autoDiscover: !on });
+      toast(on ? "Automatic discovery off" : "Automatic discovery on");
+      await refresh();
+    }));
+    rows.push(settingRow("Find new projects on its own",
+      `${on ? "On" : "Off"}: once a week selfguard searches your home folder and starts watching new folders with active repos, with a notification.${o.settings.lastEverywhere ? ` Last search ${ago(o.settings.lastEverywhere)}.` : ""}`,
+      [toggle, h("a", { class: "btn small", href: "#/folders" }, "Search now")]));
+  }
 
   if (o.schedule) {
     const on = o.schedule.enabled;
@@ -1203,7 +1328,10 @@ async function loadForRoute() {
   const r = state.route;
   const jobs = [];
   if (r.name === "overview" || r.name === "packages") jobs.push(loadPackages());
-  if (r.name === "folders") jobs.push(loadFolders());
+  if (r.name === "folders") {
+    jobs.push(loadFolders());
+    if (!state.find) jobs.push(call("GET", "/api/everywhere/status").then((j) => { state.find = j; if (j.running) pollFind(); }));
+  }
   if (r.name === "machines") jobs.push(loadMachines());
   if (r.name === "repo" && r.arg) jobs.push(loadRepo(r.arg).catch((e) => { toast(e.message); location.hash = "#/repos"; }));
   await Promise.all(jobs);

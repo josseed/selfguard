@@ -40,6 +40,10 @@ HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
   of a known repo isn't reported as news.
 - **Hands-off.** `cd` into a project and it is registered and scanned in the background. New
   clones in your code folders are picked up automatically.
+- **Finds your projects even if you don't keep them in one place.** "Find my projects" searches
+  your home folder and skips dependencies, caches, cloud drives and copies. It finds agent
+  worktrees through their repos and proposes a few folders to watch. A weekly pass picks up new
+  ones on its own.
 - **Malicious packages first.** OSV includes the OpenSSF malicious-packages feed (`MAL-*`).
   Compromised releases, like the Shai-Hulud npm worm, outrank any CVE and open a dialog that
   stays on screen until you dismiss it.

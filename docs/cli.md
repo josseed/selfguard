@@ -10,7 +10,7 @@ human-readable output (see [AI and automation](ai-and-automation.md#json-output)
 - [Setup](#setup): `setup`, `init`, `schedule`
 - [Dashboard and alerts](#dashboard-and-alerts): `ui`, `app`, `remind`, `settings`
 - [Projects](#projects): `status`, `scan`, `report`, `sync`, `check`, `where`, `vuln`
-- [Folders](#folders): `roots`, `discover`, `forget`, `unexclude`
+- [Folders](#folders): `roots`, `discover`, `forget`, `unexclude`, `dismiss`, `undismiss`
 - [AI and automation](#ai-and-automation): `mcp`, `guide`
 - [Exit codes](#exit-codes) · [Environment variables](#environment-variables) · [Files](#files)
 
@@ -90,7 +90,7 @@ Lists the serious open issues in your active repos and sends the reminder notifi
 ones in direct dependencies. Each repo is judged by its main checkout (or its most recently
 active one). `--dry-run` only prints. The scheduled reminder uses the same list.
 
-### `selfguard settings [--remind daily|weekly|off] [--active-days N]`
+### `selfguard settings [--remind daily|weekly|off] [--active-days N] [--auto-discover on|off]`
 
 Shows or changes alert settings.
 
@@ -182,6 +182,20 @@ already registered from it. Use `forget` for that.
 Searches the watched folders for projects that aren't tracked yet, then registers and scans them.
 With `--dry-run`, only lists what it would add. `sync` runs the same discovery automatically.
 
+### `selfguard discover --everywhere [--dry-run] [--yes]`
+
+Searches your whole home folder (read-only, a minute or two; see
+[How it works](how-it-works.md#finding-projects) for what it skips) and lists the **places**
+it would watch: folders with their project count, active repos and depth. Recommended places,
+those with active repos, are checked.
+
+- **In a terminal:** asks before watching the checked places.
+- **With `--yes`:** watches them without asking.
+- **With `--dry-run`, or `--json` without `--yes`:** only lists them.
+
+With `--background`, it is the weekly automatic pass. Settings decides whether it runs
+(`--auto-discover`), and it only searches when the last search is a week old.
+
 ### `selfguard forget [dir] [--keep-discoverable]`
 
 Stops tracking the project containing `dir` (default: current directory). By default it also
@@ -194,6 +208,18 @@ Stops tracking the project containing `dir` (default: current directory). By def
 ### `selfguard unexclude <dir>`
 
 Removes a path from the exclusion list so discovery can find it again.
+
+### `selfguard dismiss [dir|key] [--list]`
+
+Turns off the repo containing `dir` (default: current directory), or the repo with that key
+(as shown by `status --json` or `dismiss --list`, useful for other machines). Every checkout of
+the repo counts as inactive (no reminders, alerts only for malicious packages, hidden from
+`status` without `--all`) until one of them has git activity again: then it turns back on by
+itself. Dismissing again restarts the clock. `--list` shows the dismissed repos.
+
+### `selfguard undismiss [dir|key]`
+
+Turns a dismissed repo back on now.
 
 ---
 
@@ -314,6 +340,7 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `~/.selfguard/selfguard.log` | Log of background scans and syncs. |
 | `~/Library/LaunchAgents/dev.selfguard.sync.plist` | macOS scheduled sync (`schedule on`). |
 | `~/Library/LaunchAgents/dev.selfguard.watch.plist` | macOS lockfile watcher (`schedule on`). |
+| `~/Library/LaunchAgents/dev.selfguard.discover.plist` | Weekly "find my projects" in the background (`schedule on`, unless `--auto-discover off`). |
 | `~/Library/LaunchAgents/dev.selfguard.remote.plist` | Checks other machines every 15 minutes (`schedule on`, when you have machines). |
 | `~/Applications/selfguard.app` | macOS launcher for the dashboard (`app install`). |
 

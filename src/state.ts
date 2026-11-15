@@ -6,15 +6,20 @@ export interface RuntimeState {
   lastReminder?: string;
   lastSync?: string;
   lastCheck?: string;
+  /** Last "find my projects" over the whole home folder. */
+  lastEverywhere?: string;
+  /** Watched folders the user removed: automatic discovery never adds them back. */
+  dismissedPlaces?: string[];
 }
 
 export function loadState(): RuntimeState {
   const raw = readJsonFile<RuntimeState>(stateFile());
   if (!raw || !isObject(raw)) return {};
   const out: RuntimeState = {};
-  for (const k of ["lastReminder", "lastSync", "lastCheck"] as const) {
+  for (const k of ["lastReminder", "lastSync", "lastCheck", "lastEverywhere"] as const) {
     if (typeof raw[k] === "string") out[k] = raw[k];
   }
+  if (Array.isArray(raw.dismissedPlaces)) out.dismissedPlaces = raw.dismissedPlaces.filter((x): x is string => typeof x === "string").slice(-500);
   return out;
 }
 

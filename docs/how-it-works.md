@@ -19,8 +19,8 @@
 ## Finding projects
 
 A **project** is a folder with a lockfile (or a `package.json` at the root of a git repo that has
-no lockfile yet). selfguard never crawls your whole disk. A project gets tracked in one of three
-ways:
+no lockfile yet). selfguard never crawls your whole disk on its own, and it never leaves your home
+folder. A project gets tracked in one of four ways:
 
 1. **Watched folders.** These are folders you chose in `setup` or added with `roots add`.
    Discovery is breadth-first and depth-limited (default 5 levels). It doesn't follow symlinks
@@ -33,9 +33,34 @@ ways:
    - when a watched folder is your home directory: `Library`, `Applications`, `Movies`,
      `Music`, `Pictures`, `Public`;
    - anything you excluded with `forget`.
-2. **The shell hook.** When you `cd` into a folder, selfguard walks up to the nearest folder
+2. **Find my projects** (`selfguard discover --everywhere`, the dashboard's Folders page, and
+   weekly in the background). This is for code that isn't all in one folder. It walks the
+   whole home folder read-only, with no depth limit, but prunes hard:
+   - dependency, build and cache folders anywhere: `node_modules`, `vendor`, `target`, `dist`,
+     `build`, `out`, `coverage`, `venv`, `__pycache__`, `DerivedData`…;
+   - every hidden folder: dotfiles, tool caches, the trash;
+   - in the home: `Library` (which also holds iCloud and `CloudStorage` drives, where listing
+     files can download them), `Applications`, media folders and `go/pkg`;
+   - other disks and network mounts (it never crosses filesystems) and symlinks;
+   - inside a repo, the folder names its own `.gitignore` ignores;
+   - a top-level folder that goes through 40,000 folders without a single project is cut
+     short and reported.
+
+   Worktrees that tools keep in hidden folders (`~/.t3/worktrees`, `~/repo/.worktrees`) are
+   found from their main repo's `.git/worktrees/*/gitdir`, not by walking hidden folders.
+   Projects under `examples/`, `fixtures/`, `templates/`, `test/`… of a repo, and copies under
+   `evidence/`, `artifacts/`, `backups/`, `archive/`… anywhere, are marked as samples. Like
+   projects without git, they never decide what gets watched.
+
+   What's found is grouped into **places**: usually the folder right below the home (or the
+   hidden folder holding worktrees), with the depth that covers its projects. Places with repos
+   active in the last 30 days are recommended. Approved places become watched folders; the
+   others are excluded. The weekly background pass watches new recommended places by itself,
+   notifies you, and never re-adds a folder you removed. On macOS, it only enters Desktop,
+   Documents and Downloads once a watched folder lives there.
+3. **The shell hook.** When you `cd` into a folder, selfguard walks up to the nearest folder
    with a lockfile, stopping at the git root or your home directory, and registers it.
-3. **Explicitly**, with `selfguard scan <dir>`.
+4. **Explicitly**, with `selfguard scan <dir>`.
 
 ## Reading lockfiles
 
@@ -116,6 +141,17 @@ orphaned worktrees never are.
 
 Inactive checkouts are still scanned and listed (`status --all`, the dashboard's Inactive tab),
 but they only alert for malicious packages.
+
+### Dismissed repos
+
+Sometimes a repo is recent but you don't care about it right now (a repo you cloned to read, a
+spike you parked). `selfguard dismiss [dir]` (or **Dismiss** on the repo's page in the
+dashboard) turns the whole repo off, every checkout included: it is treated like an inactive
+checkout from that moment. It comes back by itself as soon as any of its checkouts has git
+activity after the dismissal (the same signal as above: a commit, checkout, pull or `git
+status`), so you never have to remember to turn it back on. `selfguard undismiss` does it right
+away. Dismissals live in `~/.selfguard/config.json`; the next `sync` or `check` cleans up the
+ones that came back.
 
 ## Alerts
 

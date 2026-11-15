@@ -9,7 +9,7 @@ import { eventsFile, stateRoot } from "./paths.ts";
 import { groupByPackage } from "./report.ts";
 import type { Finding } from "./store.ts";
 
-export type EventKind = "new" | "resolved" | "reminder";
+export type EventKind = "new" | "resolved" | "reminder" | "watching";
 
 export interface EventPackage {
   name: string;

@@ -10,10 +10,10 @@ import { findProject } from "./lockfile/detect.ts";
 import { runMcpServer } from "./mcp.ts";
 import { groupByPackage, paint, renderFindings, severityLabel, tildify } from "./report.ts";
 import { clean } from "./sanitize.ts";
-import { parseInterval, scheduleOff, scheduleOn, scheduleStatus, updateRemoteAgent, updateWatcher } from "./schedule.ts";
+import { parseInterval, scheduleOff, scheduleOn, scheduleStatus, updateDiscoverAgent, updateRemoteAgent, updateWatcher } from "./schedule.ts";
 import { runSetup } from "./setup.ts";
 import { loadRepo } from "./store.ts";
-import { isInteractive } from "./tui.ts";
+import { confirm, isInteractive, withSpinner } from "./tui.ts";
 import { runUi } from "./ui/server.ts";
 import { VERSION } from "./version.ts";
 
@@ -33,7 +33,7 @@ Dashboard and alerts:
                                      macOS: ~/Applications/selfguard.app opens the dashboard
                                      (Spotlight, Launchpad, Dock)
   selfguard remind                   send the reminder of serious open issues now
-  selfguard settings [--remind daily|weekly|off] [--active-days N]
+  selfguard settings [--remind daily|weekly|off] [--active-days N] [--auto-discover on|off]
                                      reminder frequency; days of git inactivity before a
                                      checkout stops alerting (default 30)
 
@@ -52,9 +52,18 @@ Folders:
   selfguard roots                    list watched folders and exclusions
   selfguard roots add <dir> [--depth N] | remove <dir>
   selfguard discover [--dry-run]     register new projects found in your folders
+  selfguard discover --everywhere [--dry-run] [--yes]
+                                     find projects anywhere in your home folder, grouped
+                                     into places to watch (skips caches, dependencies,
+                                     cloud drives, copies); weekly in the background
   selfguard forget [dir] [--keep-discoverable]
                                      stop tracking (and exclude) a project or folder
   selfguard unexclude <dir>          allow an excluded path to be discovered again
+  selfguard dismiss [dir|key]        turn a repo off (all its checkouts): no reminders, alerts
+                                     only for malicious packages. It turns back on by itself
+                                     with the next git activity (commit, checkout, pull...)
+  selfguard dismiss --list           repos turned off
+  selfguard undismiss [dir|key]      turn a dismissed repo back on now
 
 Other machines (dev servers over SSH; read-only, project code never runs there):
   selfguard machines                 list machines and their last sync
@@ -177,9 +186,11 @@ function cmdStatus(args: string[]): number {
 
   const showAll = values.all ?? false;
   let hiddenRepos = 0;
+  let hiddenDismissed = 0;
   for (const g0 of status.repos) {
     if (!g0.active && !showAll) {
-      hiddenRepos++;
+      if (g0.dismissedAt) hiddenDismissed++;
+      else hiddenRepos++;
       continue;
     }
     const visible = showAll ? g0.checkouts : g0.checkouts.filter((k) => k.active);
@@ -201,7 +212,7 @@ function cmdStatus(args: string[]): number {
           : c.dim("clean");
     const head = worse ? `${mainText} ${c.yellow(`· ${worse.vulnerablePackages} on ${clean(worse.branch ?? "another checkout", 40)}`)}` : mainText;
     const where = many ? c.dim(`${g.checkouts.length} checkouts`) : c.dim(tildify(g.checkouts[0]!.path));
-    const more = hiddenCheckouts ? c.dim(` +${hiddenCheckouts} inactive`) : "";
+    const more = (hiddenCheckouts ? c.dim(` +${hiddenCheckouts} inactive`) : "") + (g.dismissedAt ? c.dim(` dismissed ${ago(g.dismissedAt)}`) : "");
     const dimIf = (s: string) => (g.active ? s : c.dim(s));
     out.write(`${badge(g.worstSeverity, firstError)} ${g.machine ? c.dim(`${g.machine} · `) : ""}${c.bold(dimIf(clean(g.label, 80)))}  ${head}  ${where}${more}\n`);
     if (!many) continue;
@@ -214,6 +225,7 @@ function cmdStatus(args: string[]): number {
     });
   }
   if (hiddenRepos) out.write(c.dim(`${hiddenRepos} inactive repo(s) hidden (no git activity in ${api.getSettings().activeDays} days). Show them with --all.\n`));
+  if (hiddenDismissed) out.write(c.dim(`${hiddenDismissed} dismissed repo(s) hidden until their next git activity. List them with selfguard dismiss --list.\n`));
   return 0;
 }
 
@@ -315,15 +327,27 @@ async function cmdRemind(args: string[]): Promise<number> {
 }
 
 function cmdSettings(args: string[]): number {
-  const { values } = parseArgs({ args, options: { ...JSON_OPT, remind: { type: "string" }, "active-days": { type: "string" } } });
-  const patch: { remind?: unknown; activeDays?: unknown } = {};
+  const { values } = parseArgs({ args, options: { ...JSON_OPT, remind: { type: "string" }, "active-days": { type: "string" }, "auto-discover": { type: "string" } } });
+  const patch: { remind?: unknown; activeDays?: unknown; autoDiscover?: unknown } = {};
   if (values.remind !== undefined) patch.remind = values.remind;
   if (values["active-days"] !== undefined) patch.activeDays = Number(values["active-days"]);
+  if (values["auto-discover"] !== undefined) {
+    if (values["auto-discover"] !== "on" && values["auto-discover"] !== "off") usage("--auto-discover must be on or off");
+    patch.autoDiscover = values["auto-discover"] === "on";
+  }
   const s = Object.keys(patch).length ? api.updateSettings(patch) : api.getSettings();
+  if (patch.autoDiscover !== undefined) {
+    try {
+      updateDiscoverAgent(s.autoDiscover);
+    } catch {
+      /* the agent follows the setting next time the schedule is turned on */
+    }
+  }
   if (values.json) emit(s);
   else {
     out.write(`remind        ${s.remind}${s.lastReminder ? paint(out).dim(`  (last ${s.lastReminder})`) : ""}\n`);
     out.write(`active-days   ${s.activeDays}\n`);
+    out.write(`auto-discover ${s.autoDiscover ? "on" : "off"}${s.lastEverywhere ? paint(out).dim(`  (last search ${s.lastEverywhere})`) : ""}\n`);
     if (s.lastSync) out.write(paint(out).dim(`last sync     ${s.lastSync}\n`));
   }
   return 0;
@@ -373,8 +397,68 @@ function cmdApp(args: string[]): number {
   }
 }
 
+function printPlaces(scan: api.EverywhereScan): void {
+  const c = paint(out);
+  const secs = Math.round(scan.ms / 1000);
+  out.write(`Searched ${scan.visited.toLocaleString("en-US")} folders in ${secs}s: ${scan.projects} project(s) in ${scan.places.length} place(s).\n`);
+  for (const p of scan.places) {
+    const box = p.watched ? c.dim("[✓]") : p.recommended ? c.green("[x]") : "[ ]";
+    const bits = [`${p.projects} project(s)`, `${p.active} active`];
+    if (p.secondary) bits.push(`${p.secondary} samples/copies`);
+    if (p.noGit) bits.push(`${p.noGit} without git`);
+    const state = p.watched ? c.dim("  already watched") : "";
+    out.write(`${box} ${c.bold(tildify(p.path))} ${c.dim(`depth ${p.depth}`)}  ${c.dim(bits.join(", "))}${state}\n`);
+  }
+  if (scan.skipped.length) out.write(c.dim(`Skipped (macOS privacy, no watched folder there yet): ${scan.skipped.map(tildify).join(", ")}\n`));
+  if (scan.denied.length) out.write(c.dim(`Not allowed to read: ${scan.denied.slice(0, 5).map(tildify).join(", ")}${scan.denied.length > 5 ? "…" : ""}\n`));
+  if (scan.heavy.length) out.write(c.dim(`Cut short (many folders, no project): ${scan.heavy.map(tildify).join(", ")}\n`));
+}
+
+async function cmdDiscoverEverywhere(values: { json?: boolean; "dry-run"?: boolean; background?: boolean; yes?: boolean }): Promise<number> {
+  const c = paint(out);
+  if (values.background) {
+    let r: api.AutoDiscoverResult;
+    try {
+      r = await api.autoDiscover();
+    } catch (e) {
+      if (e instanceof api.ApiError && e.code === "busy") return 0;
+      throw e;
+    }
+    if (r.ran) out.write(`${new Date().toISOString()} discover --everywhere: ${r.scan?.projects ?? 0} project(s), ${r.added.length} new place(s)${r.added.length ? `: ${r.added.map((a) => a.path).join(", ")}` : ""}\n`);
+    return 0;
+  }
+  const scan = await (out.isTTY && !values.json
+    ? withSpinner("Searching your home folder (this can take a minute)…", () => api.findEverywhere())
+    : api.findEverywhere());
+  const chosen = scan.places.filter((p) => p.recommended);
+  if (values.json && (values["dry-run"] || !values.yes)) {
+    emit(scan);
+    return 0;
+  }
+  if (!values.json) printPlaces(scan);
+  if (values["dry-run"] || chosen.length === 0) {
+    if (!values.json && chosen.length === 0) out.write("Nothing new to watch.\n");
+    return 0;
+  }
+  if (!values.yes) {
+    if (!isInteractive()) {
+      out.write(`Run again with --yes to watch the ${chosen.length} checked place(s), or use selfguard roots add.\n`);
+      return 0;
+    }
+    if (!(await confirm(`Watch the ${chosen.length} checked place(s)?`))) return 0;
+  }
+  const r = await api.applyPlaces(chosen.map((p) => ({ path: p.path, depth: p.depth })));
+  if (values.json) emit({ scan, applied: r });
+  else out.write(`${c.green("✓")} Watching ${r.watching.length} more folder(s); ${r.discovered?.registered ?? 0} new project(s) registered, ${r.discovered?.withVulnerabilities ?? 0} with vulnerabilities.\n`);
+  return 0;
+}
+
 async function cmdDiscover(args: string[]): Promise<number> {
-  const { values } = parseArgs({ args, options: { ...JSON_OPT, "dry-run": { type: "boolean" } } });
+  const { values } = parseArgs({
+    args,
+    options: { ...JSON_OPT, "dry-run": { type: "boolean" }, everywhere: { type: "boolean" }, background: { type: "boolean" }, yes: { type: "boolean", short: "y" } },
+  });
+  if (values.everywhere) return cmdDiscoverEverywhere(values);
   const r = await api.discoverNew({ dryRun: values["dry-run"] ?? false });
   if (values.json) {
     emit(r);
@@ -669,6 +753,30 @@ function cmdUnexclude(args: string[]): number {
   return 0;
 }
 
+function cmdDismiss(args: string[]): number {
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { ...JSON_OPT, list: { type: "boolean" } } });
+  const c = paint(out);
+  if (values.list) {
+    const list = api.listDismissed();
+    if (values.json) emit({ dismissed: list });
+    else if (!list.length) out.write("No dismissed repos.\n");
+    else for (const d of list) out.write(`${c.bold(clean(d.label, 80))}  ${c.dim(`dismissed ${ago(d.dismissedAt)} · ${clean(d.key, 120)}`)}\n`);
+    return 0;
+  }
+  const r = api.dismissRepo(api.resolveRepoKey(positionals[0] ?? "."));
+  if (values.json) emit(r);
+  else out.write(`Dismissed ${clean(r.label, 80)}. It turns back on with its next git activity (or: selfguard undismiss).\n`);
+  return 0;
+}
+
+function cmdUndismiss(args: string[]): number {
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: JSON_OPT });
+  const r = api.undismissRepo(api.resolveRepoKey(positionals[0] ?? "."));
+  if (values.json) emit(r);
+  else out.write(r.removed ? "Turned back on.\n" : "That repo was not dismissed.\n");
+  return 0;
+}
+
 function cmdSchedule(args: string[]): number {
   const { values, positionals } = parseArgs({
     args,
@@ -679,7 +787,7 @@ function cmdSchedule(args: string[]): number {
     case "on": {
       const seconds = parseInterval(values.every ?? "6h");
       const targets = api.watchTargets();
-      const plist = scheduleOn(seconds, targets, { machines: api.hasMachines() });
+      const plist = scheduleOn(seconds, targets, { machines: api.hasMachines(), autoDiscover: api.getSettings().autoDiscover });
       // Same Node-path concern as the agents: keep the launcher app in sync.
       if (appStatus().installed && !appStatus().upToDate) installApp();
       if (values.json) emit({ enabled: true, intervalSeconds: seconds, plist, node: process.execPath, watchedPaths: targets.length });
@@ -702,6 +810,7 @@ function cmdSchedule(args: string[]): number {
       else {
         out.write(s.loaded ? `enabled (${tildify(s.plist)})\n` : s.installed ? "installed but not loaded\n" : "disabled\n");
         if (s.loaded) out.write(s.watcher.loaded ? `lockfile watcher: ${s.watcher.paths} path(s)\n` : "lockfile watcher: not running (run selfguard sync)\n");
+        if (s.loaded) out.write(s.discover.loaded ? "find my projects: weekly search of your home folder\n" : "find my projects: off (selfguard settings --auto-discover on)\n");
         if (s.loaded && api.hasMachines()) out.write(s.remote.loaded ? "other machines: checked every 15 minutes\n" : "other machines: not scheduled (run selfguard schedule on)\n");
       }
       return 0;
@@ -758,6 +867,10 @@ async function main(argv: string[]): Promise<number> {
       return cmdForget(rest);
     case "unexclude":
       return cmdUnexclude(rest);
+    case "dismiss":
+      return cmdDismiss(rest);
+    case "undismiss":
+      return cmdUndismiss(rest);
     case "schedule":
       return cmdSchedule(rest);
     case "mcp":
