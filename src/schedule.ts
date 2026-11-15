@@ -1,14 +1,23 @@
-/** Periodic `selfguard sync` via a per-user launchd agent (macOS). */
+/**
+ * Background work via per-user launchd agents (macOS):
+ * - dev.selfguard.sync: `selfguard sync` every N hours (discovery, new advisories, reminders);
+ * - dev.selfguard.watch: `selfguard check` as soon as a lockfile of an active checkout changes
+ *   (git pull, installs, merges), so fixes and new risks show up in seconds.
+ */
 import { execFileSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { atomicWrite } from "./fsutil.ts";
 import { cliEntry } from "./hook.ts";
 import { logFile } from "./paths.ts";
 
-const LABEL = "dev.selfguard.sync";
-const plistPath = (): string => join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`);
+const SYNC_LABEL = "dev.selfguard.sync";
+const WATCH_LABEL = "dev.selfguard.watch";
+/** launchd watches each path with a kqueue descriptor; keep the set bounded. */
+export const MAX_WATCH_PATHS = 200;
+
+const plistPath = (label: string): string => join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
 const domain = (): string => `gui/${userInfo().uid}`;
 
 function xml(s: string): string {
@@ -27,57 +36,123 @@ function assertMac(): void {
   if (process.platform !== "darwin") throw new Error("scheduling is only implemented for macOS (launchd) for now");
 }
 
-export function scheduleOn(seconds: number): string {
-  assertMac();
-  const args = [process.execPath, cliEntry(), "sync", "--background"];
-  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+/** Plist for one of our agents. Pure: tested directly. */
+export function agentPlist(
+  label: string,
+  args: string[],
+  trigger: { interval: number } | { watch: string[] },
+  log: string,
+): string {
+  const triggerXml =
+    "interval" in trigger
+      ? `  <key>StartInterval</key><integer>${trigger.interval}</integer>\n  <key>RunAtLoad</key><true/>`
+      : `  <key>WatchPaths</key>\n  <array>\n${trigger.watch.map((p) => `    <string>${xml(p)}</string>`).join("\n")}\n  </array>\n  <key>ThrottleInterval</key><integer>15</integer>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>${LABEL}</string>
+  <key>Label</key><string>${xml(label)}</string>
   <key>ProgramArguments</key>
   <array>
 ${args.map((a) => `    <string>${xml(a)}</string>`).join("\n")}
   </array>
-  <key>StartInterval</key><integer>${seconds}</integer>
-  <key>RunAtLoad</key><true/>
+${triggerXml}
   <key>ProcessType</key><string>Background</string>
   <key>LowPriorityIO</key><true/>
-  <key>StandardOutPath</key><string>${xml(logFile())}</string>
-  <key>StandardErrorPath</key><string>${xml(logFile())}</string>
+  <key>StandardOutPath</key><string>${xml(log)}</string>
+  <key>StandardErrorPath</key><string>${xml(log)}</string>
 </dict>
 </plist>
 `;
+}
+
+function unload(label: string): void {
   try {
-    execFileSync("/bin/launchctl", ["bootout", `${domain()}/${LABEL}`], { stdio: "ignore" });
+    execFileSync("/bin/launchctl", ["bootout", `${domain()}/${label}`], { stdio: "ignore" });
   } catch {
     /* not loaded */
   }
-  atomicWrite(plistPath(), plist);
-  execFileSync("/bin/launchctl", ["bootstrap", domain(), plistPath()], { stdio: "ignore" });
-  return plistPath();
+}
+
+function install(label: string, plist: string): void {
+  unload(label);
+  atomicWrite(plistPath(label), plist);
+  execFileSync("/bin/launchctl", ["bootstrap", domain(), plistPath(label)], { stdio: "ignore" });
+}
+
+function isLoaded(label: string): boolean {
+  try {
+    execFileSync("/bin/launchctl", ["print", `${domain()}/${label}`], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function scheduleOn(seconds: number, watchPaths: string[]): string {
+  assertMac();
+  install(SYNC_LABEL, agentPlist(SYNC_LABEL, [process.execPath, cliEntry(), "sync", "--background"], { interval: seconds }, logFile()));
+  updateWatcher(watchPaths, { force: true });
+  return plistPath(SYNC_LABEL);
+}
+
+/**
+ * (Re)install the lockfile watcher with these paths, only when the schedule is on and the
+ * path set changed. Never call it from the watcher's own run: unloading would kill it.
+ */
+export function updateWatcher(paths: string[], opts: { force?: boolean } = {}): { watching: number; changed: boolean } {
+  if (process.platform !== "darwin" || process.env.SELFGUARD_NO_LAUNCHD === "1") return { watching: 0, changed: false };
+  if (!opts.force && !existsSync(plistPath(SYNC_LABEL))) return { watching: 0, changed: false };
+  const list = [...new Set(paths)].slice(0, MAX_WATCH_PATHS);
+  if (list.length === 0) {
+    const had = existsSync(plistPath(WATCH_LABEL));
+    unload(WATCH_LABEL);
+    rmSync(plistPath(WATCH_LABEL), { force: true });
+    return { watching: 0, changed: had };
+  }
+  const plist = agentPlist(WATCH_LABEL, [process.execPath, cliEntry(), "check", "--background"], { watch: list }, logFile());
+  let current = "";
+  try {
+    current = readFileSync(plistPath(WATCH_LABEL), "utf8");
+  } catch {
+    /* not installed */
+  }
+  if (current === plist && isLoaded(WATCH_LABEL)) return { watching: list.length, changed: false };
+  install(WATCH_LABEL, plist);
+  return { watching: list.length, changed: true };
 }
 
 export function scheduleOff(): boolean {
   assertMac();
-  try {
-    execFileSync("/bin/launchctl", ["bootout", `${domain()}/${LABEL}`], { stdio: "ignore" });
-  } catch {
-    /* not loaded */
+  let existed = false;
+  for (const label of [SYNC_LABEL, WATCH_LABEL]) {
+    unload(label);
+    existed = existsSync(plistPath(label)) || existed;
+    rmSync(plistPath(label), { force: true });
   }
-  const existed = existsSync(plistPath());
-  rmSync(plistPath(), { force: true });
   return existed;
 }
 
-export function scheduleStatus(): { installed: boolean; loaded: boolean; plist: string } {
+export interface ScheduleStatus {
+  installed: boolean;
+  loaded: boolean;
+  plist: string;
+  watcher: { installed: boolean; loaded: boolean; paths: number };
+}
+
+export function scheduleStatus(): ScheduleStatus {
   assertMac();
-  let loaded = false;
+  let paths = 0;
   try {
-    execFileSync("/bin/launchctl", ["print", `${domain()}/${LABEL}`], { stdio: "ignore" });
-    loaded = true;
+    const section = /<key>WatchPaths<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(readFileSync(plistPath(WATCH_LABEL), "utf8"));
+    paths = section?.[1]?.match(/<string>/g)?.length ?? 0;
   } catch {
-    loaded = false;
+    paths = 0;
   }
-  return { installed: existsSync(plistPath()), loaded, plist: plistPath() };
+  return {
+    installed: existsSync(plistPath(SYNC_LABEL)),
+    loaded: isLoaded(SYNC_LABEL),
+    plist: plistPath(SYNC_LABEL),
+    watcher: { installed: existsSync(plistPath(WATCH_LABEL)), loaded: isLoaded(WATCH_LABEL), paths },
+  };
 }

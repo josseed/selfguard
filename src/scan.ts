@@ -6,6 +6,7 @@ import { isSupported, parseLockfile } from "./lockfile/index.ts";
 import type { Dependency } from "./lockfile/types.ts";
 import { evaluate, severityOf, severityRank } from "./match.ts";
 import { getVulns, queryBatch, type OsvVuln } from "./osv.ts";
+import { repoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import { findingKey, loadRepo, type Finding, type RepoRecord } from "./store.ts";
 
@@ -62,6 +63,7 @@ function inventory(project: Project): Inventory {
     deps: [],
     skipped: 0,
     findings: [],
+    branch: repoIdentity(project.root)?.branch ?? null,
   };
 
   if (!project.lockfile || !project.lockType) {
@@ -141,9 +143,29 @@ function buildFindings(
 
 export interface ScanOutcome {
   record: RepoRecord;
-  /** Findings not present in the previous scan of this repo. */
+  /** Findings not present in the previous scan and not seen recently on any branch. */
   newFindings: Finding[];
+  /** Findings of the previous scan that are gone now, on the same branch (i.e. fixed). */
+  resolvedFindings: Finding[];
   firstScan: boolean;
+}
+
+const SEEN_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+const SEEN_MAX = 5000;
+
+/** Remember every finding this checkout has had recently, on any branch. */
+function updateSeen(previous: RepoRecord | null, findings: Finding[], now: string): Record<string, string> {
+  const seen: Record<string, string> = Object.create(null);
+  const cutoff = Date.parse(now) - SEEN_TTL_MS;
+  for (const [k, at] of Object.entries(previous?.seen ?? {})) {
+    if (typeof at === "string" && Date.parse(at) >= cutoff) seen[k] = at;
+  }
+  for (const f of previous?.findings ?? []) seen[findingKey(f)] ??= previous?.scannedAt ?? now;
+  for (const f of findings) seen[findingKey(f)] = now;
+  const entries = Object.entries(seen);
+  if (entries.length <= SEEN_MAX) return seen;
+  entries.sort((a, b) => b[1].localeCompare(a[1]));
+  return Object.fromEntries(entries.slice(0, SEEN_MAX));
 }
 
 /**
@@ -180,14 +202,22 @@ export async function scanProjects(projects: Project[]): Promise<ScanOutcome[]> 
       record.error = networkError;
       record.findings = previous?.findings ?? [];
       record.scannedAt = previous?.scannedAt ?? null;
-      return { record, newFindings: [], firstScan: previous === null };
+      record.seen = previous?.seen ?? {};
+      return { record, newFindings: [], resolvedFindings: [], firstScan: previous === null };
     }
     if (!record.error) {
       record.findings = buildFindings(record.deps, refsPerDep, vulns, previous, now);
       record.scannedAt = now;
     }
     const before = new Set((previous?.findings ?? []).map(findingKey));
-    const newFindings = record.findings.filter((f) => !before.has(findingKey(f)));
-    return { record, newFindings, firstScan: previous === null };
+    const history = previous?.seen ?? {};
+    const newFindings = record.findings.filter((f) => !before.has(findingKey(f)) && !Object.hasOwn(history, findingKey(f)));
+    const after = new Set(record.findings.map(findingKey));
+    // Only a successful scan on the same branch can say something was fixed.
+    const sameBranch = previous?.branch === undefined || previous.branch === record.branch;
+    const resolvedFindings =
+      previous && !record.error && sameBranch ? previous.findings.filter((f) => !after.has(findingKey(f))) : [];
+    record.seen = updateSeen(previous, record.findings, now);
+    return { record, newFindings, resolvedFindings, firstScan: previous === null };
   });
 }

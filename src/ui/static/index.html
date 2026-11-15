@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>selfguard</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="/favicon.svg" alt="" width="22" height="22"><span>selfguard</span></div>
+    <div class="status-line" id="status-line">Loading…</div>
+    <button class="btn" id="sync-btn" type="button">Sync now</button>
+  </header>
+
+  <main>
+    <section class="hero" id="hero" aria-live="polite">
+      <div class="hero-text">
+        <h1 id="hero-title">…</h1>
+        <p id="hero-sub" class="muted"></p>
+      </div>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <div class="layout">
+      <section class="panel repos-panel" aria-label="Repositories">
+        <div class="panel-head">
+          <div class="tabs" role="tablist" id="tabs">
+            <button role="tab" data-filter="attention" type="button">Attention</button>
+            <button role="tab" data-filter="active" type="button">Active</button>
+            <button role="tab" data-filter="inactive" type="button">Inactive</button>
+          </div>
+          <input type="search" id="search" placeholder="Filter repos…" autocomplete="off" spellcheck="false">
+        </div>
+        <ul class="repo-list" id="repo-list"></ul>
+      </section>
+
+      <section class="panel detail-panel" id="detail" aria-live="polite"></section>
+    </div>
+  </main>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

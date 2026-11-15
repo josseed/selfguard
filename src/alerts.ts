@@ -8,8 +8,14 @@ import type { Finding } from "./store.ts";
 export interface ProjectNews {
   path: string;
   newFindings: Finding[];
+  /** Findings that disappeared since the previous scan on the same branch. */
+  resolvedFindings?: Finding[];
+  /** Current findings after the scan (to say what is left). */
+  findings?: Finding[];
   /** Same key = same repo (worktrees/clones): reported once. */
   repo?: { key: string; label: string } | null;
+  /** Inactive checkouts (no recent git activity) only alert for malicious packages. */
+  active?: boolean;
 }
 
 export type Alert =
@@ -59,7 +65,10 @@ function byRepo(news: ProjectNews[]): Array<ProjectNews & { label: string; check
 }
 
 export function buildAlert(news: ProjectNews[]): Alert {
-  const affected = byRepo(news);
+  const relevant = news.map((n) =>
+    n.active === false ? { ...n, newFindings: n.newFindings.filter((f) => f.severity === "malicious") } : n,
+  );
+  const affected = byRepo(relevant);
   if (affected.length === 0) return { kind: "none" };
   const all = affected.flatMap((n) => n.newFindings);
 
@@ -103,6 +112,105 @@ export function buildAlert(news: ProjectNews[]): Alert {
     title: `selfguard: ${affected.length} projects affected`,
     subtitle: `${plural(pkgs, "vulnerable package")} · worst: ${worst}`,
     body: `${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3} more` : ""}. Run: selfguard status`,
+  };
+}
+
+const pkgKey = (f: Finding): string => `${f.name}@${f.version}`;
+
+/** "datahub ✓ 17 vulnerable packages fixed": only for active checkouts, grouped by repo. */
+export function buildResolvedAlert(news: ProjectNews[]): Alert {
+  const groups = new Map<string, { label: string; fixed: Set<string>; left: Map<string, Finding> }>();
+  for (const n of news) {
+    if (n.active === false || !n.resolvedFindings?.length) continue;
+    const still = new Set((n.findings ?? []).map(pkgKey));
+    const fixed = n.resolvedFindings.map(pkgKey).filter((k) => !still.has(k));
+    if (fixed.length === 0) continue;
+    const key = n.repo?.key ?? `path:${n.path}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { label: n.repo?.label ?? name(n.path), fixed: new Set(), left: new Map() };
+      groups.set(key, g);
+    }
+    for (const k of fixed) g.fixed.add(k);
+    for (const f of n.findings ?? []) g.left.set(`${f.id}|${pkgKey(f)}`, f);
+  }
+  if (groups.size === 0) return { kind: "none" };
+  const list = [...groups.values()];
+  const total = list.reduce((sum, g) => sum + g.fixed.size, 0);
+  if (list.length === 1) {
+    const g = list[0]!;
+    const left = [...g.left.values()];
+    const leftPkgs = groupByPackage(left).length;
+    return {
+      kind: "banner",
+      title: `selfguard: ${g.label} ✓`,
+      subtitle: `${plural(g.fixed.size, "vulnerable package")} fixed`,
+      body: leftPkgs
+        ? `${leftPkgs} still vulnerable · worst: ${LABEL[worstSeverity(left) ?? "unknown"]}`
+        : "No known vulnerabilities left.",
+    };
+  }
+  const names = list.map((g) => g.label);
+  return {
+    kind: "banner",
+    title: `selfguard: fixes in ${list.length} repos`,
+    subtitle: `${plural(total, "vulnerable package")} fixed`,
+    body: `${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3} more` : ""}`,
+  };
+}
+
+/**
+ * What a reminder nags about: any malicious package; critical vulnerabilities outside dev
+ * dependencies; high ones in direct (non-dev) dependencies. The rest stays in the dashboard,
+ * so the reminder remains rare enough to be read.
+ */
+export const needsAttention = (f: Finding): boolean =>
+  f.severity === "malicious" || (!f.dev && (f.severity === "critical" || (f.severity === "high" && f.direct)));
+
+export interface AttentionRepo {
+  label: string;
+  /** Current findings of the repo's active checkouts (any severity; filtered here). */
+  findings: Finding[];
+}
+
+function severityCounts(findings: Finding[]): string {
+  const counts = new Map<Severity, number>();
+  for (const g of groupByPackage(findings)) counts.set(g.worst, (counts.get(g.worst) ?? 0) + 1);
+  return (["malicious", "critical", "high"] as Severity[])
+    .filter((s) => counts.get(s))
+    .map((s) => `${counts.get(s)} ${s}`)
+    .join(", ");
+}
+
+/** Periodic reminder of unresolved serious findings in the repos you work on. */
+export function buildReminder(repos: AttentionRepo[]): Alert {
+  const rank = (s: Severity | null): number => ["malicious", "critical", "high"].indexOf(s ?? "");
+  const serious = repos
+    .map((r) => ({ label: r.label, findings: r.findings.filter(needsAttention) }))
+    .filter((r) => r.findings.length > 0)
+    .sort(
+      (a, b) =>
+        rank(worstSeverity(a.findings)) - rank(worstSeverity(b.findings)) ||
+        groupByPackage(b.findings).length - groupByPackage(a.findings).length,
+    );
+  if (serious.length === 0) return { kind: "none" };
+  const all = serious.flatMap((r) => r.findings);
+  if (serious.length === 1) {
+    const r = serious[0]!;
+    return {
+      kind: "banner",
+      title: `selfguard: ${r.label} needs attention`,
+      subtitle: `${severityCounts(r.findings)} · open: selfguard ui`,
+      body: listFixes(r.findings),
+    };
+  }
+  const parts = serious.slice(0, 3).map((r) => `${r.label} (${severityCounts(r.findings)})`);
+  if (serious.length > 3) parts.push(`+${serious.length - 3} more`);
+  return {
+    kind: "banner",
+    title: `selfguard: ${serious.length} repos need attention`,
+    subtitle: `worst: ${LABEL[worstSeverity(all) ?? "unknown"]} · open: selfguard ui`,
+    body: parts.join(", "),
   };
 }
 

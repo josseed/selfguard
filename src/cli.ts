@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
-import { buildAlert, deliver } from "./alerts.ts";
+import { buildReminder, needsAttention } from "./alerts.ts";
+import { maybeRemind } from "./announce.ts";
 import * as api from "./api.ts";
 import { GUIDE } from "./guide.ts";
 import { hookEnter, ZSH_HOOK } from "./hook.ts";
 import { findProject } from "./lockfile/detect.ts";
 import { runMcpServer } from "./mcp.ts";
-import { paint, renderFindings, severityLabel, tildify, worstSeverity } from "./report.ts";
-import { repoIdentity } from "./repoid.ts";
+import { groupByPackage, paint, renderFindings, severityLabel, tildify } from "./report.ts";
 import { clean } from "./sanitize.ts";
-import type { ScanOutcome } from "./scan.ts";
-import { parseInterval, scheduleOff, scheduleOn, scheduleStatus } from "./schedule.ts";
+import { parseInterval, scheduleOff, scheduleOn, scheduleStatus, updateWatcher } from "./schedule.ts";
 import { runSetup } from "./setup.ts";
-import { findingKey, loadRepo, type Finding } from "./store.ts";
+import { loadRepo } from "./store.ts";
 import { isInteractive } from "./tui.ts";
+import { runUi } from "./ui/server.ts";
 import { VERSION } from "./version.ts";
 
 const HELP = `selfguard ${VERSION} — keeps an eye on the dependencies of every repo you work on
@@ -22,14 +22,25 @@ Setup:
   selfguard setup                    interactive: choose the folders where your repos live
   selfguard init zsh                 print the shell hook (eval "$(selfguard init zsh)" in ~/.zshrc)
   selfguard schedule on [--every 6h] | off | status
-                                     periodic sync with macOS notifications (launchd)
+                                     background watching with macOS notifications (launchd):
+                                     lockfile changes right away, full sync every 6h
+
+Dashboard and alerts:
+  selfguard ui [--no-open] [--port N]
+                                     local dashboard in your browser (127.0.0.1 only)
+  selfguard remind                   send the reminder of serious open issues now
+  selfguard settings [--remind daily|weekly|off] [--active-days N]
+                                     reminder frequency; days of git inactivity before a
+                                     checkout stops alerting (default 30)
 
 Projects:
-  selfguard status [--vulnerable] [--flat]
-                                     tracked repos, riskiest first (worktrees/clones grouped)
+  selfguard status [--vulnerable] [--flat] [--all]
+                                     tracked repos, riskiest first (worktrees/clones grouped;
+                                     inactive checkouts hidden unless --all)
   selfguard scan [dir] [-v]          scan a project now (exit 1 if vulnerable) and track it
   selfguard report [dir] [-v]        last scan results, no network
   selfguard sync                     find new repos in your folders + re-check everything
+  selfguard check                    re-scan only projects whose lockfile changed
   selfguard where <package>          which projects use <package>, which versions
   selfguard vuln <id>                details of an advisory and which projects it affects
 
@@ -65,25 +76,11 @@ function usage(message: string): never {
   throw new UsageError(message);
 }
 
-function notifyNew(outcomes: ScanOutcome[]): Promise<void> {
-  return deliver(
-    buildAlert(
-      outcomes
-        .filter((o) => o.newFindings.length > 0)
-        .map((o) => ({ path: o.record.path, newFindings: o.newFindings, repo: repoIdentity(o.record.path) })),
-    ),
-  );
-}
-
 /** Detached scan started by the shell hook: log + notify, never print to a terminal. */
 async function backgroundScan(path: string): Promise<number> {
   const stamp = new Date().toISOString();
   try {
-    const project = findProject(path);
-    const before = new Set((project ? loadRepo(project.root)?.findings ?? [] : []).map(findingKey));
-    const r = await api.scanPath(path);
-    const rec = loadRepo(r.project.path)!;
-    await notifyNew([{ record: rec, newFindings: rec.findings.filter((f) => !before.has(findingKey(f))), firstScan: r.firstScan }]);
+    const r = await api.scanPath(path, { notify: true });
     out.write(`${stamp} scan ${r.project.path}: ${r.project.advisories} finding(s)${r.project.error ? ` (${r.project.error})` : ""}\n`);
   } catch (e) {
     if (!(e instanceof api.ApiError && e.code === "busy")) out.write(`${stamp} scan ${path}: ${(e as Error).message}\n`);
@@ -118,7 +115,10 @@ function cmdReport(args: string[]): number {
 }
 
 function cmdStatus(args: string[]): number {
-  const { values } = parseArgs({ args, options: { ...JSON_OPT, vulnerable: { type: "boolean" }, flat: { type: "boolean" } } });
+  const { values } = parseArgs({
+    args,
+    options: { ...JSON_OPT, vulnerable: { type: "boolean" }, flat: { type: "boolean" }, all: { type: "boolean" } },
+  });
   const status = api.getStatus({ onlyVulnerable: values.vulnerable ?? false });
   if (values.json) {
     emit(status);
@@ -145,7 +145,16 @@ function cmdStatus(args: string[]): number {
     return 0;
   }
 
-  for (const g of status.repos) {
+  const showAll = values.all ?? false;
+  let hiddenRepos = 0;
+  for (const g0 of status.repos) {
+    if (!g0.active && !showAll) {
+      hiddenRepos++;
+      continue;
+    }
+    const visible = showAll ? g0.checkouts : g0.checkouts.filter((k) => k.active);
+    const hiddenCheckouts = g0.checkouts.length - visible.length;
+    const g = { ...g0, checkouts: visible };
     const many = g.checkouts.length > 1;
     const firstError = g.checkouts.find((k) => k.error)?.error ?? null;
     // Headline: the main checkout; mention a branch that is worse than it.
@@ -162,29 +171,42 @@ function cmdStatus(args: string[]): number {
           : c.dim("clean");
     const head = worse ? `${mainText} ${c.yellow(`· ${worse.vulnerablePackages} on ${clean(worse.branch ?? "another checkout", 40)}`)}` : mainText;
     const where = many ? c.dim(`${g.checkouts.length} checkouts`) : c.dim(tildify(g.checkouts[0]!.path));
-    out.write(`${badge(g.worstSeverity, firstError)} ${c.bold(clean(g.label, 80))}  ${head}  ${where}\n`);
+    const more = hiddenCheckouts ? c.dim(` +${hiddenCheckouts} inactive`) : "";
+    const dimIf = (s: string) => (g.active ? s : c.dim(s));
+    out.write(`${badge(g.worstSeverity, firstError)} ${c.bold(dimIf(clean(g.label, 80)))}  ${head}  ${where}${more}\n`);
     if (!many) continue;
     g.checkouts.forEach((k, i) => {
       const branch = k.branch ? c.cyan(clean(k.branch, 50)) : c.dim("(no branch)");
-      const kind = k.worktree ? c.dim(" worktree") : "";
+      const kind = (k.worktree ? c.dim(" worktree") : "") + (k.active ? "" : c.dim(` inactive${k.lastActivity ? ` ${ago(k.lastActivity)}` : ""}`));
       const detail = k.advisories ? `${k.vulnerablePackages} vulnerable` : k.error ? c.dim(clean(k.error, 60)) : c.dim("clean");
       const tree = i === g.checkouts.length - 1 ? "└" : "├";
       out.write(`   ${c.dim(tree)} ${branch}${kind}  ${detail}  ${c.dim(tildify(k.path))}${k.exists ? "" : c.dim(" (missing)")}\n`);
     });
   }
+  if (hiddenRepos) out.write(c.dim(`${hiddenRepos} inactive repo(s) hidden (no git activity in ${api.getSettings().activeDays} days). Show them with --all.\n`));
   return 0;
+}
+
+function ago(iso: string): string {
+  const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
+  return days < 1 ? "today" : days < 60 ? `${days}d ago` : `${Math.floor(days / 30)}mo ago`;
 }
 
 async function cmdSync(args: string[]): Promise<number> {
   const { values } = parseArgs({ args, options: { ...JSON_OPT, background: { type: "boolean" } } });
   let r: api.SyncResult;
   try {
-    r = await api.sync();
+    r = await api.sync({ notify: true });
   } catch (e) {
     if (values.background && e instanceof api.ApiError && e.code === "busy") return 0;
     throw e;
   }
-  await notifyNew(r.outcomes);
+  try {
+    updateWatcher(api.watchTargets());
+  } catch (e) {
+    err.write(`selfguard: could not update the lockfile watcher: ${clean((e as Error).message, 200)}\n`);
+  }
+  if (values.background) await maybeRemind(api.getAttention);
   const { outcomes: _o, ...data } = r;
   const total = data.news.reduce((n, p) => n + p.packages.length, 0);
   if (values.json) emit(data);
@@ -203,6 +225,85 @@ async function cmdSync(args: string[]): Promise<number> {
     }
     for (const e of data.errors) out.write(c.dim(`  ! ${tildify(e.path)}: ${clean(e.error)}\n`));
   }
+  return 0;
+}
+
+async function cmdCheck(args: string[]): Promise<number> {
+  const { values } = parseArgs({ args, options: { ...JSON_OPT, background: { type: "boolean" } } });
+  let r: api.CheckResult;
+  try {
+    r = await api.check({ notify: true });
+  } catch (e) {
+    if (values.background && e instanceof api.ApiError && e.code === "busy") return 0;
+    throw e;
+  }
+  if (values.background) {
+    if (r.rescanned.length) out.write(`${new Date().toISOString()} check: re-scanned ${r.rescanned.join(", ")}\n`);
+    await maybeRemind(api.getAttention);
+  } else if (values.json) emit(r);
+  else out.write(r.rescanned.length ? `Re-scanned ${r.rescanned.length} project(s) with changed lockfiles.\n` : "No lockfile changed.\n");
+  return 0;
+}
+
+async function cmdRemind(args: string[]): Promise<number> {
+  const { values } = parseArgs({ args, options: { ...JSON_OPT, "dry-run": { type: "boolean" } } });
+  const repos = api.getAttention();
+  const alert = buildReminder(repos);
+  const sent = values["dry-run"] ? false : await maybeRemind(repos, { force: true });
+  const serious = repos
+    .map((r) => ({ repo: r.label, packages: groupByPackage(r.findings.filter(needsAttention)) }))
+    .filter((r) => r.packages.length > 0);
+  if (values.json) {
+    emit({
+      sent,
+      notification: alert.kind === "none" ? null : { title: alert.title, subtitle: alert.subtitle, body: alert.body },
+      repos: serious.map((r) => ({
+        repo: r.repo,
+        packages: r.packages.map((g) => ({ name: g.name, version: g.version, worstSeverity: g.worst, upgradeTo: g.upgradeTo ?? null, direct: g.direct })),
+      })),
+    });
+    return 0;
+  }
+  const c = paint(out);
+  if (serious.length === 0) {
+    out.write(`${c.green("✓")} Nothing serious open in your active repos (malicious packages, critical vulnerabilities, or high ones in direct dependencies).\n`);
+    return 0;
+  }
+  for (const r of serious) {
+    out.write(`${c.bold(clean(r.repo, 80))}\n`);
+    for (const g of r.packages.slice(0, 6)) {
+      const fix = g.worst === "malicious" ? c.red("remove it") : g.upgradeTo ? c.green(`→ ${clean(g.upgradeTo, 40)}`) : c.yellow("no fix yet");
+      out.write(`  ${severityLabel(g.worst, c)} ${clean(g.name, 100)}@${clean(g.version, 40)} ${c.dim(g.direct ? "direct" : "transitive")} ${fix}\n`);
+    }
+    if (r.packages.length > 6) out.write(c.dim(`  …and ${r.packages.length - 6} more (selfguard ui)\n`));
+  }
+  out.write(c.dim(sent ? "\nNotification sent.\n" : "\n"));
+  return 0;
+}
+
+function cmdSettings(args: string[]): number {
+  const { values } = parseArgs({ args, options: { ...JSON_OPT, remind: { type: "string" }, "active-days": { type: "string" } } });
+  const patch: { remind?: unknown; activeDays?: unknown } = {};
+  if (values.remind !== undefined) patch.remind = values.remind;
+  if (values["active-days"] !== undefined) patch.activeDays = Number(values["active-days"]);
+  const s = Object.keys(patch).length ? api.updateSettings(patch) : api.getSettings();
+  if (values.json) emit(s);
+  else {
+    out.write(`remind        ${s.remind}${s.lastReminder ? paint(out).dim(`  (last ${s.lastReminder})`) : ""}\n`);
+    out.write(`active-days   ${s.activeDays}\n`);
+    if (s.lastSync) out.write(paint(out).dim(`last sync     ${s.lastSync}\n`));
+  }
+  return 0;
+}
+
+async function cmdUi(args: string[]): Promise<number> {
+  const { values } = parseArgs({
+    args,
+    options: { "no-open": { type: "boolean" }, port: { type: "string" }, serve: { type: "boolean" } },
+  });
+  const port = values.port === undefined ? 0 : Number(values.port);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) usage("--port must be a port number");
+  await runUi({ port, open: !values["no-open"], foreground: values.serve ?? false, log: (line) => out.write(`${line}\n`) });
   return 0;
 }
 
@@ -339,10 +440,11 @@ function cmdSchedule(args: string[]): number {
   switch (positionals[0]) {
     case "on": {
       const seconds = parseInterval(values.every ?? "6h");
-      const plist = scheduleOn(seconds);
-      if (values.json) emit({ enabled: true, intervalSeconds: seconds, plist, node: process.execPath });
+      const targets = api.watchTargets();
+      const plist = scheduleOn(seconds, targets);
+      if (values.json) emit({ enabled: true, intervalSeconds: seconds, plist, node: process.execPath, watchedPaths: targets.length });
       else {
-        out.write(`Background sync every ${values.every}. (${tildify(plist)})\n`);
+        out.write(`Background sync every ${values.every}, plus instant checks when a lockfile changes. (${tildify(plist)})\n`);
         out.write(`Note: it runs with ${process.execPath}; re-run this if you change Node versions.\n`);
       }
       return 0;
@@ -350,14 +452,17 @@ function cmdSchedule(args: string[]): number {
     case "off": {
       const was = scheduleOff();
       if (values.json) emit({ enabled: false, wasEnabled: was });
-      else out.write(was ? "Background sync disabled.\n" : "Background sync was not enabled.\n");
+      else out.write(was ? "Background sync and lockfile watcher disabled.\n" : "Background sync was not enabled.\n");
       return 0;
     }
     case "status":
     case undefined: {
       const s = scheduleStatus();
       if (values.json) emit(s);
-      else out.write(s.loaded ? `enabled (${tildify(s.plist)})\n` : s.installed ? "installed but not loaded\n" : "disabled\n");
+      else {
+        out.write(s.loaded ? `enabled (${tildify(s.plist)})\n` : s.installed ? "installed but not loaded\n" : "disabled\n");
+        if (s.loaded) out.write(s.watcher.loaded ? `lockfile watcher: ${s.watcher.paths} path(s)\n` : "lockfile watcher: not running (run selfguard sync)\n");
+      }
       return 0;
     }
     default:
@@ -388,6 +493,14 @@ async function main(argv: string[]): Promise<number> {
       return cmdStatus(rest);
     case "sync":
       return cmdSync(rest);
+    case "check":
+      return cmdCheck(rest);
+    case "remind":
+      return cmdRemind(rest);
+    case "settings":
+      return cmdSettings(rest);
+    case "ui":
+      return cmdUi(rest);
     case "discover":
       return cmdDiscover(rest);
     case "roots":

@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `selfguard ui`: a local dashboard in the browser with the repos that need attention, fixes per
+  package and branch, an activity feed and alert settings. Served on 127.0.0.1 with a
+  per-session token and a strict CSP; no dependencies.
+- Daily reminder (configurable: `selfguard settings --remind daily|weekly|off`) of serious open
+  issues in active repos: malicious packages, critical vulnerabilities outside dev dependencies
+  and high ones in direct dependencies. `selfguard remind` sends it on demand.
+- "✓ fixed" notifications when a scan on the same branch no longer has a vulnerable package.
+- Lockfile watcher (launchd `dev.selfguard.watch`, installed by `schedule on`): `git pull`,
+  installs and merges are checked within seconds, without a terminal. New `selfguard check`.
+- Active checkouts: only checkouts with git activity in the last 30 days alert
+  (`--active-days`); others are listed but quiet, except for malicious packages.
+  `status` hides inactive repos and checkouts unless `--all`.
+- Activity log (`~/.selfguard/events.jsonl`).
+- MCP tools `selfguard_attention` and `selfguard_check`.
+
+### Changed
+
+- New findings are no longer announced again when you switch branches back and forth, or when a
+  new worktree or clone has the same findings as another checkout of the repo.
+- Repo-level counts in `status` (and `--json`) cover active checkouts.
+
 ### Fixed
 
 - Worktrees whose main repository was deleted are shown as "(orphaned worktree)" instead of

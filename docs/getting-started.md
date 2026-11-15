@@ -41,8 +41,9 @@ The setup wizard walks you through four steps:
    prints a summary of what is vulnerable.
 3. **Install the shell hook.** It adds one line to `~/.zshrc` so projects are tracked when you
    `cd` into them.
-4. **Enable the background sync** (macOS). selfguard checks everything every 6 hours and sends a
-   notification when something new turns up.
+4. **Enable background watching** (macOS). A lockfile watcher re-checks a repo seconds after its
+   lockfile changes, a full sync runs every 6 hours, and a daily reminder sums up what is still
+   open and serious.
 
 Each step asks first, and you can re-run `selfguard setup` at any time to change your folders.
 
@@ -59,7 +60,41 @@ selfguard schedule on --every 6h       # macOS
 
 ## Daily use
 
-Once set up, you mostly don't have to do anything:
+Once set up, you mostly don't have to do anything. selfguard notifies you when:
+
+| What happened | Notification |
+|---|---|
+| A new advisory affects a repo you work on, or you install a vulnerable version | `selfguard: acme/web` · `2 vulnerable packages · worst: HIGH` · `axios → 1.20.0, …` |
+| You fixed something (upgrade, `git pull` of a fix, merge) | `selfguard: acme/web ✓` · `17 vulnerable packages fixed` |
+| Once a day (09:00–21:00), if serious issues are still open | `selfguard: 3 repos need attention` · `worst: CRITICAL` |
+| A malicious package appears anywhere | A dialog that stays on screen, with remediation steps |
+
+"Serious" means malicious packages, critical vulnerabilities outside dev dependencies, and high
+ones in direct dependencies. Everything else is in the dashboard, not in your notifications.
+Only **active** checkouts (git activity in the last 30 days) alert you; see
+[how it works](how-it-works.md#alerts). Change the reminder with
+`selfguard settings --remind weekly` (or `off`).
+
+### Dashboard
+
+```sh
+selfguard ui
+```
+
+Opens a local page in your browser (served from `127.0.0.1` only, with a per-session token):
+
+- **Attention**: the repos with serious issues, worst first. **Active** and **Inactive** list the
+  rest.
+- **Repo view**: vulnerable packages on the main checkout (or all checkouts), the version that
+  fixes each one, which branches have it, and links to the advisories. Re-scan or ignore a
+  checkout from there.
+- **Activity**: what appeared, what got fixed and which reminders were sent.
+- **Alerts**: reminder frequency and how long a checkout counts as active.
+
+The dashboard runs in the background and stops by itself after 30 minutes without use. Running
+`selfguard ui` again reopens it.
+
+### In the terminal
 
 - **Entering a project** prints a one-line reminder if it has known vulnerabilities:
   ```text
@@ -69,11 +104,15 @@ Once set up, you mostly don't have to do anything:
   prompt and re-scans in the background.
 - **New advisories** published for packages you already have are picked up by the scheduled
   sync. You get a notification naming the repo and the version to upgrade to.
+- **Pulling a fix** (`git pull`, merging a dependency PR) is noticed by the lockfile watcher
+  within seconds, even if you never open a terminal in that repo.
 
 Useful commands:
 
 ```sh
-selfguard status                # everything, riskiest first
+selfguard ui                    # dashboard
+selfguard remind                # what is serious and still open, right now
+selfguard status                # active repos, riskiest first (--all for everything)
 selfguard scan                  # full report for the current project
 selfguard where @ctrl/tinycolor # "is this compromised package anywhere on my machine?"
 selfguard vuln GHSA-35jh-r3h4-6jhm
@@ -102,7 +141,8 @@ Typical fixes:
   credentials** the machine or CI could reach (npm tokens, cloud keys, SSH keys, `.env`
   secrets). Upgrading is not enough: the damage happens at install time.
 
-After reinstalling, selfguard re-scans on your next prompt, or run `selfguard scan` to verify.
+After reinstalling, the lockfile watcher re-scans within seconds and confirms the fix with a
+"✓ fixed" notification. You can also run `selfguard scan` to verify.
 
 ## Ignoring projects
 
@@ -123,13 +163,13 @@ selfguard unexclude ~/code/shop/test/fixtures  # undo
 0 */6 * * * /usr/bin/node /usr/local/bin/selfguard sync --background >> "$HOME/.selfguard/selfguard.log" 2>&1
 ```
 
-Desktop notifications are not implemented on Linux yet. New findings are recorded and shown by
-`selfguard status` and by the shell hook.
+Desktop notifications and the lockfile watcher are not implemented on Linux yet. New findings
+are recorded and shown by `selfguard ui`, `selfguard status` and the shell hook.
 
 ## Uninstall
 
 ```sh
-selfguard schedule off                 # macOS: remove the launchd agent
+selfguard schedule off                 # macOS: remove the launchd agents
 npm uninstall -g selfguard
 rm -rf ~/.selfguard                    # all local state
 ```

@@ -24,10 +24,17 @@ HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
 
 ## Features
 
-- **Hands-off.** `cd` into a project and it is registered and scanned in the background. Run
-  `npm install` and selfguard notices that the lockfile changed and re-scans.
-- **Reverse alerts.** A scheduled `sync` re-checks every project against new advisories and
-  picks up new clones in your code folders.
+- **It tells you on its own.** A background watcher re-checks a repo seconds after its lockfile
+  changes (`git pull`, installs, merges), a scheduled sync catches newly published advisories,
+  and a daily reminder lists what is still open and serious. When you fix something, you get a
+  "✓ fixed" notification too.
+- **A dashboard, not just a terminal.** `selfguard ui` opens a local page with every repo, what
+  needs attention, how to fix it, and a feed of what changed.
+- **Signal over noise.** Only checkouts with recent git activity alert you. Old clones and
+  abandoned worktrees stay listed but quiet (except for malicious packages), and a new worktree
+  of a known repo isn't reported as news.
+- **Hands-off.** `cd` into a project and it is registered and scanned in the background. New
+  clones in your code folders are picked up automatically.
 - **Malicious packages first.** OSV includes the OpenSSF malicious-packages feed (`MAL-*`).
   Compromised releases, like the Shai-Hulud npm worm, outrank any CVE and open a dialog that
   stays on screen until you dismiss it.
@@ -52,7 +59,12 @@ selfguard setup
 ```
 
 `setup` is a small terminal UI. Pick the folders where you keep your code, and selfguard scans
-them. It then offers to install the shell hook and a background sync with notifications.
+them. It then offers to install the shell hook and background watching with notifications.
+Then open the dashboard:
+
+```sh
+selfguard ui
+```
 
 ```text
 Where do you keep your code?
@@ -86,7 +98,7 @@ $ selfguard scan
 
 | | |
 |---|---|
-| [Getting started](docs/getting-started.md) | Install, setup, shell hook, background sync, uninstall |
+| [Getting started](docs/getting-started.md) | Install, setup, dashboard, alerts, uninstall |
 | [CLI reference](docs/cli.md) | Every command and flag, exit codes, environment variables |
 | [How it works](docs/how-it-works.md) | Discovery, lockfile parsing, repo grouping, OSV, caching, alerts |
 | [AI and automation](docs/ai-and-automation.md) | MCP server setup, tools, JSON output, scripting and CI |

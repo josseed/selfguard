@@ -13,6 +13,7 @@ what it sends, and how it is built and released. To report a vulnerability, see
 | A crafted lockfile crashes or abuses the parser | Lockfiles over 100 MB are refused. The YAML reader supports only the subset lockfiles use: no anchors, aliases or tags, so no "billion laughs". Nesting depth is bounded and objects have no prototype, so keys like `__proto__` are plain data. |
 | Package names or advisory text inject terminal escape sequences | Everything printed is stripped of C0/C1 control characters and bidirectional overrides ("Trojan Source"), and truncated. |
 | Notification text injects AppleScript | Text is passed to `osascript` as arguments to an `on run` handler, never interpolated into script source. The dialog's button only opens `https://osv.dev/vulnerability/<id>` URLs built by selfguard. |
+| A website talks to the local dashboard | It listens on `127.0.0.1` only and checks the `Host` header (DNS rebinding). Every API call needs a random per-session token sent in a custom header, which other sites can't send without a CORS preflight that is never answered. POSTs must be same-origin JSON. See [Dashboard](#dashboard). |
 | Prompt injection through the MCP server | Tool descriptions and the agent guide label advisory text and package names as third-party data. No MCP tool can run commands, install packages or edit files. |
 | selfguard's own dependencies get compromised | Zero runtime dependencies, enforced in CI. Dev tooling updates go through Dependabot with a 7-day cooldown and review. |
 | A compromised CI or stolen token publishes a malicious selfguard | See [Releases](#releases). |
@@ -34,12 +35,34 @@ build. If even that is too much, point `SELFGUARD_OSV_API` at a mirror you contr
 
 ## Local state
 
-`~/.selfguard` (or `SELFGUARD_HOME`) holds the list of your projects, their dependencies and
-findings. It is created with mode `0700` and its files with `0600`. Writes are atomic (temporary
+`~/.selfguard` (or `SELFGUARD_HOME`) holds the list of your projects, their dependencies,
+findings and an activity log. It is created with mode `0700` and its files with `0600`. Writes are atomic (temporary
 file plus rename), and concurrent scans are serialized with lock files.
 
 To identify repositories, selfguard reads `.git/HEAD`, `.git/config`, `.git/commondir` and the
 worktree pointer file, each capped at 64 KB. It never runs `git`.
+
+## Dashboard
+
+`selfguard ui` starts a small HTTP server from Node's standard library:
+
+- bound to `127.0.0.1`, on a random port by default;
+- requests whose `Host` isn't `127.0.0.1:<port>` or `localhost:<port>` are refused;
+- the API requires a 192-bit random token, created per server and passed to the browser in the
+  URL fragment (which browsers don't send to servers or put in `Referer`). The page moves it to
+  `sessionStorage` and removes it from the address bar;
+- POSTs must be `application/json` and same-origin;
+- a strict Content-Security-Policy (`default-src 'none'`, scripts and styles only from the
+  server itself), `X-Frame-Options: DENY`, no caching, no referrers, no third-party resources;
+- untrusted text (package names, advisory summaries, paths) is inserted with `textContent`,
+  never as HTML;
+- actions (re-scan, ignore) only accept projects selfguard already tracks; links only go to
+  `osv.dev` advisory pages.
+
+The token is written to `~/.selfguard/ui.json` (mode `0600`) so `selfguard ui` can reopen a
+running dashboard, and passed to `open` to launch your browser. Other users of the same Mac can
+see process arguments for a moment; on shared machines, close the dashboard when you're done
+(it also stops after 30 idle minutes).
 
 ## Releases
 

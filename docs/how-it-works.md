@@ -106,10 +106,33 @@ To group checkouts, selfguard reads a few small files under `.git`. It doesn't r
 `status` headlines the main checkout and points out branches that are worse. Notifications about
 the same advisory in several checkouts of one repo are sent once.
 
+## Active checkouts
+
+People accumulate clones and worktrees. Alerting about all of them is noise, so selfguard tells
+apart the ones you are working on. A checkout is **active** if its own git files (`HEAD`,
+`index`, the reflog) changed in the last 30 days (`selfguard settings --active-days N`). Commits,
+checkouts, pulls and even `git status` count. Projects outside git are always active, and
+orphaned worktrees never are.
+
+Inactive checkouts are still scanned and listed (`status --all`, the dashboard's Inactive tab),
+but they only alert for malicious packages.
+
 ## Alerts
 
-Alerts fire only for **findings that are new** for a project: a new project, a lockfile change,
-or a newly published advisory.
+- **New findings.** A finding is news when it wasn't in the project's previous scan, wasn't
+  seen on that checkout in the last 180 days (so switching branches back and forth doesn't
+  re-alert), and no other checkout of the same repo already has it (so creating a worktree
+  isn't news). The first scan of a brand-new repo is news.
+- **Fixes.** When a scan on the **same branch** no longer has a vulnerable package, you get a
+  "✓ fixed" notification with what is left. Switching to a branch that happens to be clean
+  isn't a fix.
+- **Reminders.** Once a day by default (`settings --remind daily|weekly|off`), between 09:00
+  and 21:00, if serious issues are still open in active repos: malicious packages, critical
+  vulnerabilities outside dev dependencies, and high ones in direct dependencies. Each repo is
+  judged by its main checkout if it is active, otherwise its most recently active one: feature
+  branches get fixed when they merge.
+
+How they are delivered:
 
 - **macOS banner** with the repository, the number of vulnerable packages, the worst severity and
   the versions to upgrade to. It also stays in Notification Center.
@@ -128,6 +151,7 @@ don't appear.
 |---|---|
 | Entering a project for the first time | Registered and scanned in the background. |
 | Lockfile changed (checked on every prompt by the hook) | Re-scanned in the background. |
+| Lockfile of an active checkout changed, terminal or not (`git pull`, installs, merges) | The launchd watcher runs `selfguard check` within seconds (macOS). |
 | Entering a project whose last scan is older than 24 hours | Re-scanned in the background. |
 | Scheduled `sync` | Every tracked project is re-checked and new projects are discovered. |
 | `selfguard scan` | Immediately, in the foreground. |

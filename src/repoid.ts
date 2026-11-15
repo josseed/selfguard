@@ -17,6 +17,11 @@ export interface RepoIdentity {
   worktree: boolean;
   /** Worktree whose main repository no longer exists (git can't use it anymore). */
   orphaned?: boolean;
+  /**
+   * Last local git activity in this checkout (ISO): newest mtime of its HEAD, index and
+   * reflog. Commits, checkouts, pulls and `git status` refresh it. Null if unknown.
+   */
+  lastActivity: string | null;
 }
 
 const MAX_FILE = 64 * 1024;
@@ -34,6 +39,19 @@ function readSmall(file: string): string | null {
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
+}
+
+/** Newest mtime among this checkout's own git files (not the shared ones, like FETCH_HEAD). */
+function lastActivityOf(gitDir: string): string | null {
+  let newest = 0;
+  for (const f of ["HEAD", "index", join("logs", "HEAD")]) {
+    try {
+      newest = Math.max(newest, statSync(join(gitDir, f)).mtimeMs);
+    } catch {
+      /* missing */
+    }
+  }
+  return newest > 0 ? new Date(newest).toISOString() : null;
 }
 
 function isDir(p: string): boolean {
@@ -128,6 +146,7 @@ export function repoIdentity(projectRoot: string): RepoIdentity | null {
         branch: null,
         worktree: true,
         orphaned: true,
+        lastActivity: null,
       };
     }
     if (gitDir) {
@@ -149,6 +168,7 @@ export function repoIdentity(projectRoot: string): RepoIdentity | null {
         label: sub ? `${repoName}/${sub}` : repoName,
         branch: branchFrom(readSmall(join(gitDir, "HEAD"))),
         worktree,
+        lastActivity: lastActivityOf(gitDir),
       };
     }
     const parent = dirname(dir);

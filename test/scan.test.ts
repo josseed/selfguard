@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -107,6 +107,42 @@ test("fixing a dependency is detected as a lockfile change and clears the findin
   assert.equal(scan.lockChanged(store.loadRepo(project.root)!, project), true);
   const [o] = await scan.scanProjects([project]);
   assert.deepEqual(o!.record.findings.map((f) => f.id), ["MAL-2026-42"]);
+});
+
+test("a fix on the same branch is reported as resolved; switching branches is not", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sg-branch-"));
+  copyFixture("v3", dir);
+  mkdirSync(join(dir, ".git"));
+  const head = (b: string) => writeFileSync(join(dir, ".git", "HEAD"), `ref: refs/heads/${b}\n`);
+  const setLodash = (v: string) => {
+    const lock = JSON.parse(readFileSync(join(dir, "package-lock.json"), "utf8"));
+    lock.packages["node_modules/lodash"].version = v;
+    writeFileSync(join(dir, "package-lock.json"), JSON.stringify(lock));
+  };
+  const p = { root: dir, lockfile: join(dir, "package-lock.json"), lockType: "npm" as const };
+  const run = async () => {
+    const [o] = await scan.scanProjects([p]);
+    store.saveRepo(o!.record);
+    return o!;
+  };
+
+  head("main");
+  await run();
+  // switch to an old branch that has the fix "undone"... and an upgraded lodash on main
+  head("feature");
+  setLodash("4.17.21");
+  const switched = await run();
+  assert.deepEqual(switched.resolvedFindings, [], "branch switch is not a fix");
+  // back to main with the vulnerable version: seen before, so not "new"
+  head("main");
+  setLodash("4.17.20");
+  const back = await run();
+  assert.deepEqual(back.newFindings, [], "known findings don't re-alert after switching back");
+  // a real fix on main
+  setLodash("4.17.21");
+  const fixed = await run();
+  assert.deepEqual(fixed.resolvedFindings.map((f) => f.id), ["GHSA-aaaa-bbbb-cccc"]);
+  assert.equal(fixed.record.branch, "main");
 });
 
 test("network failure keeps the last known findings", async () => {

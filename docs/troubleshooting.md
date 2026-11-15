@@ -17,6 +17,30 @@ selfguard delivers macOS notifications through `osascript`, so macOS lists them 
 
 Malicious-package alerts also open a dialog that stays on screen, so they can't be missed.
 
+## I don't get alerts on my own
+
+- Check `selfguard schedule status`. It should say `enabled` and show a lockfile watcher. If not,
+  run `selfguard schedule on`.
+- Alerts are about **changes** (new findings, fixes) plus the daily reminder. If nothing changed
+  and the reminder already went out today, you won't hear from selfguard. Run `selfguard remind`
+  to see what the reminder covers and send it now.
+- Only active checkouts alert (git activity in the last 30 days). Check `selfguard status --all`
+  and raise the window with `selfguard settings --active-days 90` if needed.
+
+## Too many reminders
+
+- Switch to weekly: `selfguard settings --remind weekly`, or `off`.
+- Ignore folders you don't care about (fixtures, probes, experiments) from the dashboard or with
+  `selfguard forget <dir>`.
+- Dev-only findings and transitive high-severity findings never trigger the reminder. They are in
+  the dashboard.
+
+## The dashboard doesn't open
+
+- Run `selfguard ui --no-open` and open the printed URL yourself.
+- "Not connected": the dashboard stopped after 30 idle minutes. Run `selfguard ui` again.
+- Errors are logged to `~/.selfguard/selfguard.log`.
+
 ## The shell hook doesn't do anything
 
 - Check that `~/.zshrc` contains `eval "$(selfguard init zsh)"`, then open a **new** terminal.
@@ -74,6 +98,8 @@ reported as safe.
 - Worktrees and clones of the same repo are already grouped in `selfguard status`. Use
   `status --flat` to see each folder separately.
 - Removed worktrees are dropped automatically on the next `sync`.
+- Old clones and worktrees without recent git activity are inactive: hidden from `status` (use
+  `--all`) and quiet, except for malicious packages.
 
 ## The MCP server doesn't start in a desktop app
 

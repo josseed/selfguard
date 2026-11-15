@@ -51,10 +51,12 @@ Then ask things like:
 
 | Tool | Read-only | Network | Purpose |
 |---|---|---|---|
-| `selfguard_status` | ✅ | | Overview: repos (grouped checkouts) and projects with risk summary. Start here. |
+| `selfguard_status` | ✅ | | Overview: repos (grouped checkouts, with `active` flags) and projects with risk summary. Start here. |
+| `selfguard_attention` | ✅ | | The short list reminders are about: serious findings per repo, on its representative checkout. |
 | `selfguard_project_report` | ✅ | | Vulnerable packages of one project with `upgradeTo` and advisory IDs. |
 | `selfguard_scan` | | ✅ | Scan one project now. |
 | `selfguard_sync` | | ✅ | Discover new projects and re-check everything; returns only what's new. |
+| `selfguard_check` | | ✅ | Re-scan only projects whose lockfile changed. Use it to verify a fix. |
 | `selfguard_where` | ✅ | | Which projects use a package, which versions, whether vulnerable. |
 | `selfguard_vulnerability` | ✅ | ✅ | Advisory details plus the user's affected projects. |
 | `selfguard_roots_list` | ✅ | | Watched folders and exclusions. |
@@ -95,10 +97,13 @@ Main shapes (abridged):
     {
       "key": "github.com/acme/web",
       "label": "acme/web",
+      "active": true,
       "worstSeverity": "critical",
       "vulnerablePackages": 41,
+      "inactiveCheckouts": 1,
       "checkouts": [
-        { "path": "/Users/you/code/web", "branch": "main", "worktree": false, "exists": true,
+        { "path": "/Users/you/code/web", "branch": "main", "worktree": false, "orphaned": false,
+          "exists": true, "active": true, "lastActivity": "2026-11-15T10:02:11.000Z",
           "worstSeverity": "critical", "vulnerablePackages": 31, "advisories": 83, "error": null }
       ]
     }
@@ -142,6 +147,15 @@ Main shapes (abridged):
   "errors": []
 }
 ```
+
+Repo-level `worstSeverity` and `vulnerablePackages` cover active checkouts only (all of them if
+none is active).
+
+**`remind --dry-run --json`**: `{ "sent", "notification": { "title", "subtitle", "body" } | null, "repos": [{ "repo", "packages": [{ "name", "version", "worstSeverity", "upgradeTo", "direct" }] }] }`
+
+**`check --json`**: `{ "rescanned": ["/path"], "errors": [{ "path", "error" }] }`
+
+**`settings --json`**: `{ "remind", "activeDays", "lastReminder", "lastSync", "lastCheck" }`
 
 **`where <pkg> --json`**: `{ "package", "usedIn": [{ "path", "versions": [{ "version", "direct", "dev", "vulnerable" }] }] }`
 

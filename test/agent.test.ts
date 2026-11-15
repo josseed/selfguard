@@ -39,6 +39,20 @@ test("--json: stable documents and structured errors with exit code 2", () => {
   assert.equal(unknown.json.error.code, "usage");
 });
 
+test("settings and reminder preview are available as JSON", () => {
+  const { env } = sandbox();
+  const s = cli(env, "settings", "--json").json;
+  assert.equal(s.remind, "daily");
+  assert.equal(s.activeDays, 30);
+  const changed = cli(env, "settings", "--remind", "weekly", "--active-days", "14", "--json").json;
+  assert.deepEqual([changed.remind, changed.activeDays], ["weekly", 14]);
+  const bad = cli(env, "settings", "--remind", "hourly", "--json");
+  assert.equal(bad.code, 2);
+  assert.equal(bad.json.error.code, "invalid");
+  assert.deepEqual(cli(env, "remind", "--dry-run", "--json").json, { sent: false, notification: null, repos: [] });
+  assert.deepEqual(cli(env, "check", "--json").json, { rescanned: [], errors: [] });
+});
+
 test("forget excludes a path so discovery never brings it back", () => {
   const { code, env } = sandbox();
   cli(env, "roots", "add", code, "--json");
@@ -81,7 +95,7 @@ test("MCP server: initialize, list tools, call a tool, report tool errors", asyn
 
   send({ id: 2, method: "tools/list" });
   const names = (await waitFor(2)).result.tools.map((t: any) => t.name);
-  for (const n of ["selfguard_status", "selfguard_project_report", "selfguard_scan", "selfguard_where", "selfguard_forget"]) {
+  for (const n of ["selfguard_status", "selfguard_attention", "selfguard_check", "selfguard_project_report", "selfguard_scan", "selfguard_where", "selfguard_forget"]) {
     assert.ok(names.includes(n), n);
   }
 

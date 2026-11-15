@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { activityOf } from "../src/activity.ts";
 import { normalizeRemote, remoteFromConfig, repoIdentity } from "../src/repoid.ts";
 
 test("normalizes remotes so ssh/https/scp forms match", () => {
@@ -70,4 +71,25 @@ test("a worktree whose main repo was deleted is reported as orphaned, not groupe
   assert.equal(id.orphaned, true);
   assert.equal(id.label, "leftover (orphaned worktree)");
   assert.equal(id.key, `orphan:${wt}`);
+});
+
+test("activity comes from the checkout's own git files; old checkouts are inactive", () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "sg-activity-")));
+  const repo = join(base, "web");
+  mkdirSync(join(repo, ".git", "logs"), { recursive: true });
+  writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
+  writeFileSync(join(repo, ".git", "index"), "");
+  writeFileSync(join(repo, ".git", "logs", "HEAD"), "");
+  const old = new Date(Date.now() - 90 * 86_400_000);
+  for (const f of ["HEAD", "index", join("logs", "HEAD")]) utimesSync(join(repo, ".git", f), old, old);
+
+  const id = repoIdentity(repo)!;
+  assert.ok(Math.abs(Date.parse(id.lastActivity!) - old.getTime()) < 2000);
+  assert.equal(activityOf(id, 30).active, false);
+  assert.equal(activityOf(id, 120).active, true);
+
+  utimesSync(join(repo, ".git", "index"), new Date(), new Date()); // e.g. git status, commit
+  assert.equal(activityOf(repoIdentity(repo), 30).active, true);
+  assert.equal(activityOf(null, 30).active, true, "non-git projects always count");
+  assert.equal(activityOf({ ...id, orphaned: true }, 30).active, false);
 });

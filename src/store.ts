@@ -34,6 +34,10 @@ export interface RepoRecord {
   findings: Finding[];
   /** Why the last scan could not complete (unsupported lockfile, network...). */
   error?: string;
+  /** Branch checked out at the last scan (to tell "fixed" apart from "switched branch"). */
+  branch?: string | null;
+  /** findingKey → last time seen (ISO). Avoids re-alerting when you switch branches back and forth. */
+  seen?: Record<string, string>;
 }
 
 export const findingKey = (f: Pick<Finding, "id" | "name" | "version">): string => `${f.id}|${f.name}@${f.version}`;

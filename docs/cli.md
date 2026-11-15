@@ -8,7 +8,8 @@ Every command accepts `--json` to print a single JSON document on stdout instead
 human-readable output (see [AI and automation](ai-and-automation.md#json-output)).
 
 - [Setup](#setup): `setup`, `init`, `schedule`
-- [Projects](#projects): `status`, `scan`, `report`, `sync`, `where`, `vuln`
+- [Dashboard and alerts](#dashboard-and-alerts): `ui`, `remind`, `settings`
+- [Projects](#projects): `status`, `scan`, `report`, `sync`, `check`, `where`, `vuln`
 - [Folders](#folders): `roots`, `discover`, `forget`, `unexclude`
 - [AI and automation](#ai-and-automation): `mcp`, `guide`
 - [Exit codes](#exit-codes) · [Environment variables](#environment-variables) · [Files](#files)
@@ -37,8 +38,14 @@ run in a detached background process, so your prompt never waits. Only zsh is su
 
 ### `selfguard schedule on [--every <interval>] | off | status`
 
-macOS only. Installs a per-user launchd agent (`~/Library/LaunchAgents/dev.selfguard.sync.plist`)
-that runs `selfguard sync --background` periodically and once at login.
+macOS only. Installs two per-user launchd agents:
+
+- `dev.selfguard.sync` runs `selfguard sync --background` periodically and once at login. It
+  discovers new projects, re-checks everything against new advisories, and sends the reminder
+  when it is due.
+- `dev.selfguard.watch` runs `selfguard check --background` when the lockfile or folder of an
+  active checkout changes (at most every 15 seconds). It watches up to 200 paths, most recently
+  active first, and is refreshed after each sync.
 
 | Option | Default | |
 |---|---|---|
@@ -49,13 +56,44 @@ Node versions (nvm, fnm, Homebrew upgrade), run `selfguard schedule on` again.
 
 ---
 
+## Dashboard and alerts
+
+### `selfguard ui [--no-open] [--port N]`
+
+Opens the local dashboard in your browser. It is served on `127.0.0.1` by a background process
+that stops after 30 minutes without use. If one is already running, it is reused. The URL
+carries a per-session token. See the [security model](security-model.md#dashboard).
+
+| Option | |
+|---|---|
+| `--no-open` | Print the URL without opening a browser. |
+| `--port` | Port to listen on (default: a random free port). |
+
+### `selfguard remind [--dry-run]`
+
+Lists the serious open issues in your active repos and sends the reminder notification now.
+"Serious" means malicious packages, critical vulnerabilities outside dev dependencies, and high
+ones in direct dependencies. Each repo is judged by its main checkout (or its most recently
+active one). `--dry-run` only prints. The scheduled reminder uses the same list.
+
+### `selfguard settings [--remind daily|weekly|off] [--active-days N]`
+
+Shows or changes alert settings.
+
+| Option | Default | |
+|---|---|---|
+| `--remind` | `daily` | How often to send the reminder. It is only sent between 09:00 and 21:00, and only if something serious is open. |
+| `--active-days` | `30` | Checkouts without git activity (commits, checkouts, pulls, `git status`) for longer are inactive. They are listed but only alert for malicious packages. |
+
+---
+
 ## Projects
 
-### `selfguard status [--vulnerable] [--flat]`
+### `selfguard status [--vulnerable] [--flat] [--all]`
 
-All tracked projects, riskiest first. Git worktrees and clones of the same repository are
-grouped under one entry, with each checkout's branch. The headline shows the main checkout and
-mentions a branch that is worse.
+Tracked projects, riskiest first. Git worktrees and clones of the same repository are grouped
+under one entry, with each checkout's branch. The headline shows the main checkout and mentions
+a branch that is worse. Inactive repos and checkouts are hidden unless you pass `--all`.
 
 | Option | |
 |---|---|
@@ -90,6 +128,11 @@ found vulnerabilities, `2` if the project is not tracked.
 
 All dependencies across all projects are de-duplicated before querying, so syncing hundreds of
 projects takes seconds.
+
+### `selfguard check`
+
+Re-scans only the tracked projects whose lockfile changed since their last scan. It is fast
+(a `stat` per project), and it is what the lockfile watcher runs.
 
 ### `selfguard where <package>`
 
@@ -166,16 +209,21 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `SELFGUARD_HOME` | State directory. Default `~/.selfguard`. |
 | `SELFGUARD_NO_NOTIFY=1` | Disable notifications and dialogs (useful in tests and CI). |
 | `SELFGUARD_OSV_API` | OSV API base URL. Default `https://api.osv.dev/v1`. For mirrors and tests. |
+| `SELFGUARD_NO_LAUNCHD=1` | Never install or change launchd agents (tests). |
 | `NO_COLOR` | Disable colored output ([no-color.org](https://no-color.org)). Color is also off when stdout isn't a terminal. |
 
 ## Files
 
 | Path | |
 |---|---|
-| `~/.selfguard/config.json` | Watched folders (`roots`) and exclusions (`exclude`). |
+| `~/.selfguard/config.json` | Watched folders (`roots`), exclusions (`exclude`), `remind` and `activeDays`. |
+| `~/.selfguard/state.json` | When the last reminder, sync and check ran. |
+| `~/.selfguard/events.jsonl` | Activity log shown in the dashboard (new findings, fixes, reminders). Capped. |
+| `~/.selfguard/ui.json` | Port, PID and token of the running dashboard. Removed when it stops. |
 | `~/.selfguard/repos/*.json` | One record per tracked project: dependencies, findings, last scan. |
 | `~/.selfguard/cache/vulns/*.json` | Cached advisories, refreshed when OSV reports a change. |
 | `~/.selfguard/selfguard.log` | Log of background scans and syncs. |
 | `~/Library/LaunchAgents/dev.selfguard.sync.plist` | macOS scheduled sync (`schedule on`). |
+| `~/Library/LaunchAgents/dev.selfguard.watch.plist` | macOS lockfile watcher (`schedule on`). |
 
 The state directory is created with mode `0700` and its files with `0600`.

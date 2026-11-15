@@ -44,7 +44,11 @@ src/
   discover.ts       bounded project discovery in watched folders
   repoid.ts         repository identity for grouping worktrees and clones
   hook.ts           zsh hook and background scans
-  alerts.ts         what to notify; notify.ts delivers it on macOS
+  activity.ts       which checkouts are active (recent git activity)
+  alerts.ts         what to notify (pure); announce.ts logs events and delivers via notify.ts
+  events.ts         activity log; state.ts small runtime state (last reminder, sync…)
+  schedule.ts       launchd agents: periodic sync and lockfile watcher
+  ui/               local dashboard: server.ts (HTTP + JSON API) and static/ (HTML, CSS, JS)
   setup.ts, tui.ts  interactive setup wizard
   store.ts, config.ts, paths.ts, fsutil.ts, sanitize.ts, report.ts
 test/               node:test suites and fixtures
@@ -60,7 +64,8 @@ These keep selfguard trustworthy. Pull requests that break them can't be merged:
    commands, project scripts or config loading. Read files as data.
 3. **Treat every external string as hostile.** Sanitize anything printed, notified or returned
    to an AI with `clean()` from `src/sanitize.ts`. Never interpolate untrusted text into
-   commands or scripts; pass it as arguments.
+   commands or scripts; pass it as arguments. In the dashboard, use `textContent`, never
+   `innerHTML`, and keep the CSP strict (no inline scripts or styles).
 4. **Only package names and versions may leave the machine.**
 5. **`api.ts` returns data, `cli.ts` renders it.** New features should be available through
    `--json` and, where it makes sense, as an MCP tool (`src/mcp.ts`), documented in

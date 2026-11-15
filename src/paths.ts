@@ -12,3 +12,6 @@ export const reposDir = (): string => join(stateRoot(), "repos");
 export const vulnCacheDir = (): string => join(stateRoot(), "cache", "vulns");
 export const locksDir = (): string => join(stateRoot(), "locks");
 export const logFile = (): string => join(stateRoot(), "selfguard.log");
+export const eventsFile = (): string => join(stateRoot(), "events.jsonl");
+export const stateFile = (): string => join(stateRoot(), "state.json");
+export const uiFile = (): string => join(stateRoot(), "ui.json");

@@ -8,6 +8,8 @@ import type { Project } from "./lockfile/detect.ts";
 import { groupByPackage, paint, summarizeCounts, tildify, worstSeverity } from "./report.ts";
 import { scanProjects, type ScanOutcome } from "./scan.ts";
 import { scheduleOn, scheduleStatus } from "./schedule.ts";
+import { watchTargets } from "./api.ts";
+import { announce } from "./announce.ts";
 import { listRepos, saveRepo } from "./store.ts";
 import { confirm, fitStart, isPrintable, readKeys, Screen, withSpinner } from "./tui.ts";
 
@@ -212,6 +214,7 @@ export async function runSetup(): Promise<number> {
     if (await confirm(`Scan ${fresh.length} new project(s) now? (sends only package names+versions to OSV.dev)`)) {
       const outcomes = await withSpinner(`Scanning ${fresh.length} project(s)…`, () => scanProjects(fresh));
       for (const o of outcomes) saveRepo(o.record);
+      await announce(outcomes, { notify: false });
       printScanSummary(outcomes);
     }
   }
@@ -227,12 +230,12 @@ export async function runSetup(): Promise<number> {
   if (process.platform === "darwin") {
     if (scheduleStatus().loaded) {
       out.write(`${c.green("✓")} Background sync already enabled\n`);
-    } else if (await confirm("Check for new advisories every 6h in the background, with macOS notifications?")) {
-      scheduleOn(6 * 3600);
-      out.write(`${c.green("✓")} Enabled. New repos in your folders are picked up automatically too.\n`);
+    } else if (await confirm("Watch your repos in the background (macOS notifications, daily reminder of serious issues)?")) {
+      scheduleOn(6 * 3600, watchTargets());
+      out.write(`${c.green("✓")} Enabled. Lockfile changes are checked right away; new repos are picked up every 6h.\n`);
     }
   }
 
-  out.write(`\nDone. ${c.dim("selfguard status · selfguard setup (change folders) · selfguard --help")}\n`);
+  out.write(`\nDone. ${c.dim("selfguard ui (dashboard) · selfguard status · selfguard --help")}\n`);
   return 0;
 }

@@ -10,15 +10,23 @@ export interface Root {
   depth: number;
 }
 
+export type RemindEvery = "daily" | "weekly" | "off";
+
 export interface Config {
   schema: 1;
   roots: Root[];
   /** Absolute paths never tracked or discovered (and everything below them). */
   exclude: string[];
+  /** How often to remind about unresolved malicious/critical/high findings. */
+  remind: RemindEvery;
+  /** Checkouts without git activity for this many days are "inactive" (no alerts). */
+  activeDays: number;
 }
 
 export const DEFAULT_DEPTH = 5;
 export const MAX_DEPTH = 10;
+export const DEFAULT_ACTIVE_DAYS = 30;
+export const REMIND_VALUES: readonly RemindEvery[] = ["daily", "weekly", "off"];
 
 const configFile = (): string => join(stateRoot(), "config.json");
 
@@ -35,7 +43,12 @@ export function loadConfig(): Config {
   }
   const exclude =
     raw && isObject(raw) && Array.isArray(raw.exclude) ? raw.exclude.filter((e): e is string => typeof e === "string") : [];
-  return { schema: 1, roots, exclude };
+  const remind = raw && isObject(raw) && REMIND_VALUES.includes(raw.remind as RemindEvery) ? (raw.remind as RemindEvery) : "daily";
+  const activeDays =
+    raw && isObject(raw) && typeof raw.activeDays === "number" && raw.activeDays >= 1
+      ? Math.min(365, Math.trunc(raw.activeDays))
+      : DEFAULT_ACTIVE_DAYS;
+  return { schema: 1, roots, exclude, remind, activeDays };
 }
 
 export function isExcluded(path: string, exclude: readonly string[]): boolean {

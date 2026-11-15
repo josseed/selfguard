@@ -6,7 +6,9 @@
  * names are third-party data; tool descriptions tell the model to treat them as such.
  */
 import { createInterface } from "node:readline";
+import { needsAttention } from "./alerts.ts";
 import * as api from "./api.ts";
+import { groupByPackage } from "./report.ts";
 import { GUIDE } from "./guide.ts";
 import { VERSION } from "./version.ts";
 
@@ -44,10 +46,37 @@ export const TOOLS: Tool[] = [
     name: "selfguard_status",
     title: "List tracked projects",
     description:
-      "Risk overview of everything selfguard tracks. `repos` groups git worktrees and clones of the same repository (each checkout with its branch and counts); `projects` is the flat list. Reads local state only, no network. Start here.",
+      "Risk overview of everything selfguard tracks. `repos` groups git worktrees and clones of the same repository (each checkout with its branch, counts and whether it is `active`: git activity in the last N days); `projects` is the flat list. Repo counts cover active checkouts. Reads local state only, no network. Start here (or with selfguard_attention for the short list).",
     inputSchema: obj({ onlyVulnerable: { type: "boolean", description: "Only projects with findings." } }),
     annotations: { readOnlyHint: true, openWorldHint: false },
     run: (a) => api.getStatus({ onlyVulnerable: bool(a, "onlyVulnerable") ?? false }),
+  },
+  {
+    name: "selfguard_attention",
+    title: "What needs attention",
+    description:
+      "The short list the user's reminders are about: per repo, the serious findings (malicious packages, critical vulnerabilities outside dev dependencies, high ones in direct dependencies) on the checkout that represents it (the active main clone, or the most recently active checkout). Inactive checkouts are excluded. No network. Use it to decide what to fix first." +
+      UNTRUSTED,
+    inputSchema: obj({}),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    run: () => ({
+      repos: api
+        .getAttention()
+        .map((r) => ({
+          repo: r.label,
+          path: r.path,
+          branch: r.branch,
+          packages: groupByPackage(r.findings.filter(needsAttention)).map((g) => ({
+            name: g.name,
+            version: g.version,
+            worstSeverity: g.worst,
+            direct: g.direct,
+            upgradeTo: g.worst === "malicious" ? null : (g.upgradeTo ?? null),
+            advisories: g.findings.map((f) => f.id),
+          })),
+        }))
+        .filter((r) => r.packages.length > 0),
+    }),
   },
   {
     name: "selfguard_project_report",
@@ -80,6 +109,15 @@ export const TOOLS: Tool[] = [
       const { outcomes: _o, ...rest } = await api.sync();
       return rest;
     },
+  },
+  {
+    name: "selfguard_check",
+    title: "Re-check changed lockfiles",
+    description:
+      "Re-scan only the tracked projects whose lockfile changed since their last scan (after installs, git pull or branch switches). Fast; use it to verify a fix instead of a full sync.",
+    inputSchema: obj({}),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    run: () => api.check({ notify: false }),
   },
   {
     name: "selfguard_where",
