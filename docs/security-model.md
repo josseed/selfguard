@@ -68,9 +68,49 @@ worktree pointer file, each capped at 64 KB. It never runs `git`.
 
 ## Other machines
 
-`selfguard machines add <host>` lets this machine also watch dev servers. The goal is that
-neither side can hurt the other: a compromised server can't attack this Mac, and someone in
-control of selfguard on this Mac can't use it to get into the servers.
+`selfguard machines add` lets this machine also watch the repos of your other machines. The
+goal is that neither side can hurt the other: a compromised machine can't attack this one, and
+someone in control of selfguard here can't use it to get into the others. There are two ways
+to reach a machine: **selfguard sharing** (both run selfguard, nothing but Tailscale needed) and
+**SSH** (servers without selfguard).
+
+### selfguard sharing (machines that run selfguard)
+
+On the machine to be watched (B), "Let my other machines see this one" (`selfguard share on`)
+starts a small HTTP service (a launchd agent, or a systemd user unit on Linux):
+
+- **Tailnet only.** It listens only on B's own Tailscale addresses (from `tailscale status`),
+  never on `0.0.0.0`, the LAN or localhost. Without a Tailscale address it doesn't listen at
+  all. Unlike enabling Remote Login, it opens no port outside the tailnet and needs no SSH.
+- **Read-only, same reader.** It answers the same requests as the SSH reader (list, fetch,
+  browse, ping; `reader.ts` produces byte-identical answers) with the same limits: lockfile and
+  `package.json` names only, no symlinked files, 50 MB per file, at most 1,000 files and 64
+  folders per request, nothing outside the granted folder (paths resolved with `realpath`, so
+  symlinks and `..` can't escape). It has no endpoint that writes files or runs anything from a
+  project.
+- **Pairing, approved over there.** Machine A sends `POST /pair/request` with its name and an
+  ephemeral X25519 public key. B identifies the caller with `tailscale whois`: it must be a
+  machine of the tailnet and, by default, of **the same Tailscale user**
+  (`--allow-other-users` widens that on purpose). The request waits 5 minutes, with a
+  notification and a card in B's dashboard. Both screens show the same 6-digit code, derived
+  from both public keys, so you can check that you approve the request you sent. On approval,
+  B chooses the folder A may read, creates a random 256-bit credential, keeps only its SHA-256
+  and seals the credential for A with the X25519 shared secret (HKDF-SHA256, AES-256-GCM).
+  Only the machine that holds the ephemeral private key can open it. A stores it in
+  `~/.selfguard/machines/<name>/share.json` (mode `0600`).
+- **Bound to the machine.** Every request needs the credential (compared in constant time)
+  **and** has to come from the Tailscale node it was issued to, checked with `whois`. A
+  credential used from another node is revoked on the spot. Pending or rejected requests can't
+  read anything.
+- **Limits and logs.** Pairing requests are rate limited (5 per address every 10 minutes),
+  failed credentials too. Every access is logged in `~/.selfguard/share/access.log` (capped).
+  B's dashboard lists "Machines that can see this one" with their last connection and
+  **Revoke**, and `selfguard share list | revoke <name>` does the same. `share off` stops
+  answering at once, before the service is even unloaded.
+
+What this doesn't protect against: someone already in control of B's account can serve
+anything (the answer is untrusted on A, as with SSH), and someone in control of A can read what
+A was granted on B, and nothing more.
 
 ### Restricted mode (default): a key that can only read lockfiles
 
