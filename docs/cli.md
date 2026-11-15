@@ -8,7 +8,7 @@ Every command accepts `--json` to print a single JSON document on stdout instead
 human-readable output (see [AI and automation](ai-and-automation.md#json-output)).
 
 - [Setup](#setup): `setup`, `init`, `schedule`
-- [Dashboard and alerts](#dashboard-and-alerts): `ui`, `remind`, `settings`
+- [Dashboard and alerts](#dashboard-and-alerts): `ui`, `app`, `remind`, `settings`
 - [Projects](#projects): `status`, `scan`, `report`, `sync`, `check`, `where`, `vuln`
 - [Folders](#folders): `roots`, `discover`, `forget`, `unexclude`
 - [AI and automation](#ai-and-automation): `mcp`, `guide`
@@ -68,6 +68,20 @@ carries a per-session token. See the [security model](security-model.md#dashboar
 |---|---|
 | `--no-open` | Print the URL without opening a browser. |
 | `--port` | Port to listen on (default: a random free port). |
+
+### `selfguard app install | uninstall | status`
+
+macOS only. Creates `~/Applications/selfguard.app`, a launcher for the dashboard, so you can
+open it from Spotlight (<kbd>⌘</kbd>+<kbd>Space</kbd> → "selfguard"), Launchpad or the Dock.
+
+The app is generated on your machine, not downloaded, so macOS doesn't quarantine it and it
+needs no Apple signature. It contains an icon, an `Info.plist` and a two-line shell script that
+runs `selfguard ui` with the absolute paths of your Node.js and selfguard. `status` tells you if
+it points at a different Node.js (after switching versions); `install` again to fix it.
+`schedule on` also refreshes it.
+
+Notifications still come from Script Editor (see [troubleshooting](troubleshooting.md#i-dont-see-notifications)),
+so clicking one doesn't open the dashboard.
 
 ### `selfguard remind [--dry-run]`
 
@@ -225,5 +239,6 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `~/.selfguard/selfguard.log` | Log of background scans and syncs. |
 | `~/Library/LaunchAgents/dev.selfguard.sync.plist` | macOS scheduled sync (`schedule on`). |
 | `~/Library/LaunchAgents/dev.selfguard.watch.plist` | macOS lockfile watcher (`schedule on`). |
+| `~/Applications/selfguard.app` | macOS launcher for the dashboard (`app install`). |
 
 The state directory is created with mode `0700` and its files with `0600`.

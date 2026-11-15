@@ -64,6 +64,14 @@ running dashboard, and passed to `open` to launch your browser. Other users of t
 see process arguments for a moment; on shared machines, close the dashboard when you're done
 (it also stops after 30 idle minutes).
 
+## Launcher app
+
+`selfguard app install` writes `~/Applications/selfguard.app` itself: an `Info.plist`, an icon
+shipped in the npm package, and a shell script whose only command is
+`exec '<node>' '<selfguard>' ui`, with both paths single-quoted. It is created locally, so it
+isn't quarantined and needs no code signature; it has no network access of its own and no
+permissions beyond what `selfguard ui` already has.
+
 ## Releases
 
 Every published version is:

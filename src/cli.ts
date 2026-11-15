@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { buildReminder, needsAttention } from "./alerts.ts";
 import { maybeRemind } from "./announce.ts";
 import * as api from "./api.ts";
+import { appStatus, installApp, uninstallApp } from "./app.ts";
 import { GUIDE } from "./guide.ts";
 import { hookEnter, ZSH_HOOK } from "./hook.ts";
 import { findProject } from "./lockfile/detect.ts";
@@ -28,6 +29,9 @@ Setup:
 Dashboard and alerts:
   selfguard ui [--no-open] [--port N]
                                      local dashboard in your browser (127.0.0.1 only)
+  selfguard app install | uninstall | status
+                                     macOS: ~/Applications/selfguard.app opens the dashboard
+                                     (Spotlight, Launchpad, Dock)
   selfguard remind                   send the reminder of serious open issues now
   selfguard settings [--remind daily|weekly|off] [--active-days N]
                                      reminder frequency; days of git inactivity before a
@@ -307,6 +311,39 @@ async function cmdUi(args: string[]): Promise<number> {
   return 0;
 }
 
+function cmdApp(args: string[]): number {
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: JSON_OPT });
+  const c = paint(out);
+  switch (positionals[0]) {
+    case "install": {
+      const s = installApp();
+      if (values.json) emit(s);
+      else {
+        out.write(`${c.green("✓")} Installed ${tildify(s.path)}\n`);
+        out.write(`Open the dashboard with ⌘+Space → "selfguard", or drag it to the Dock.\n`);
+        out.write(c.dim(`It runs ${process.execPath}; re-run this if you change Node versions.\n`));
+      }
+      return 0;
+    }
+    case "uninstall": {
+      const was = uninstallApp();
+      if (values.json) emit({ installed: false, wasInstalled: was });
+      else out.write(was ? "Removed selfguard.app.\n" : "selfguard.app was not installed.\n");
+      return 0;
+    }
+    case "status":
+    case undefined: {
+      const s = appStatus();
+      if (values.json) emit(s);
+      else if (!s.installed) out.write("not installed (selfguard app install)\n");
+      else out.write(`installed (${tildify(s.path)})${s.upToDate ? "" : c.yellow(" · outdated, run: selfguard app install")}\n`);
+      return 0;
+    }
+    default:
+      usage("usage: selfguard app install | uninstall | status");
+  }
+}
+
 async function cmdDiscover(args: string[]): Promise<number> {
   const { values } = parseArgs({ args, options: { ...JSON_OPT, "dry-run": { type: "boolean" } } });
   const r = await api.discoverNew({ dryRun: values["dry-run"] ?? false });
@@ -442,6 +479,8 @@ function cmdSchedule(args: string[]): number {
       const seconds = parseInterval(values.every ?? "6h");
       const targets = api.watchTargets();
       const plist = scheduleOn(seconds, targets);
+      // Same Node-path concern as the agents: keep the launcher app in sync.
+      if (appStatus().installed && !appStatus().upToDate) installApp();
       if (values.json) emit({ enabled: true, intervalSeconds: seconds, plist, node: process.execPath, watchedPaths: targets.length });
       else {
         out.write(`Background sync every ${values.every}, plus instant checks when a lockfile changes. (${tildify(plist)})\n`);
@@ -501,6 +540,8 @@ async function main(argv: string[]): Promise<number> {
       return cmdSettings(rest);
     case "ui":
       return cmdUi(rest);
+    case "app":
+      return cmdApp(rest);
     case "discover":
       return cmdDiscover(rest);
     case "roots":

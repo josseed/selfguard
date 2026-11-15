@@ -49,6 +49,7 @@ src/
   events.ts         activity log; state.ts small runtime state (last reminder, sync…)
   schedule.ts       launchd agents: periodic sync and lockfile watcher
   ui/               local dashboard: server.ts (HTTP + JSON API) and static/ (HTML, CSS, JS)
+  app.ts            macOS launcher app (~/Applications/selfguard.app); icon in assets/
   setup.ts, tui.ts  interactive setup wizard
   store.ts, config.ts, paths.ts, fsutil.ts, sanitize.ts, report.ts
 test/               node:test suites and fixtures

@@ -29,7 +29,8 @@ HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
   and a daily reminder lists what is still open and serious. When you fix something, you get a
   "✓ fixed" notification too.
 - **A dashboard, not just a terminal.** `selfguard ui` opens a local page with every repo, what
-  needs attention, how to fix it, and a feed of what changed.
+  needs attention, how to fix it, and a feed of what changed. On macOS, `selfguard app install`
+  puts it in Spotlight and the Dock.
 - **Signal over noise.** Only checkouts with recent git activity alert you. Old clones and
   abandoned worktrees stay listed but quiet (except for malicious packages), and a new worktree
   of a known repo isn't reported as news.

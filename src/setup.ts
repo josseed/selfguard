@@ -8,6 +8,7 @@ import type { Project } from "./lockfile/detect.ts";
 import { groupByPackage, paint, summarizeCounts, tildify, worstSeverity } from "./report.ts";
 import { scanProjects, type ScanOutcome } from "./scan.ts";
 import { scheduleOn, scheduleStatus } from "./schedule.ts";
+import { appStatus, installApp } from "./app.ts";
 import { watchTargets } from "./api.ts";
 import { announce } from "./announce.ts";
 import { listRepos, saveRepo } from "./store.ts";
@@ -233,6 +234,15 @@ export async function runSetup(): Promise<number> {
     } else if (await confirm("Watch your repos in the background (macOS notifications, daily reminder of serious issues)?")) {
       scheduleOn(6 * 3600, watchTargets());
       out.write(`${c.green("✓")} Enabled. Lockfile changes are checked right away; new repos are picked up every 6h.\n`);
+    }
+  }
+
+  if (process.platform === "darwin") {
+    if (appStatus().installed) {
+      out.write(`${c.green("✓")} selfguard.app already in ~/Applications\n`);
+    } else if (await confirm("Add selfguard.app to ~/Applications (open the dashboard from Spotlight or the Dock)?")) {
+      installApp();
+      out.write(`${c.green("✓")} Added. Open it with ⌘+Space → "selfguard".\n`);
     }
   }
 

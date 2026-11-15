@@ -30,7 +30,7 @@ npm view selfguard dist.attestations
 selfguard setup
 ```
 
-The setup wizard walks you through four steps:
+The setup wizard walks you through these steps:
 
 1. **Choose your code folders.** selfguard suggests common locations that exist on your machine
    (`~/code`, `~/dev`, `~/projects`, `~/repository`, `~/Documents/GitHub`…) and counts the
@@ -44,6 +44,7 @@ The setup wizard walks you through four steps:
 4. **Enable background watching** (macOS). A lockfile watcher re-checks a repo seconds after its
    lockfile changes, a full sync runs every 6 hours, and a daily reminder sums up what is still
    open and serious.
+5. **Add selfguard.app** (macOS) to open the dashboard from Spotlight or the Dock.
 
 Each step asks first, and you can re-run `selfguard setup` at any time to change your folders.
 
@@ -93,6 +94,10 @@ Opens a local page in your browser (served from `127.0.0.1` only, with a per-ses
 
 The dashboard runs in the background and stops by itself after 30 minutes without use. Running
 `selfguard ui` again reopens it.
+
+On macOS, `selfguard app install` (also offered by `setup`) adds **selfguard.app** to
+`~/Applications`, so you can open the dashboard from Spotlight (<kbd>⌘</kbd>+<kbd>Space</kbd> →
+"selfguard") or keep it in the Dock.
 
 ### In the terminal
 
@@ -170,6 +175,7 @@ are recorded and shown by `selfguard ui`, `selfguard status` and the shell hook.
 
 ```sh
 selfguard schedule off                 # macOS: remove the launchd agents
+selfguard app uninstall                # macOS: remove ~/Applications/selfguard.app
 npm uninstall -g selfguard
 rm -rf ~/.selfguard                    # all local state
 ```

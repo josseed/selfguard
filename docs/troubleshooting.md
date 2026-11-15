@@ -38,6 +38,8 @@ Malicious-package alerts also open a dialog that stays on screen, so they can't 
 ## The dashboard doesn't open
 
 - Run `selfguard ui --no-open` and open the printed URL yourself.
+- selfguard.app does nothing after switching Node versions: `selfguard app status` says
+  "outdated". Run `selfguard app install` again.
 - "Not connected": the dashboard stopped after 30 idle minutes. Run `selfguard ui` again.
 - Errors are logged to `~/.selfguard/selfguard.log`.
 

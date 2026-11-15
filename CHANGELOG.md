@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-15
+
+### Added
+
+- `selfguard app install | uninstall | status` (macOS): a launcher app in `~/Applications` to
+  open the dashboard from Spotlight, Launchpad or the Dock. Generated locally, so it needs no
+  Apple signature. Offered by `setup`, refreshed by `schedule on`.
+
 ## [0.2.1] - 2026-11-15
 
 ### Fixed
@@ -66,7 +74,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/josseed/selfguard/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/josseed/selfguard/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/josseed/selfguard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/josseed/selfguard/releases/tag/v0.1.0
