@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-15
+
 ### Added
 
 - `selfguard ui`: a local dashboard in the browser with the repos that need attention, fixes per
@@ -57,5 +59,6 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/josseed/selfguard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/josseed/selfguard/releases/tag/v0.1.0
