@@ -366,3 +366,20 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 @keyframes spin { to { transform: rotate(360deg); } }
 .skeleton { height: 140px; border-radius: var(--radius); background: linear-gradient(90deg, var(--hover), var(--panel), var(--hover)); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
 @keyframes shimmer { to { background-position: -200% 0; } }
+
+/* ---------- repo groups & markdown ---------- */
+
+tbody.group + tbody.group tr.group-row td { border-top: 1px solid var(--border); }
+tr.group-row td { padding: 0; background: color-mix(in srgb, var(--hover) 35%, transparent); }
+.group-toggle { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 20px; cursor: pointer; }
+.group-toggle:hover { background: var(--hover); }
+.group-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.group-toggle svg { width: 15px; height: 15px; color: var(--muted); flex: none; }
+.group-toggle .chev svg { transition: transform .15s; }
+.group-toggle[aria-expanded="true"] .chev svg { transform: rotate(90deg); }
+.group-toggle .chev { display: inline-flex; }
+.group-name { font-weight: 600; }
+.btn svg { width: 15px; height: 15px; flex: none; }
+.modal.wide { width: min(880px, 100%); }
+.md-preview { width: 100%; min-height: 52vh; resize: vertical; box-sizing: border-box; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.group-toggle .grow { flex: 1; }

@@ -42,7 +42,7 @@ Projects:
                                      tracked repos, riskiest first (worktrees/clones grouped;
                                      inactive checkouts hidden unless --all)
   selfguard scan [dir] [-v]          scan a project now (exit 1 if vulnerable) and track it
-  selfguard report [dir] [-v]        last scan results, no network
+  selfguard report [dir] [-v] [-m]   last scan results, no network (-m: markdown)
   selfguard sync                     find new repos in your folders + re-check everything
   selfguard check                    re-scan only projects whose lockfile changed
   selfguard where <package>          which projects use <package>, which versions
@@ -110,8 +110,13 @@ function cmdReport(args: string[]): number {
   const { values, positionals } = parseArgs({
     args,
     allowPositionals: true,
-    options: { ...JSON_OPT, verbose: { type: "boolean", short: "v" } },
+    options: { ...JSON_OPT, verbose: { type: "boolean", short: "v" }, markdown: { type: "boolean", short: "m" } },
   });
+  if (values.markdown) {
+    const md = api.getReportMarkdown(positionals[0] ?? ".");
+    out.write(md.markdown);
+    return md.packages > 0 ? 1 : 0;
+  }
   const report = api.getReport(positionals[0] ?? ".");
   if (values.json) emit(report);
   else out.write(`${renderFindings(loadRepo(report.path)!, out, values.verbose ?? false)}\n`);

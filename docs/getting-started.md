@@ -87,9 +87,13 @@ Opens a local page in your browser (served from `127.0.0.1` only, with a per-ses
 - **Overview**: whether anything needs attention, counts by severity, and **Fix first**: the
   serious packages ranked by how many repos they affect.
 - **Repos**: every repo with its worst severity, serious and vulnerable counts, checkouts and
-  last activity. A repo's page lists its vulnerable packages on the main checkout (or all
-  checkouts) with the version that fixes each one, which branches have it and the advisories.
-  Re-scan or ignore a checkout from there.
+  last activity, grouped by folder: the first folder under a watched folder (with
+  `~/code` watched, `~/code/acme/api` and `~/code/acme/web` go under **acme**). Switch to
+  **Flat** for a single list. A repo's page lists its vulnerable packages on the main checkout
+  (or all checkouts) with the version that fixes each one, which branches have it and the
+  advisories. Re-scan or ignore a checkout from there. **Copy markdown** copies the list as
+  markdown (fix per package, how to refresh the lockfile without install scripts);
+  `selfguard report <dir> --markdown` prints the same.
 - **Packages**: vulnerable packages across all your repos, each installed version with its fix,
   and the repos that have it. "Upgrading `next` fixes 5 repos."
 - **Activity**: what appeared, what got fixed and which reminders were sent.

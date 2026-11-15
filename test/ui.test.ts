@@ -125,3 +125,8 @@ test("folders: browse, add, change depth, remove; unexclude only excluded paths"
   const bad = await call("/api/folders/add", { method: "POST", headers: json, body: JSON.stringify({ path: join(dir, "missing") }) });
   assert.equal(bad.status, 404);
 });
+
+test("repo markdown endpoint needs the token and a known repo", async () => {
+  assert.equal((await call("/api/repo/markdown?key=nope")).status, 401);
+  assert.equal((await call("/api/repo/markdown?key=nope", { headers: auth() })).status, 404);
+});

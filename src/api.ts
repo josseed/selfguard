@@ -29,6 +29,7 @@ import { evaluate, severityOf, severityRank, type Severity } from "./match.ts";
 import { getVulns, type OsvVuln } from "./osv.ts";
 import { countBySeverity, groupByPackage, worstSeverity } from "./report.ts";
 import { compare as compareVersions, isValid as isValidVersion } from "./semver.ts";
+import { renderMarkdown, type MarkdownCheckout } from "./markdown.ts";
 import { repoIdentity, type RepoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import { lockChanged, scanProjects, type ScanOutcome } from "./scan.ts";
@@ -78,6 +79,12 @@ export interface RepoGroup {
   /** Distinct vulnerable name@version across active checkouts (all checkouts if none is active). */
   vulnerablePackages: number;
   inactiveCheckouts: number;
+  /**
+   * Folder the repo is filed under: the first folder below the watched root that holds its
+   * main checkout (e.g. ~/code/acme for ~/code/acme/api). Repos directly in a root are filed
+   * under the root. null when the checkout is outside every watched root.
+   */
+  folder: { path: string; label: string } | null;
   checkouts: Array<{
     path: string;
     branch: string | null;
@@ -178,6 +185,22 @@ function resolveProject(path: string): Project {
 
 // ---------- operations ----------
 
+/** See RepoGroup.folder. */
+export function folderOf(path: string, roots: string[]): { path: string; label: string } | null {
+  const tilde = (p: string): string => {
+    const h = homedir();
+    return p === h ? "~" : p.startsWith(`${h}/`) ? `~${p.slice(h.length)}` : p;
+  };
+  const root = roots
+    .filter((r) => path === r || path.startsWith(r.endsWith("/") ? r : `${r}/`))
+    .sort((a, b) => b.length - a.length)[0];
+  if (root === undefined) return null;
+  const rest = path.slice(root.length).split("/").filter(Boolean);
+  if (rest.length <= 1) return { path: root, label: tilde(root) };
+  const dir = join(root, rest[0]!);
+  return { path: dir, label: rest[0]! };
+}
+
 export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: RepoGroup[]; projects: ProjectSummary[] } {
   const rank = (w: Severity | null): number => (w ? severityRank(w) : 99);
   const records = listRepos();
@@ -191,7 +214,7 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
     if (!g) {
       const label = p.repo?.label ?? (p.path.split("/").pop() || p.path);
       g = {
-        group: { key, label, active: false, worstSeverity: null, vulnerablePackages: 0, inactiveCheckouts: 0, checkouts: [] },
+        group: { key, label, active: false, worstSeverity: null, vulnerablePackages: 0, inactiveCheckouts: 0, folder: null, checkouts: [] },
         active: [],
         all: [],
       };
@@ -214,6 +237,7 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
     else g.group.inactiveCheckouts++;
     g.all.push(...rec.findings);
   });
+  const roots = loadConfig().roots.map((r) => r.path);
   const repos = [...groups.values()]
     .map(({ group, active, all }) => {
       group.active = group.checkouts.some((k) => k.active);
@@ -228,6 +252,8 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
           rank(a.worstSeverity) - rank(b.worstSeverity) ||
           a.path.localeCompare(b.path),
       );
+      const home = group.checkouts.find((k) => !k.worktree) ?? group.checkouts[0];
+      group.folder = home ? folderOf(home.path, roots) : null;
       return group;
     })
     .filter((g) => !opts.onlyVulnerable || g.checkouts.some((k) => k.vulnerablePackages > 0))
@@ -313,6 +339,36 @@ export function getRepoDetail(key: string): RepoDetail {
       a.name.localeCompare(b.name),
   );
   return { key: group.key, label: group.label, checkouts: group.checkouts, packages };
+}
+
+/**
+ * Markdown report (see markdown.ts). With `path`, only that checkout of
+ * the repo; otherwise every checkout, merged.
+ */
+export function getRepoMarkdown(key: string, opts: { path?: string } = {}): { markdown: string; packages: number } {
+  const detail = getRepoDetail(key);
+  const scoped = opts.path === undefined ? detail.checkouts : detail.checkouts.filter((k) => k.path === opts.path);
+  if (scoped.length === 0) throw new ApiError("not_found", "unknown checkout");
+  const paths = new Set(scoped.map((k) => k.path));
+  const checkouts: MarkdownCheckout[] = scoped.map((k) => {
+    const rec = loadRepo(k.path);
+    return { path: k.path, branch: k.branch, lockfile: rec?.lockfile ?? null, lockType: rec?.lockType ?? null, scannedAt: rec?.scannedAt ?? null };
+  });
+  const packages = detail.packages
+    .map((p) => ({ ...p, checkouts: p.checkouts.map((c) => c.path).filter((c) => paths.has(c)) }))
+    .filter((p) => p.checkouts.length > 0);
+  return { markdown: renderMarkdown({ label: detail.label, checkouts, packages }), packages: packages.length };
+}
+
+/** Same report for a single project path (CLI `report --markdown`). */
+export function getReportMarkdown(path: string): { markdown: string; packages: number } {
+  const report = getReport(path);
+  const markdown = renderMarkdown({
+    label: report.repo?.label ?? (report.path.split("/").pop() || report.path),
+    checkouts: [{ path: report.path, branch: report.repo?.branch ?? null, lockfile: report.lockfile, lockType: report.lockType, scannedAt: report.scannedAt }],
+    packages: report.vulnerable,
+  });
+  return { markdown, packages: report.vulnerable.length };
 }
 
 /** Last stored report for a project (no network). */

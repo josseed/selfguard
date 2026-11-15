@@ -128,10 +128,16 @@ inside a monorepo package scans the monorepo root.
 
 Exits with code `1` if any vulnerability is found, which makes it usable as a CI gate.
 
-### `selfguard report [dir] [-v|--verbose]`
+### `selfguard report [dir] [-v|--verbose] [-m|--markdown]`
 
 Same output as `scan`, but from the last stored scan, with no network. Exits `1` if the last scan
 found vulnerabilities, `2` if the project is not tracked.
+
+With `--markdown`, it prints a markdown report instead: every vulnerable package
+(serious first), the version that fixes it, whether to bump package.json or override a
+transitive dependency, and how to refresh the lockfile with install scripts disabled. Copy it with
+`selfguard report -m | pbcopy`. The dashboard's **Copy markdown**
+button produces the same text.
 
 ### `selfguard sync`
 

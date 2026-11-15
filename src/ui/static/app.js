@@ -15,6 +15,8 @@ const state = {
   ui: {
     repoFilter: "attention",
     repoSearch: "",
+    repoGroupBy: "folder",
+    collapsed: new Set(),
     pkgFilter: "serious",
     pkgSearch: "",
     feedFilter: "all",
@@ -63,6 +65,8 @@ const ICONS = {
   alert: "M12 8v5m0 3v.01M12 3l9.5 17h-19L12 3Z",
   folder: "M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z",
   up: "M12 19V5m-6 6 6-6 6 6",
+  chevron: "m9 6 6 6-6 6",
+  copy: "M8 8V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-3M5 8h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
 };
 
@@ -187,6 +191,25 @@ function repoGroups(filter) {
       (RANK[a.rep.worstSeverity] ?? 9) - (RANK[b.rep.worstSeverity] ?? 9) ||
       b.rep.vulnerablePackages - a.rep.vulnerablePackages ||
       a.g.label.localeCompare(b.g.label));
+}
+
+/** Rows bucketed by the folder their main checkout lives in (computed by the API). */
+function folderBuckets(rows) {
+  const buckets = new Map();
+  for (const row of rows) {
+    const f = row.g.folder;
+    const id = f ? f.path : "";
+    let b = buckets.get(id);
+    if (!b) {
+      b = { id, label: f ? f.label : "Other", path: f ? tildify(f.path) : "outside watched folders", rows: [], serious: 0, worst: 9 };
+      buckets.set(id, b);
+    }
+    b.rows.push(row);
+    if (row.serious) b.serious++;
+    b.worst = Math.min(b.worst, RANK[row.rep.worstSeverity] ?? 9);
+  }
+  return [...buckets.values()].sort((a, b) =>
+    Number(a.id === "") - Number(b.id === "") || b.serious - a.serious || a.worst - b.worst || a.label.localeCompare(b.label));
 }
 
 function seriousPackages() {
@@ -367,26 +390,57 @@ function pageRepos() {
         state.ui.repoFilter === "attention" ? "Serious issues in active repos would show up here." : "Try another filter.")));
       return;
     }
+    const repoRow = ({ g, rep, serious }) => {
+      const shown = g.active ? g.checkouts.filter((k) => k.active) : g.checkouts;
+      const worse = shown.filter((k) => k !== rep && k.vulnerablePackages > rep.vulnerablePackages).length;
+      return h("tr", { class: `clickable${g.active ? "" : " dim"}`, onclick: () => { location.hash = `#/repo/${encodeURIComponent(g.key)}`; } },
+        h("td", {}, h("div", { class: "name-cell" },
+          h("span", { class: "dot", "data-sev": rep.worstSeverity || (rep.error ? "error" : "ok") }),
+          h("div", {}, h("div", { class: "name" }, g.label), h("div", { class: "small muted" }, rep.branch ? `on ${rep.branch}` : tildify(rep.path))))),
+        h("td", {}, rep.worstSeverity ? sevBadge(rep.worstSeverity) : rep.error ? h("span", { class: "tag", title: rep.error }, "error") : h("span", { class: "badge ok" }, "clean")),
+        h("td", { class: "right num" }, serious ? h("span", { class: "tag serious" }, serious) : h("span", { class: "faint" }, "–")),
+        h("td", { class: "right num" }, rep.vulnerablePackages || h("span", { class: "faint" }, "0")),
+        h("td", { class: "small" }, shown.length > 1 ? `${shown.length}${worse ? ` · ${worse} worse` : ""}` : "1", g.inactiveCheckouts && g.active ? h("span", { class: "faint" }, ` +${g.inactiveCheckouts} inactive`) : null),
+        h("td", { class: "small muted nowrap" }, rep.lastActivity ? ago(rep.lastActivity) : "–"));
+    };
+    const buckets = folderBuckets(rows);
+    const grouped = state.ui.repoGroupBy === "folder" && buckets.length > 1;
+    const bodies = grouped
+      ? buckets.map((b) => {
+          const open = !state.ui.collapsed.has(b.id);
+          const toggle = () => {
+            if (open) state.ui.collapsed.add(b.id);
+            else state.ui.collapsed.delete(b.id);
+            renderTable();
+          };
+          return h("tbody", { class: "group" },
+            h("tr", { class: "group-row" }, h("td", { colspan: 6 },
+              h("button", { class: "group-toggle", type: "button", "aria-expanded": String(open), onclick: toggle },
+                h("span", { class: "chev" }, icon("chevron")), icon("folder"),
+                h("span", { class: "group-name" }, b.label),
+                h("span", { class: "small muted" }, b.path),
+                h("span", { class: "grow" }),
+                b.serious && b.serious < b.rows.length ? h("span", { class: "tag serious" }, `${b.serious} need attention`) : null,
+                h("span", { class: "small muted" }, plural(b.rows.length, "repo"))))),
+            open ? b.rows.map(repoRow) : null);
+        })
+      : [h("tbody", {}, ...rows.map(repoRow))];
     tableHost.replaceChildren(card(null, null, h("div", { class: "table-wrap" }, h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Repo"), h("th", {}, "Worst"), h("th", { class: "right" }, "Serious"), h("th", { class: "right" }, "Vulnerable"), h("th", {}, "Checkouts"), h("th", {}, "Last activity"))),
-      h("tbody", {}, ...rows.map(({ g, rep, serious }) => {
-        const shown = g.active ? g.checkouts.filter((k) => k.active) : g.checkouts;
-        const worse = shown.filter((k) => k !== rep && k.vulnerablePackages > rep.vulnerablePackages).length;
-        return h("tr", { class: `clickable${g.active ? "" : " dim"}`, onclick: () => { location.hash = `#/repo/${encodeURIComponent(g.key)}`; } },
-          h("td", {}, h("div", { class: "name-cell" },
-            h("span", { class: "dot", "data-sev": rep.worstSeverity || (rep.error ? "error" : "ok") }),
-            h("div", {}, h("div", { class: "name" }, g.label), h("div", { class: "small muted" }, rep.branch ? `on ${rep.branch}` : tildify(rep.path))))),
-          h("td", {}, rep.worstSeverity ? sevBadge(rep.worstSeverity) : rep.error ? h("span", { class: "tag", title: rep.error }, "error") : h("span", { class: "badge ok" }, "clean")),
-          h("td", { class: "right num" }, serious ? h("span", { class: "tag serious" }, serious) : h("span", { class: "faint" }, "–")),
-          h("td", { class: "right num" }, rep.vulnerablePackages || h("span", { class: "faint" }, "0")),
-          h("td", { class: "small" }, shown.length > 1 ? `${shown.length}${worse ? ` · ${worse} worse` : ""}` : "1", g.inactiveCheckouts && g.active ? h("span", { class: "faint" }, ` +${g.inactiveCheckouts} inactive`) : null),
-          h("td", { class: "small muted nowrap" }, rep.lastActivity ? ago(rep.lastActivity) : "–"));
-      }))))));
+      ...bodies))));
   }
+
+  const groupToggle = h("div", { class: "segmented" },
+    ...[["folder", "By folder"], ["none", "Flat"]].map(([v, label]) =>
+      h("button", { type: "button", "aria-pressed": String(state.ui.repoGroupBy === v), onclick: (e) => {
+        state.ui.repoGroupBy = v;
+        for (const b of e.currentTarget.parentNode.children) b.setAttribute("aria-pressed", String(b === e.currentTarget));
+        renderTable();
+      } }, label)));
 
   renderChips();
   renderTable();
-  $("page").replaceChildren(h("div", {}, h("div", { class: "toolbar" }, chips, search), tableHost));
+  $("page").replaceChildren(h("div", {}, h("div", { class: "toolbar" }, chips, h("div", { class: "chips" }, groupToggle, search)), tableHost));
   if (o.roots === 0) toast("No folders watched yet: add one under Folders.");
 }
 
@@ -400,10 +454,19 @@ function pageRepo() {
   }
   const d = r.data;
   const rep = representative(d);
-  setHead(d.label, crumbs, []);
-
   const many = d.checkouts.length > 1;
   const scope = many ? state.ui.scope : "all";
+  const mdQuery = () => `/api/repo/markdown?key=${encodeURIComponent(d.key)}${scope === "rep" ? `&path=${encodeURIComponent(rep.path)}` : ""}`;
+  const copyBtn = h("button", { class: "btn primary", type: "button", title: "Copy the vulnerabilities as markdown" }, icon("copy"), "Copy markdown");
+  copyBtn.addEventListener("click", () => busy(copyBtn, "Copying…", async () => {
+    const md = await call("GET", mdQuery());
+    if (await copyText(md.markdown)) toast(`Copied ${plural(md.packages, "package")} as markdown`);
+    else showMarkdown(d.label, md.markdown);
+  }));
+  const previewBtn = h("button", { class: "btn", type: "button" }, "Preview");
+  previewBtn.addEventListener("click", () => busy(previewBtn, "…", async () => showMarkdown(d.label, (await call("GET", mdQuery())).markdown)));
+  setHead(d.label, crumbs, d.packages.length ? [previewBtn, copyBtn] : []);
+
   const pkgs = scope === "rep" ? d.packages.filter((p) => p.checkouts.some((c) => c.path === rep.path)) : d.packages;
   const serious = pkgs.filter((p) => isSerious(p.worstSeverity, p.direct, p.dev)).length;
   const direct = pkgs.filter((p) => p.direct && p.upgradeTo).length;
@@ -453,6 +516,37 @@ function pageRepo() {
     card("Vulnerable packages", direct ? "Bump direct dependencies in package.json; for transitive ones, upgrade the package that pulls them in or refresh the lockfile." : null, table, null, scopeToggle),
     card(`Checkouts (${d.checkouts.length})`, "Worktrees and clones of this repo", checkouts,
       d.checkouts.length > listed.length ? h("button", { class: "btn small", type: "button", onclick: () => { state.ui.allCheckouts = true; pageRepo(); } }, `Show all ${d.checkouts.length}`) : null)));
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function showMarkdown(label, markdown) {
+  const modal = $("modal");
+  const area = h("textarea", { class: "md-preview", readonly: true, spellcheck: "false", "aria-label": "Markdown" });
+  area.value = markdown;
+  const close = () => { modal.hidden = true; modal.replaceChildren(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  const copy = h("button", { class: "btn primary", type: "button" }, icon("copy"), "Copy");
+  copy.addEventListener("click", async () => {
+    if (await copyText(area.value)) { toast("Copied"); close(); }
+    else { area.focus(); area.select(); toast("Press ⌘C to copy"); }
+  });
+  modal.replaceChildren(h("div", { class: "modal wide", role: "dialog", "aria-modal": "true", "aria-label": "Markdown" },
+    h("header", {}, h("h2", {}, `Markdown · ${label}`), h("p", {}, "Each vulnerable package, the fixed version and how to update without running install scripts.")),
+    h("div", { class: "body" }, area),
+    h("footer", {}, h("div", { class: "small muted" }, "CLI: selfguard report <dir> --markdown"), h("div", { class: "chips" }, h("button", { class: "btn", type: "button", onclick: close }, "Close"), copy))));
+  modal.hidden = false;
+  modal.onclick = (e) => { if (e.target === modal) close(); };
+  area.focus();
+  area.setSelectionRange(0, 0);
 }
 
 function checkoutRow(k) {

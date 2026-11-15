@@ -181,6 +181,10 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
     if (p === "/api/ping") return { ok: true, version: VERSION };
     if (p === "/api/overview") return getOverview();
     if (p === "/api/repo") return api.getRepoDetail(url.searchParams.get("key") ?? "");
+    if (p === "/api/repo/markdown") {
+      const path = url.searchParams.get("path");
+      return api.getRepoMarkdown(url.searchParams.get("key") ?? "", path ? { path } : {});
+    }
     if (p === "/api/vuln") return api.getVulnerability(url.searchParams.get("id") ?? "");
     if (p === "/api/packages") return { packages: api.getPackagesOverview() };
     if (p === "/api/folders") return api.getFolders();

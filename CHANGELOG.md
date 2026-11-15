@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-15
+
+### Added
+
+- Dashboard: repos are grouped by folder automatically (the first folder under each watched
+  folder), with collapsible groups and a **Flat** view. The API returns `folder` per repo group.
+- Dashboard: **Copy markdown** and **Preview** on a repo's page copy its vulnerabilities as
+  markdown: serious packages first, the fixed version, bump vs override,
+  and how to refresh the lockfile with install scripts disabled. Advisory text is cleaned and
+  marked as data.
+- `selfguard report <dir> --markdown` (`-m`) prints the same markdown.
+
 ## [0.4.0] - 2026-11-15
 
 ### Added
@@ -85,7 +97,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/josseed/selfguard/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/josseed/selfguard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/josseed/selfguard/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/josseed/selfguard/compare/v0.2.0...v0.2.1
