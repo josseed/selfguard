@@ -265,7 +265,8 @@ export async function addMachine(name: string, host: string, opts: AddMachineOpt
 
   const cfg = loadConfig();
   const existing = cfg.machines.find((m) => m.name === name);
-  const entry: Machine = existing ?? { name, host, mode, scope, roots: [], exclude: [] };
+  const entry: Machine = existing ?? { name, host, mode, scope, transport: "ssh", roots: [], exclude: [] };
+  entry.transport = "ssh";
   entry.host = host;
   entry.mode = mode;
   entry.scope = scope;

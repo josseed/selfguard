@@ -32,12 +32,30 @@ export interface Machine {
   mode: MachineMode;
   /** Restricted mode: the folder the reader on the machine allows (default "~"). */
   scope: string;
+  /**
+   * How to reach it. "ssh" (default, and for configs written before 0.8): the read-only reader
+   * over SSH. "share": the other machine runs selfguard with sharing on and answers over the
+   * tailnet with a credential from pairing (no SSH, no Remote Login). `host` is then its
+   * tailnet IP and `port` its share port.
+   */
+  transport: MachineTransport;
   /** Folders on that machine; "~/code" style paths are expanded there. */
   roots: Root[];
   exclude: string[];
 }
 
 export type MachineMode = "restricted" | "ssh";
+export type MachineTransport = "ssh" | "share";
+
+export const DEFAULT_SHARE_PORT = 47821;
+
+/** "Let my other machines see this one" (see share.ts). */
+export interface ShareConfig {
+  enabled: boolean;
+  port: number;
+  /** Accept pairing from machines of other Tailscale users of the tailnet (default: only yours). */
+  allowOtherUsers: boolean;
+}
 
 export const MACHINE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 /** No leading "-" (would be read as an ssh option), no spaces, quotes or shell characters. */
@@ -71,6 +89,7 @@ export interface Config {
   autoDiscover: boolean;
   /** Daily check of npm for a newer selfguard (only the package name is sent). */
   updateCheck: boolean;
+  share: ShareConfig;
 }
 
 export interface Dismissal {
@@ -121,7 +140,8 @@ export function loadConfig(): Config {
       const port = typeof m.port === "number" && Number.isInteger(m.port) && m.port > 0 && m.port < 65536 ? m.port : undefined;
       const mode: MachineMode = m.mode === "ssh" ? "ssh" : "restricted";
       const scope = (typeof m.scope === "string" ? validRemotePath(m.scope) : null) ?? "~";
-      machines.push({ name: m.name, host: m.host, ...(port ? { port } : {}), mode, scope, roots: mroots, exclude: mexclude });
+      const transport: MachineTransport = m.transport === "share" ? "share" : "ssh";
+      machines.push({ name: m.name, host: m.host, ...(port ? { port } : {}), mode, scope, transport, roots: mroots, exclude: mexclude });
     }
   }
   const dismissed: Dismissal[] = [];
@@ -134,7 +154,13 @@ export function loadConfig(): Config {
   }
   const autoDiscover = !(raw && isObject(raw) && raw.autoDiscover === false);
   const updateCheck = !(raw && isObject(raw) && raw.updateCheck === false);
-  return { schema: 1, roots, exclude, remind, activeDays, machines, dismissed, autoDiscover, updateCheck };
+  const rs: Record<string, unknown> = raw && isObject(raw) && isObject(raw.share) ? raw.share : {};
+  const share: ShareConfig = {
+    enabled: rs.enabled === true,
+    port: typeof rs.port === "number" && Number.isInteger(rs.port) && rs.port > 1024 && rs.port < 65536 ? rs.port : DEFAULT_SHARE_PORT,
+    allowOtherUsers: rs.allowOtherUsers === true,
+  };
+  return { schema: 1, roots, exclude, remind, activeDays, machines, dismissed, autoDiscover, updateCheck, share };
 }
 
 export function isExcluded(path: string, exclude: readonly string[]): boolean {
