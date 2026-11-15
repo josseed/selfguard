@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { request, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -96,4 +96,32 @@ test("launchd plists escape paths and watch lockfiles", () => {
   assert.match(plist, /<key>ThrottleInterval<\/key><integer>15<\/integer>/);
   assert.doesNotMatch(plist, /StartInterval/);
   assert.match(agentPlist("dev.selfguard.sync", ["n"], { interval: 3600 }, "/l"), /<key>StartInterval<\/key><integer>3600<\/integer>/);
+});
+
+test("folders: browse, add, change depth, remove; unexclude only excluded paths", async () => {
+  const json = { ...auth(), "content-type": "application/json" };
+  const dir = mkdtempSync(join(tmpdir(), "sg-ui-code-"));
+  mkdirSync(join(dir, "web"));
+  writeFileSync(join(dir, "web", "package.json"), "{}");
+  mkdirSync(join(dir, ".hidden"));
+  mkdirSync(join(dir, "node_modules"));
+
+  const fs = JSON.parse((await call(`/api/fs?path=${encodeURIComponent(dir)}`, { headers: auth() })).body);
+  assert.deepEqual(fs.dirs.map((d: { name: string; isProject: boolean }) => [d.name, d.isProject]), [["web", true]]);
+  assert.equal((await call(`/api/fs?path=${encodeURIComponent(join(dir, "nope"))}`, { headers: auth() })).status, 404);
+
+  const added = await call("/api/folders/add", { method: "POST", headers: json, body: JSON.stringify({ path: dir, depth: 3 }) });
+  assert.equal(added.status, 200);
+  const folders = JSON.parse((await call("/api/folders", { headers: auth() })).body);
+  assert.equal(folders.roots.length, 1);
+  assert.equal(folders.roots[0].depth, 3);
+  await call("/api/folders/add", { method: "POST", headers: json, body: JSON.stringify({ path: dir, depth: 7 }) });
+  assert.equal(JSON.parse((await call("/api/folders", { headers: auth() })).body).roots[0].depth, 7);
+
+  const notExcluded = await call("/api/unexclude", { method: "POST", headers: json, body: JSON.stringify({ path: dir }) });
+  assert.equal(notExcluded.status, 404);
+  const removed = await call("/api/folders/remove", { method: "POST", headers: json, body: JSON.stringify({ path: dir }) });
+  assert.equal(JSON.parse(removed.body).removed, true);
+  const bad = await call("/api/folders/add", { method: "POST", headers: json, body: JSON.stringify({ path: join(dir, "missing") }) });
+  assert.equal(bad.status, 404);
 });

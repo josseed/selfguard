@@ -10,38 +10,24 @@
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><img src="/favicon.svg" alt="" width="22" height="22"><span>selfguard</span></div>
-    <div class="status-line" id="status-line">Loading…</div>
-    <button class="btn" id="sync-btn" type="button">Sync now</button>
-  </header>
-
-  <main>
-    <section class="hero" id="hero" aria-live="polite">
-      <div class="hero-text">
-        <h1 id="hero-title">…</h1>
-        <p id="hero-sub" class="muted"></p>
-      </div>
-      <div class="tiles" id="tiles"></div>
-    </section>
-
-    <div class="layout">
-      <section class="panel repos-panel" aria-label="Repositories">
-        <div class="panel-head">
-          <div class="tabs" role="tablist" id="tabs">
-            <button role="tab" data-filter="attention" type="button">Attention</button>
-            <button role="tab" data-filter="active" type="button">Active</button>
-            <button role="tab" data-filter="inactive" type="button">Inactive</button>
-          </div>
-          <input type="search" id="search" placeholder="Filter repos…" autocomplete="off" spellcheck="false">
+  <div class="shell">
+    <nav class="sidebar" aria-label="Main">
+      <a class="brand" href="#/"><img src="/favicon.svg" alt="" width="24" height="24"><span>selfguard</span></a>
+      <ul class="nav" id="nav"></ul>
+      <div class="sidebar-foot" id="sidebar-foot"></div>
+    </nav>
+    <div class="content">
+      <header class="page-head">
+        <div>
+          <div class="crumbs" id="crumbs"></div>
+          <h1 id="page-title">Loading…</h1>
         </div>
-        <ul class="repo-list" id="repo-list"></ul>
-      </section>
-
-      <section class="panel detail-panel" id="detail" aria-live="polite"></section>
+        <div class="page-actions" id="page-actions"></div>
+      </header>
+      <main id="page" aria-live="polite"></main>
     </div>
-  </main>
-
+  </div>
+  <div class="modal-backdrop" id="modal" hidden></div>
   <div class="toast" id="toast" role="status" hidden></div>
 </body>
 </html>

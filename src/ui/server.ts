@@ -26,7 +26,8 @@ import { cliEntry } from "../hook.ts";
 import { severityRank, type Severity } from "../match.ts";
 import { logFile, stateRoot, uiFile } from "../paths.ts";
 import { groupByPackage } from "../report.ts";
-import { scheduleStatus, updateWatcher } from "../schedule.ts";
+import { appStatus, installApp, uninstallApp } from "../app.ts";
+import { scheduleOff, scheduleOn, scheduleStatus, updateWatcher } from "../schedule.ts";
 import { loadRepo } from "../store.ts";
 import { VERSION } from "../version.ts";
 
@@ -58,10 +59,15 @@ export interface Overview {
   generatedAt: string;
   settings: api.Settings;
   schedule: { enabled: boolean; watcher: boolean; watchedPaths: number } | null;
+  /** macOS launcher app (null elsewhere). */
+  app: { installed: boolean; upToDate: boolean } | null;
+  roots: number;
   /** Distinct vulnerable packages in active checkouts, by worst severity. */
   totals: Record<Severity, number>;
-  /** Repos with malicious, or critical/high outside dev dependencies, in active checkouts. */
+  /** Repos with serious findings (see alerts.needsAttention) on their representative checkout. */
   needsAttention: string[];
+  /** Repo key → number of serious vulnerable packages. */
+  seriousByRepo: Record<string, number>;
   trackedProjects: number;
   activeCheckouts: number;
   repos: api.RepoGroup[];
@@ -90,13 +96,23 @@ export function getOverview(): Overview {
       schedule = null;
     }
   }
+  let app: Overview["app"] = null;
+  if (process.platform === "darwin") {
+    const a = appStatus();
+    app = { installed: a.installed, upToDate: a.upToDate };
+  }
   return {
     version: VERSION,
     generatedAt: new Date().toISOString(),
     settings: api.getSettings(),
     schedule,
+    app,
+    roots: api.listRoots().roots.length,
     totals,
     needsAttention: attention.filter((r) => r.findings.some(needsAttention)).map((r) => r.key),
+    seriousByRepo: Object.fromEntries(
+      attention.map((r) => [r.key, groupByPackage(r.findings.filter(needsAttention)).length]).filter(([, n]) => (n as number) > 0),
+    ),
     trackedProjects: status.projects.length,
     activeCheckouts: status.projects.filter((p) => p.active && p.exists).length,
     repos: status.repos,
@@ -146,6 +162,12 @@ function tokenOk(given: unknown, token: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+function str(body: Record<string, unknown>, key: string): string {
+  const v = body[key];
+  if (typeof v !== "string" || !v.trim()) throw new api.ApiError("invalid", `"${key}" is required`);
+  return v;
+}
+
 /** Only act on projects selfguard already tracks (never arbitrary paths). */
 function trackedPath(body: Record<string, unknown>): string {
   const path = body.path;
@@ -160,6 +182,9 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
     if (p === "/api/overview") return getOverview();
     if (p === "/api/repo") return api.getRepoDetail(url.searchParams.get("key") ?? "");
     if (p === "/api/vuln") return api.getVulnerability(url.searchParams.get("id") ?? "");
+    if (p === "/api/packages") return { packages: api.getPackagesOverview() };
+    if (p === "/api/folders") return api.getFolders();
+    if (p === "/api/fs") return api.listDirectories(url.searchParams.get("path") ?? undefined);
   }
   if (method === "POST") {
     const body = await readBody(req);
@@ -175,12 +200,38 @@ async function route(method: string, url: URL, req: IncomingMessage): Promise<un
     }
     if (p === "/api/forget") return api.forget(trackedPath(body), { exclude: true });
     if (p === "/api/settings") return api.updateSettings({ remind: body.remind, activeDays: body.activeDays });
-    if (p === "/api/remind") return { sent: await maybeRemind(api.getAttention(), { force: true }) };
+    if (p === "/api/remind") return { sent: await maybeRemind(api.getAttention, { force: true }) };
+    if (p === "/api/folders/add") {
+      const depth = body.depth === undefined ? undefined : Number(body.depth);
+      if (depth !== undefined && !Number.isInteger(depth)) throw new api.ApiError("invalid", "depth must be an integer");
+      return api.addRoot(str(body, "path"), depth);
+    }
+    if (p === "/api/folders/remove") return api.removeRoot(str(body, "path"));
+    if (p === "/api/unexclude") {
+      const path = str(body, "path");
+      if (!api.listRoots().exclude.includes(path)) throw new api.ApiError("not_found", "that path is not excluded");
+      return api.unexclude(path);
+    }
+    if (p === "/api/discover") return api.discoverNew({ dryRun: body.dryRun === true });
+    if (p === "/api/schedule") {
+      if (process.platform !== "darwin") throw new api.ApiError("unsupported", "background watching is macOS-only for now");
+      if (body.enabled === true) scheduleOn(6 * 3600, api.watchTargets());
+      else if (body.enabled === false) scheduleOff();
+      else throw new api.ApiError("invalid", "enabled must be true or false");
+      return getOverview().schedule;
+    }
+    if (p === "/api/app") {
+      if (process.platform !== "darwin") throw new api.ApiError("unsupported", "the launcher app is macOS-only");
+      if (body.installed === true) installApp();
+      else if (body.installed === false) uninstallApp();
+      else throw new api.ApiError("invalid", "installed must be true or false");
+      return getOverview().app;
+    }
   }
   throw new api.ApiError("not_found", "no such endpoint");
 }
 
-const STATUS: Record<string, number> = { not_found: 404, not_tracked: 404, busy: 409, too_large: 413 };
+const STATUS: Record<string, number> = { not_found: 404, not_tracked: 404, busy: 409, too_large: 413, unsupported: 501, no_roots: 400 };
 
 export function createUiServer(token: string, onActivity: () => void = () => {}): Server {
   const server: Server = createServer((req, res) => {

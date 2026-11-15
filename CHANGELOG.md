@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-15
+
+### Added
+
+- Redesigned dashboard with a sidebar and six pages: Overview (with "Fix first": serious
+  packages ranked by how many repos they affect), Repos, Packages (vulnerable packages across
+  all repos, per-version fixes), Activity, Folders and Settings.
+- Manage watched folders from the dashboard: folder browser to add one, depth stepper, remove,
+  look for new projects, include excluded paths again.
+- Turn background watching and selfguard.app on or off from the dashboard's Settings.
+
 ## [0.3.0] - 2026-11-15
 
 ### Added
@@ -74,7 +85,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/josseed/selfguard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/josseed/selfguard/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/josseed/selfguard/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/josseed/selfguard/compare/v0.1.0...v0.2.0

@@ -84,13 +84,19 @@ selfguard ui
 
 Opens a local page in your browser (served from `127.0.0.1` only, with a per-session token):
 
-- **Attention**: the repos with serious issues, worst first. **Active** and **Inactive** list the
-  rest.
-- **Repo view**: vulnerable packages on the main checkout (or all checkouts), the version that
-  fixes each one, which branches have it, and links to the advisories. Re-scan or ignore a
-  checkout from there.
+- **Overview**: whether anything needs attention, counts by severity, and **Fix first**: the
+  serious packages ranked by how many repos they affect.
+- **Repos**: every repo with its worst severity, serious and vulnerable counts, checkouts and
+  last activity. A repo's page lists its vulnerable packages on the main checkout (or all
+  checkouts) with the version that fixes each one, which branches have it and the advisories.
+  Re-scan or ignore a checkout from there.
+- **Packages**: vulnerable packages across all your repos, each installed version with its fix,
+  and the repos that have it. "Upgrading `next` fixes 5 repos."
 - **Activity**: what appeared, what got fixed and which reminders were sent.
-- **Alerts**: reminder frequency and how long a checkout counts as active.
+- **Folders**: add folders to watch with a folder browser, change how deep to look, remove them,
+  look for new projects, and include excluded paths again.
+- **Settings**: reminder frequency, the active window, background watching on/off and
+  selfguard.app.
 
 The dashboard runs in the background and stops by itself after 30 minutes without use. Running
 `selfguard ui` again reopens it.

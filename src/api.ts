@@ -3,12 +3,14 @@
  * Every function returns plain JSON-serializable data with a stable shape
  * (documented in src/guide.ts). Human rendering lives elsewhere.
  */
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { activityOf } from "./activity.ts";
 import type { AttentionRepo } from "./alerts.ts";
 import { announce } from "./announce.ts";
 import {
+  candidateRoots,
   clampDepth,
   DEFAULT_DEPTH,
   isExcluded,
@@ -26,6 +28,7 @@ import type { LockfileType } from "./lockfile/types.ts";
 import { evaluate, severityOf, severityRank, type Severity } from "./match.ts";
 import { getVulns, type OsvVuln } from "./osv.ts";
 import { countBySeverity, groupByPackage, worstSeverity } from "./report.ts";
+import { compare as compareVersions, isValid as isValidVersion } from "./semver.ts";
 import { repoIdentity, type RepoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import { lockChanged, scanProjects, type ScanOutcome } from "./scan.ts";
@@ -596,6 +599,111 @@ export function updateSettings(patch: { remind?: unknown; activeDays?: unknown }
   }
   saveConfig(cfg);
   return getSettings();
+}
+
+export interface FoldersResult {
+  roots: Array<Root & { exists: boolean; trackedProjects: number }>;
+  exclude: string[];
+  /** Common code folders on this machine that aren't watched yet. */
+  suggestions: string[];
+}
+
+/** Watched folders with how many tracked projects each contains, plus suggestions. */
+export function getFolders(): FoldersResult {
+  const cfg = loadConfig();
+  const tracked = listRepos().map((r) => r.path);
+  const roots = cfg.roots.map((r) => ({
+    ...r,
+    exists: existsSync(r.path),
+    trackedProjects: tracked.filter((p) => isExcluded(p, [r.path])).length,
+  }));
+  const watched = cfg.roots.map((r) => r.path);
+  const suggestions = candidateRoots().filter((c) => !watched.some((w) => c === w || isExcluded(c, [w])));
+  return { roots, exclude: cfg.exclude, suggestions };
+}
+
+export interface DirectoryListing {
+  path: string;
+  parent: string | null;
+  home: string;
+  /** Visible subdirectories (no hidden ones, no node_modules-like folders). */
+  dirs: Array<{ name: string; path: string; isProject: boolean }>;
+  truncated: boolean;
+}
+
+/** Subfolders of a directory, for the dashboard's folder picker. Names only, read-only. */
+export function listDirectories(path?: string): DirectoryListing {
+  const dir = normalizeDir(path && path.trim() ? path : homedir());
+  if (!dir) throw new ApiError("not_found", `not a directory: ${path}`);
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    throw new ApiError("not_found", `can't read ${dir}`);
+  }
+  const skip = new Set(["node_modules", "bower_components", "jspm_packages", "vendor", "Pods", "venv", "__pycache__", "target"]);
+  const dirs = entries
+    .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !skip.has(e.name))
+    .map((e) => e.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  const LIMIT = 500;
+  return {
+    path: dir,
+    parent: dir === "/" ? null : dirname(dir),
+    home: homedir(),
+    dirs: dirs.slice(0, LIMIT).map((name) => {
+      const full = join(dir, name);
+      return { name, path: full, isProject: existsSync(join(full, "package.json")) };
+    }),
+    truncated: dirs.length > LIMIT,
+  };
+}
+
+export interface PackageOverview {
+  name: string;
+  worstSeverity: Severity;
+  direct: boolean;
+  /** Only in dev dependencies everywhere. */
+  dev: boolean;
+  /** Per installed vulnerable version: the version to upgrade to (null: no fix, or malicious). */
+  fixes: Array<{ version: string; upgradeTo: string | null; worstSeverity: Severity }>;
+  advisories: string[];
+  repos: Array<{ key: string; label: string; path: string; branch: string | null; version: string; direct: boolean; dev: boolean }>;
+}
+
+/**
+ * Vulnerable packages across repos, judged on each repo's representative checkout (the same
+ * one reminders use): "upgrading next fixes 5 repos". No network.
+ */
+export function getPackagesOverview(): PackageOverview[] {
+  const byName = new Map<string, PackageOverview & { fixMap: Map<string, PackageOverview["fixes"][number]>; adv: Set<string> }>();
+  for (const r of getAttention()) {
+    for (const g of groupByPackage(r.findings)) {
+      let p = byName.get(g.name);
+      if (!p) {
+        p = { name: g.name, worstSeverity: g.worst, direct: false, dev: true, fixes: [], advisories: [], repos: [], fixMap: new Map(), adv: new Set() };
+        byName.set(g.name, p);
+      }
+      if (severityRank(g.worst) < severityRank(p.worstSeverity)) p.worstSeverity = g.worst;
+      p.direct ||= g.direct;
+      p.dev &&= g.dev;
+      p.fixMap.set(g.version, { version: g.version, upgradeTo: g.worst === "malicious" ? null : (g.upgradeTo ?? null), worstSeverity: g.worst });
+      for (const f of g.findings) p.adv.add(f.id);
+      p.repos.push({ key: r.key, label: r.label, path: r.path, branch: r.branch, version: g.version, direct: g.direct, dev: g.dev });
+    }
+  }
+  return [...byName.values()]
+    .map(({ fixMap, adv, ...p }) => ({
+      ...p,
+      fixes: [...fixMap.values()].sort((a, b) => (isValidVersion(a.version) && isValidVersion(b.version) ? compareVersions(a.version, b.version) : a.version.localeCompare(b.version))),
+      advisories: [...adv],
+    }))
+    .sort(
+      (a, b) =>
+        severityRank(a.worstSeverity) - severityRank(b.worstSeverity) ||
+        b.repos.length - a.repos.length ||
+        a.name.localeCompare(b.name),
+    );
 }
 
 export interface VulnerabilityDetail {

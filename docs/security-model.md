@@ -57,7 +57,10 @@ worktree pointer file, each capped at 64 KB. It never runs `git`.
 - untrusted text (package names, advisory summaries, paths) is inserted with `textContent`,
   never as HTML;
 - actions (re-scan, ignore) only accept projects selfguard already tracks; links only go to
-  `osv.dev` advisory pages.
+  `osv.dev` advisory pages;
+- the folder browser lists only the names of visible subfolders (no files, no contents), and
+  adding a folder only changes `config.json`. Discovery still reads lockfiles as data and never
+  runs anything.
 
 The token is written to `~/.selfguard/ui.json` (mode `0600`) so `selfguard ui` can reopen a
 running dashboard, and passed to `open` to launch your browser. Other users of the same Mac can
