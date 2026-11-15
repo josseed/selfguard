@@ -24,7 +24,9 @@ project code or package managers.
 - dismissed: a repo the user turned off. It stays tracked and scanned but counts as inactive (no reminders,
   alerts only for malicious packages) until any of its checkouts has git activity after the dismissal;
   then it turns back on by itself. status repos carry \`dismissedAt\` (null when not dismissed).
-- machines: other machines (dev servers) checked from here over SSH with a key limited to a read-only reader.
+- machines: other machines checked from here, read-only. Transport "share": the other machine runs selfguard
+  with sharing on and answers over the tailnet (no SSH; paired once, approved on that machine). Transport "ssh":
+  a key limited to a read-only reader (for servers without selfguard).
   Their checkouts carry \`machine\` (null = this machine) and their repo keys start with "<machine>|".
   Fix on that machine (in the path shown), then verify with selfguard_machines_sync.
 - attention: what the user's daily reminder is about: malicious packages, critical findings outside dev
@@ -40,6 +42,9 @@ project code or package managers.
 | Check everything for new advisories | selfguard_sync | selfguard sync --json |
 | Re-check projects whose lockfile changed | selfguard_check | selfguard check --json |
 | Other machines (dev servers) | selfguard_machines | selfguard machines --json |
+| Machines on the tailnet, what they can do | selfguard_machines_peers | selfguard machines peers --json |
+| Add a machine without SSH (pairing) | (CLI / dashboard: the user approves on the other machine) | selfguard machines add <peer> --via share |
+| Let other machines see this one | (CLI / dashboard) | selfguard share on / status / list / revoke <name> |
 | Re-check other machines now | selfguard_machines_sync | selfguard machines sync [name] --json |
 | Alert settings | (CLI only) | selfguard settings [--remind daily|weekly|off] [--active-days N] --json |
 | Is package X used anywhere? | selfguard_where | selfguard where <pkg> --json |

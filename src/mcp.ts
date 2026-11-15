@@ -129,6 +129,15 @@ export const TOOLS: Tool[] = [
     run: () => ({ machines: api.listMachines() }),
   },
   {
+    name: "selfguard_machines_peers",
+    title: "Machines on the tailnet",
+    description:
+      "The other machines on the user's tailnet (Tailscale) and what each one can do: selfguard sharing on (`share`, then it can be added without SSH by pairing, which the user approves on that machine), SSH port open, Tailscale SSH, online/offline, and whether it is already added. `action` is the recommended next step (connect | enable-share | ssh | added | offline). Probes each online peer for about 1.5 s.",
+    inputSchema: obj({}),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    run: () => api.machinePeers(),
+  },
+  {
     name: "selfguard_machines_sync",
     title: "Check other machines now",
     description:

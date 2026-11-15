@@ -152,3 +152,29 @@ test("update endpoints: status needs the token; restart only where supported", a
   assert.equal((await call("/api/restart", { method: "POST", headers: json, body: "{}" })).status, 501);
   assert.equal((await call("/api/restart", { method: "POST", headers: { ...auth(), "content-type": "text/plain" }, body: "{}" })).status, 403);
 });
+
+test("tailnet endpoints: peers, sharing, pairing need the token and validate input", async () => {
+  const json = { ...auth(), "content-type": "application/json" };
+  process.env.SELFGUARD_TAILSCALE = "/nonexistent/tailscale";
+  try {
+    assert.equal((await call("/api/machines/peers")).status, 401);
+    const peers = JSON.parse((await call("/api/machines/peers", { headers: auth() })).body);
+    assert.equal(peers.tailscale.ok, false);
+    assert.equal(peers.tailscale.reason, "not_installed");
+    assert.deepEqual(peers.peers, []);
+    const sh = JSON.parse((await call("/api/share", { headers: auth() })).body);
+    assert.equal(sh.enabled, false);
+    assert.deepEqual(sh.grants, []);
+    const on = await call("/api/share", { method: "POST", headers: json, body: JSON.stringify({ enabled: true }) });
+    assert.equal(JSON.parse(on.body).enabled, true);
+    const off = await call("/api/share", { method: "POST", headers: json, body: JSON.stringify({ enabled: false }) });
+    assert.equal(JSON.parse(off.body).enabled, false);
+    assert.equal((await call("/api/share/approve", { method: "POST", headers: json, body: JSON.stringify({ id: "nope" }) })).status, 404);
+    assert.equal(JSON.parse((await call("/api/share/revoke", { method: "POST", headers: json, body: JSON.stringify({ id: "nope" }) })).body).revoked, false);
+    assert.equal((await call("/api/pair/status?job=nope", { headers: auth() })).status, 404);
+    assert.equal((await call("/api/pair/start", { method: "POST", headers: json, body: JSON.stringify({ peer: "nobody" }) })).status, 404);
+    assert.equal((await call("/api/share", { method: "POST", headers: { ...auth(), "content-type": "text/plain" }, body: "{}" })).status, 403);
+  } finally {
+    delete process.env.SELFGUARD_TAILSCALE;
+  }
+});

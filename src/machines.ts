@@ -20,7 +20,7 @@ import {
   type Machine,
   type MachineMode,
 } from "./config.ts";
-import { probeShare, requestPairing, unpair, waitForPairing, type PairPayload, type PairPoll, type PairSession } from "./share.ts";
+import { probeShare, requestPairing, ShareError, unpair, waitForPairing, type PairPayload, type PairPoll, type PairSession } from "./share.ts";
 import { tailnet, type TailnetPeer, type TailnetState } from "./tailnet.ts";
 import { atomicWrite, isObject, readJsonFile } from "./fsutil.ts";
 import { machineDir, stateRoot } from "./paths.ts";
@@ -125,6 +125,7 @@ export function suggestName(host: string): string {
 export function toMachineError(e: unknown): MachineError {
   if (e instanceof MachineError) return e;
   if (e instanceof RemoteError) return new MachineError(e.code, clean(e.message, 300));
+  if (e instanceof ShareError) return new MachineError(e.code, clean(e.message, 300));
   return new MachineError("failed", clean((e as Error).message, 300));
 }
 
@@ -217,13 +218,14 @@ export const peerAddress = (p: Pick<TailnetPeer, "ips">): string | null => p.ips
  * name, history and folders. Folders suggested by the other machine are added when none are set.
  */
 export function savePairedMachine(
-  peer: { address: string; port: number; nodeId: string },
+  peer: { address: string; port: number; nodeId: string; name?: string },
   payload: PairPayload,
   opts: { name?: string; replace?: string } = {},
 ): MachineInfo {
   const cfg = loadConfig();
   const existing = opts.replace ? cfg.machines.find((m) => m.name === opts.replace) : undefined;
-  const name = existing?.name ?? (opts.name && MACHINE_NAME_RE.test(opts.name) ? opts.name : uniqueName(machineNameFor(payload.name)));
+  // Named as this machine's tailnet shows it (what the user clicked), else as it calls itself.
+  const name = existing?.name ?? (opts.name && MACHINE_NAME_RE.test(opts.name) ? opts.name : uniqueName(machineNameFor(peer.name || payload.name)));
   const entry: Machine = existing ?? { name, host: peer.address, mode: "restricted", scope: payload.scope, transport: "share", roots: [], exclude: [] };
   entry.host = peer.address;
   entry.port = peer.port;
