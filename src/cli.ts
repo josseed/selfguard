@@ -16,6 +16,10 @@ import { loadRepo } from "./store.ts";
 import { confirm, isInteractive, withSpinner } from "./tui.ts";
 import { runUi } from "./ui/server.ts";
 import { cachedUpdate, checkForUpdate, installedVersion, notifyUpdateOnce } from "./update.ts";
+import { DEFAULT_SHARE_PORT, loadConfig } from "./config.ts";
+import { machineNameFor } from "./machines.ts";
+import { probeShare, startShareServer } from "./share.ts";
+import { tailnet } from "./tailnet.ts";
 import { notify } from "./notify.ts";
 import { VERSION } from "./version.ts";
 
@@ -70,7 +74,12 @@ Folders:
 
 Other machines (dev servers over SSH; read-only, project code never runs there):
   selfguard machines                 list machines and their last sync
-  selfguard machines peers           machines on your tailnet (Tailscale)
+  selfguard machines peers           machines on your tailnet, what each one can do
+  selfguard machines add <peer> --via share
+                                     pair with another machine running selfguard with
+                                     sharing on: no SSH (you approve it over there)
+  selfguard machines migrate <name> --via share|ssh
+                                     switch how a machine is reached, keeping its history
   selfguard machines add <host> [--name N] [--root DIR]... [--depth N] [--scope DIR]
                                      [--port N] [--manual] [--mode restricted|ssh]
                                      restricted (default): a dedicated key that the machine
@@ -83,6 +92,13 @@ Other machines (dev servers over SSH; read-only, project code never runs there):
   selfguard machines remove <name> [--keep-remote]
                                      forget a machine, its results and key (and remove the
                                      key line from it with your SSH access)
+
+Sharing (let your other machines see this one, over Tailscale, without SSH):
+  selfguard share on | off | status  start/stop answering on this machine's tailnet addresses
+  selfguard share requests           pairing requests waiting, with their codes
+  selfguard share approve <id> [--scope DIR] [--root DIR]... | reject <id>
+  selfguard share list | revoke <name>
+                                     machines that can see this one
 
 Updates:
   selfguard update                   check npm for a newer selfguard and show how to update
@@ -472,6 +488,138 @@ async function cmdDiscoverEverywhere(values: { json?: boolean; "dry-run"?: boole
   return 0;
 }
 
+function printShare(st: api.ShareStatus): void {
+  const c = paint(out);
+  if (!st.tailscale.ok) out.write(`${c.yellow("!")} ${st.tailscale.message}\n`);
+  if (!st.enabled) out.write(`Sharing is ${c.bold("off")}: other machines can't see this one. Turn it on with ${c.bold("selfguard share on")}.\n`);
+  else {
+    const where = st.addresses.map((a) => `${a}:${st.port}`).join(", ") || "no tailnet address";
+    out.write(`Sharing is ${c.green("on")}${st.answering ? "" : c.yellow(" (not answering yet)")}: ${c.dim(where)}\n`);
+    if (st.allowOtherUsers) out.write(c.yellow("  Machines of other Tailscale users of the tailnet may ask to pair.\n"));
+  }
+  for (const r of st.requests) {
+    out.write(`${c.yellow("?")} ${c.bold(clean(r.name))} ${c.dim(`(${clean(r.hostName)}${r.login ? `, ${clean(r.login)}` : ""})`)} wants to see your repos. Code ${c.bold(`${r.code.slice(0, 3)} ${r.code.slice(3)}`)}\n`);
+    out.write(c.dim(`    selfguard share approve ${r.id} [--scope ~/code]   ·   selfguard share reject ${r.id}\n`));
+  }
+  if (st.grants.length) out.write("Machines that can see this one:\n");
+  for (const g of st.grants) {
+    out.write(`  ${c.bold(clean(g.name))} ${c.dim(`${clean(g.hostName)} · reads ${clean(g.scope)} · ${g.lastSeen ? `last seen ${g.lastSeen.slice(0, 16).replace("T", " ")} UTC` : "never connected"}`)}\n`);
+  }
+}
+
+/** `selfguard share serve`: the service. Waits for a tailnet address and follows IP changes. */
+async function serveShare(): Promise<number> {
+  const log = (m: string): void => void out.write(`${new Date().toISOString()} share: ${m}\n`);
+  let running: Awaited<ReturnType<typeof startShareServer>> | null = null;
+  let current = "";
+  let stopping = false;
+  const stop = async (): Promise<void> => {
+    stopping = true;
+    await running?.close();
+    process.exit(0);
+  };
+  process.once("SIGTERM", () => void stop());
+  process.once("SIGINT", () => void stop());
+  for (;;) {
+    if (stopping) return 0;
+    const cfg = loadConfig();
+    if (!cfg.share.enabled) {
+      log("sharing is off; exiting");
+      await running?.close();
+      return 0;
+    }
+    const ips = tailnet().self?.ips ?? [];
+    const key = `${ips.join(",")}:${cfg.share.port}`;
+    if (key !== current) {
+      await running?.close();
+      running = null;
+      current = key;
+      if (ips.length) {
+        try {
+          running = await startShareServer({ hosts: ips, port: cfg.share.port });
+          log(`listening on ${running.addresses.map((a) => `${a.host}:${a.port}`).join(", ")}`);
+        } catch (e) {
+          log(`can't listen: ${clean((e as Error).message, 200)}`);
+          current = "";
+        }
+      } else log("no Tailscale address yet (is Tailscale running and logged in?); retrying");
+    }
+    await new Promise((r) => setTimeout(r, 30_000));
+  }
+}
+
+async function cmdShare(args: string[]): Promise<number> {
+  const { values, positionals } = parseArgs({
+    args,
+    allowPositionals: true,
+    options: { ...JSON_OPT, scope: { type: "string" }, root: { type: "string", multiple: true }, depth: { type: "string" }, port: { type: "string" }, "allow-other-users": { type: "boolean" } },
+  });
+  const [action, a1] = positionals;
+  const c = paint(out);
+  switch (action) {
+    case "serve":
+      return serveShare();
+    case "on":
+    case "off": {
+      const port = values.port === undefined ? undefined : Number(values.port);
+      const st = await api.setShare({ enabled: action === "on", port, ...(values["allow-other-users"] !== undefined ? { allowOtherUsers: values["allow-other-users"] } : {}) });
+      if (values.json) emit(st);
+      else if (action === "off") out.write("Sharing is off. Machines paired with this one can't read anything until you turn it on again.\n");
+      else {
+        if (!st.tailscale.ok) out.write(`${c.yellow("!")} ${st.tailscale.message} Sharing starts as soon as Tailscale is up.\n`);
+        else out.write(`${c.green("✓")} Your other machines can now ask to see this one (${st.addresses.join(", ")}, port ${st.port}). Only your Tailscale user's machines, and only after you approve.\n`);
+      }
+      return 0;
+    }
+    case undefined:
+    case "status": {
+      const st = await api.shareStatus();
+      if (values.json) emit(st);
+      else printShare(st);
+      return 0;
+    }
+    case "requests": {
+      const list = api.listShareRequests();
+      if (values.json) emit({ requests: list });
+      else if (list.length === 0) out.write("No pairing requests waiting.\n");
+      else printShare({ ...(await api.shareStatus()), grants: [] });
+      return 0;
+    }
+    case "approve": {
+      if (!a1) usage("usage: selfguard share approve <id> [--scope DIR] [--root DIR]... [--depth N]");
+      const depth = values.depth === undefined ? 5 : Number(values.depth);
+      const roots = values.root?.length ? values.root.map((path) => ({ path, depth })) : api.shareSuggestions();
+      const g = await api.approveShareRequest(a1, { scope: values.scope ?? "~", roots });
+      if (values.json) emit(g);
+      else out.write(`${c.green("✓")} ${c.bold(clean(g.name))} can now read lockfiles under ${clean(g.scope)}. Revoke with ${c.bold(`selfguard share revoke ${g.name}`)}.\n`);
+      return 0;
+    }
+    case "reject": {
+      if (!a1) usage("usage: selfguard share reject <id>");
+      const r = await api.rejectShareRequest(a1);
+      if (values.json) emit(r);
+      else out.write(r.rejected ? "Rejected.\n" : "No such pending request.\n");
+      return 0;
+    }
+    case "list": {
+      const grants = api.listGrants();
+      if (values.json) emit({ grants });
+      else if (grants.length === 0) out.write("No machine can see this one.\n");
+      else printShare({ ...(await api.shareStatus()), requests: [] });
+      return 0;
+    }
+    case "revoke": {
+      if (!a1) usage("usage: selfguard share revoke <name>");
+      const r = await api.revokeShareGrant(a1);
+      if (values.json) emit(r);
+      else out.write(r.revoked ? `${clean(a1)} can no longer see this machine.\n` : `No machine called ${clean(a1)} can see this one.\n`);
+      return 0;
+    }
+    default:
+      usage("usage: selfguard share [on | off | status | requests | approve <id> | reject <id> | list | revoke <name>]");
+  }
+}
+
 async function cmdUpdate(args: string[]): Promise<number> {
   const { values } = parseArgs({ args, options: { ...JSON_OPT } });
   const info = await checkForUpdate({ force: true });
@@ -528,6 +676,30 @@ function printRoots(r: api.RootsResult): void {
   }
 }
 
+const machineNameForCli = (label: string): string => machineNameFor(label);
+
+/** Show the code, wait for the approval on the other machine, then report. */
+async function finishPairingCli(start: api.PairingStart, opts: { name?: string; replace?: string; json: boolean }): Promise<number> {
+  const c = paint(out);
+  const code = `${start.session.code.slice(0, 3)} ${start.session.code.slice(3)}`;
+  if (opts.json) err.write(`pairing code ${code}: approve it on ${start.peer.name}\n`);
+  else {
+    out.write(`Asked ${c.bold(clean(start.peer.name))} to share its repos with this machine.\n`);
+    out.write(`Check that it shows the same code:  ${c.bold(c.cyan(code))}\n`);
+    out.write(c.dim(`Approve it there: dashboard → Machines, or selfguard share approve. Waiting up to 5 minutes…\n`));
+  }
+  const m = await withSpinner("Waiting for approval…", () => api.finishPairing(start, { name: opts.name, replace: opts.replace }));
+  refreshRemoteAgent();
+  if (opts.json) {
+    emit(m);
+    return 0;
+  }
+  out.write(`${c.green("✓")} ${opts.replace ? "Switched" : "Added"} ${c.bold(m.name)} through selfguard sharing (no SSH). It may read ${clean(m.scope)}.\n`);
+  if (m.roots.length) out.write(`Folders: ${m.roots.map((r) => clean(r.path)).join(", ")}. Run ${c.bold(`selfguard machines sync ${m.name}`)} to scan it now.\n`);
+  else out.write(`Now choose its folders: ${c.bold(`selfguard machines roots ${m.name} add ~/code`)}\n`);
+  return 0;
+}
+
 function refreshRemoteAgent(): void {
   try {
     updateRemoteAgent(api.hasMachines());
@@ -567,6 +739,7 @@ async function cmdMachines(args: string[]): Promise<number> {
       manual: { type: "boolean" },
       "keep-remote": { type: "boolean" },
       background: { type: "boolean" },
+      via: { type: "string" },
     },
   });
   const [action, a1, a2, a3] = positionals;
@@ -582,11 +755,45 @@ async function cmdMachines(args: string[]): Promise<number> {
       return 0;
     }
     case "peers": {
-      const peers = api.tailnetPeers();
-      if (values.json) emit({ peers });
-      else if (peers.length === 0) out.write("No Tailscale peers found (is Tailscale installed and running?).\n");
-      else for (const p of peers) out.write(`${p.online ? c.green("●") : c.dim("○")} ${c.bold(p.name)} ${c.dim(`${p.dnsName} ${p.os}`)}\n`);
+      const r = await api.machinePeers();
+      if (values.json) {
+        emit(r);
+        return 0;
+      }
+      if (!r.tailscale.ok) {
+        out.write(`${c.yellow("!")} ${r.tailscale.message}\n`);
+        return 2;
+      }
+      if (r.peers.length === 0) out.write("No other machines on your tailnet.\n");
+      const what: Record<api.PeerInfo["action"], string> = {
+        added: "added",
+        offline: "offline",
+        connect: "selfguard sharing on: selfguard machines add <name> (no SSH needed)",
+        "enable-share": "turn on sharing there (Settings → Let my other machines see this one), or enable SSH",
+        ssh: "SSH available: selfguard machines add <name> --via ssh",
+      };
+      for (const p of r.peers) {
+        const dot = p.online ? c.green("●") : c.dim("○");
+        const caps = [p.share ? `selfguard ${p.share.version} sharing` : null, p.sshPort ? "ssh :22" : null, p.tailscaleSsh ? "Tailscale SSH" : null].filter(Boolean).join(", ");
+        const seen = !p.online && p.lastSeen ? ` · last seen ${p.lastSeen.slice(0, 10)}` : "";
+        out.write(`${dot} ${c.bold(clean(p.name))} ${c.dim(`${p.dnsName} · ${p.os}${seen}`)}${p.added ? c.dim(` · added as ${p.added}`) : ""}\n`);
+        if (p.online) out.write(c.dim(`    ${caps || "nothing answering"} → ${what[p.action].replace("<name>", machineNameForCli(p.name))}\n`));
+      }
       return 0;
+    }
+    case "migrate": {
+      if (!a1 || (values.via !== "share" && values.via !== "ssh")) usage("usage: selfguard machines migrate <name> --via share|ssh");
+      if (values.via === "ssh") {
+        const m = api.listMachines().find((x) => x.name === a1);
+        if (!m) usage(`unknown machine: ${a1}`);
+        const peer = api.findPeer(m.host);
+        const r = await api.addMachine(a1, peer?.dnsName ?? m.host, { mode: "restricted", scope: m.scope });
+        if (values.json) emit(r);
+        else out.write(r.installed ? `${c.green("✓")} ${a1} now uses a restricted SSH key.\n` : `${c.yellow("!")} Switched ${a1} to SSH, but the reader isn't installed: selfguard machines setup ${a1}\n`);
+        return r.installed ? 0 : 2;
+      }
+      const start = await api.migrateToShare(a1);
+      return finishPairingCli(start, { replace: a1, json: values.json ?? false });
     }
     case "test": {
       if (!a1) usage("usage: selfguard machines test <host>");
@@ -596,7 +803,20 @@ async function cmdMachines(args: string[]): Promise<number> {
       return 0;
     }
     case "add": {
-      if (!a1) usage("usage: selfguard machines add <host> [--name N] [--root DIR]... [--depth N] [--scope DIR] [--port N] [--manual] [--mode restricted|ssh]");
+      if (!a1) usage("usage: selfguard machines add <peer|host> [--via share|ssh] [--name N] [--root DIR]... [--depth N] [--scope DIR] [--port N] [--manual] [--mode restricted|ssh]");
+      if (values.via !== undefined && values.via !== "share" && values.via !== "ssh") usage("--via must be share or ssh");
+      // Without --via: selfguard sharing if that machine answers, else SSH.
+      let via = values.via;
+      if (!via) {
+        const peer = api.findPeer(a1);
+        const ip = peer?.ips.find((x) => x.includes(".")) ?? peer?.ips[0];
+        via = ip && (await probeShare(ip, DEFAULT_SHARE_PORT, 1500)) ? "share" : "ssh";
+        if (!values.json && via === "share") out.write(c.dim(`${clean(peer?.name ?? a1)} has selfguard sharing on: pairing without SSH.\n`));
+      }
+      if (via === "share") {
+        const start = await api.startPairing(a1);
+        return finishPairingCli(start, { name: values.name, json: values.json ?? false });
+      }
       const name = values.name ?? api.suggestName(a1);
       const port = values.port === undefined ? undefined : Number(values.port);
       if (port !== undefined && !Number.isInteger(port)) usage("--port must be an integer");
@@ -902,6 +1122,8 @@ async function main(argv: string[]): Promise<number> {
       return cmdMachines(rest);
     case "update":
       return cmdUpdate(rest);
+    case "share":
+      return cmdShare(rest);
     case "roots":
       return cmdRoots(rest);
     case "where":
