@@ -526,6 +526,7 @@ async function route(method: string, url: URL, req: IncomingMessage, ctx: RouteC
 
 const STATUS: Record<string, number> = {
   other_user: 403,
+  ssh_off: 409,
   not_tailnet: 403,
   rate_limited: 429,
   rejected: 409,

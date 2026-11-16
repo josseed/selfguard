@@ -153,6 +153,20 @@ The restricted key reached the machine, but the selfguard reader didn't answer:
 - "reader outdated": selfguard was updated and the protocol changed. Run
   `selfguard machines install <name>`.
 
+## "Remote Login (SSH) is off there"
+
+Before installing anything over SSH, selfguard checks that the machine's SSH port takes
+connections. If the port refuses them, SSH is off on that machine, so nothing is saved or
+installed and selfguard says so. Pick one:
+
+- **Your own Mac running selfguard:** skip SSH. On that machine, open Settings → **Let my other
+  machines see this one** → **Turn on** (or run `selfguard share on`). Then press **Connect** here.
+- **SSH:** turn it on there. On macOS, go to System Settings → General → Sharing → **Remote Login**.
+  On Linux, run `sudo systemctl enable --now ssh`. Then add the machine again.
+
+Hosts behind a `ProxyJump` or `ProxyCommand` in `~/.ssh/config` aren't checked. selfguard
+uses `ssh -G` to find the real host name and port.
+
 ## A machine shows "unreachable" or "SSH login failed"
 
 selfguard connects with `ssh -o BatchMode=yes`, so anything that would prompt fails instead:
