@@ -10,7 +10,7 @@ import { updateSeen } from "../scan.ts";
 import { findingKey } from "../store.ts";
 import { buildSourceFindings, queryFor, refVersion } from "./findings.ts";
 import { loadSource } from "./store.ts";
-import { fileState, filesFor, type SourceInput } from "./targets.ts";
+import { fileState, filesFor, markerStates, type SourceInput } from "./targets.ts";
 import type { ExtractResult, SourceFinding, SourceRecord, SourceRef, SourceWarning, UnknownKind } from "./types.ts";
 
 export interface SourceOutcome {
@@ -102,7 +102,7 @@ function inventory(input: SourceInput, now: string): SourceInventory {
   for (const [file, extractors] of input.files ?? filesFor(kind, target)) {
     const read = fileState(file);
     if (!read) continue;
-    record.files.push(read.state);
+    record.files.push({ ...read.state, by: extractors.map((ex) => ex.id) });
     for (const ex of extractors) {
       let res: ExtractResult;
       try {
@@ -122,6 +122,8 @@ function inventory(input: SourceInput, now: string): SourceInventory {
       if (typeof res?.skipped === "number" && Number.isSafeInteger(res.skipped) && res.skipped > 0) record.skipped += res.skipped;
     }
   }
+  const markers = markerStates(kind, target, record.files.map((f) => f.path));
+  if (markers) record.markers = markers;
   return { record, previous };
 }
 
@@ -170,6 +172,8 @@ export function finishSources(inventories: SourceInventory[], found: Lookup, now
       // file states so that the next check retries.
       record.error = error;
       record.files = previous?.files ?? [];
+      if (previous?.markers) record.markers = previous.markers;
+      else delete record.markers;
       record.findings = previous?.findings ?? [];
       record.scannedAt = previous?.scannedAt ?? null;
       record.seen = previous?.seen ?? {};

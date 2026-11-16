@@ -43,9 +43,69 @@ export function isObject(v: unknown): v is Record<string, unknown> {
 
 const STALE_LOCK_MS = 5 * 60 * 1000;
 
+/** Whether a process exists. EPERM: it exists, owned by someone else. */
+export function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+/** The pid written in a lock file, or null (unreadable, or still being written). */
+function lockPid(file: string): number | null {
+  try {
+    const pid = Number(readFileSync(file, "utf8").trim());
+    return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A lock whose process is gone (killed mid-run), or older than STALE_LOCK_MS. */
+function staleLock(file: string): boolean {
+  const pid = lockPid(file);
+  if (pid !== null && !pidAlive(pid)) return true;
+  return Date.now() - statSync(file).mtimeMs >= STALE_LOCK_MS;
+}
+
+/** Locks held by this process: released on exit and on SIGTERM / SIGINT. */
+const held = new Set<string>();
+const SIGNALS = ["SIGTERM", "SIGINT"] as const;
+
+function releaseHeld(): void {
+  for (const file of held) {
+    try {
+      unlinkSync(file);
+    } catch {
+      /* already gone */
+    }
+  }
+  held.clear();
+}
+
+/** Release the locks, then let the signal do what it would have done without us. */
+function onSignal(signal: NodeJS.Signals): void {
+  releaseHeld();
+  unwatchSignals();
+  if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+}
+
+function watchSignals(): void {
+  if (held.size > 0) return;
+  process.on("exit", releaseHeld);
+  for (const s of SIGNALS) process.on(s, onSignal);
+}
+
+function unwatchSignals(): void {
+  process.off("exit", releaseHeld);
+  for (const s of SIGNALS) process.off(s, onSignal);
+}
+
 /**
  * Best-effort cross-process lock using O_EXCL. Returns a release function,
- * or null if someone else holds a fresh lock.
+ * or null if a running process holds it (a dead holder's lock is reclaimed at once).
  */
 export function tryLock(name: string): (() => void) | null {
   ensureDir(locksDir());
@@ -55,7 +115,11 @@ export function tryLock(name: string): (() => void) | null {
       const fd = openSync(file, "wx", 0o600);
       writeFileSync(fd, String(process.pid));
       closeSync(fd);
+      watchSignals();
+      held.add(file);
       return () => {
+        if (!held.delete(file)) return;
+        if (held.size === 0) unwatchSignals();
         try {
           unlinkSync(file);
         } catch {
@@ -65,8 +129,8 @@ export function tryLock(name: string): (() => void) | null {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
       try {
-        if (Date.now() - statSync(file).mtimeMs < STALE_LOCK_MS) return null;
-        unlinkSync(file); // stale: previous run crashed
+        if (!staleLock(file)) return null;
+        unlinkSync(file); // its process crashed or was killed
       } catch {
         /* raced with another process; retry once */
       }

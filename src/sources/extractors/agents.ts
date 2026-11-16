@@ -13,10 +13,15 @@ import type { SourceExtractor, SourceTarget } from "../types.ts";
 
 const pathOf = (target: SourceTarget, cfg: AgentConfig): string => join(target.root, ...cfg.path.split("/"));
 
+const candidates = (target: SourceTarget): string[] => [...new Set(configsFor(target.scope).map((c) => pathOf(target, c)))];
+
 export const MCP_SERVERS: SourceExtractor = {
   id: "mcp-servers",
   kind: "agents",
-  files: (target) => [...new Set(configsFor(target.scope).map((c) => pathOf(target, c)))],
+  files: candidates,
+  // Fixed paths, no walk: a config appearing or changing changes its own mtime.
+  markers: candidates,
+  probe: candidates,
   extract(file, text, target) {
     const cfg = configsFor(target.scope).find((c) => pathOf(target, c) === file);
     if (!cfg) return { refs: [], warnings: [], skipped: 0 };

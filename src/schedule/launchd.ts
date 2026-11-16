@@ -65,23 +65,72 @@ ${triggerXml}
 `;
 }
 
-export function unload(label: string): void {
+/** Runs launchctl with these arguments; throws when it fails. Injectable for tests. */
+export type Launchctl = (args: string[]) => void;
+
+export interface LaunchdDeps {
+  run: Launchctl;
+  /** Blocks for `ms` (the CLI is synchronous here). */
+  sleep: (ms: number) => void;
+}
+
+const realRun: Launchctl = (args) => {
   try {
-    execFileSync("/bin/launchctl", ["bootout", `${domain()}/${label}`], { stdio: "ignore" });
+    execFileSync("/bin/launchctl", args, { stdio: ["ignore", "ignore", "pipe"] });
+  } catch (err) {
+    const stderr = String((err as { stderr?: Buffer }).stderr ?? "").trim();
+    throw new Error(stderr || (err as Error).message);
+  }
+};
+
+const realSleep = (ms: number): void => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+};
+
+const DEPS: LaunchdDeps = { run: realRun, sleep: realSleep };
+
+/** bootout returns before a running job has exited: bootstrap is retried meanwhile. */
+export const BOOTSTRAP_TRIES = 10;
+/** Waits between tries: 100 ms, 200 ms… (4.5 s in all). */
+const backoff = (attempt: number): number => 100 * attempt;
+
+export function unload(label: string, deps: Partial<LaunchdDeps> = {}): void {
+  const { run } = { ...DEPS, ...deps };
+  try {
+    run(["bootout", `${domain()}/${label}`]);
   } catch {
     /* not loaded */
   }
 }
 
-export function install(label: string, plist: string): void {
-  unload(label);
+/**
+ * (Re)load an agent: bootout, write the plist, bootstrap. When the job is running (e.g. the
+ * watcher's own check), bootout is asynchronous and bootstrap fails until the old job is gone,
+ * so it is retried with a short backoff; throws a clear error if the agent still isn't loaded.
+ */
+export function install(label: string, plist: string, deps: Partial<LaunchdDeps> = {}): void {
+  const d = { ...DEPS, ...deps };
+  unload(label, d);
   atomicWrite(plistPath(label), plist);
-  execFileSync("/bin/launchctl", ["bootstrap", domain(), plistPath(label)], { stdio: "ignore" });
+  let last = "";
+  for (let attempt = 0; attempt < BOOTSTRAP_TRIES; attempt++) {
+    if (attempt > 0) d.sleep(backoff(attempt));
+    try {
+      d.run(["bootstrap", domain(), plistPath(label)]);
+    } catch (err) {
+      last = (err as Error).message;
+      continue;
+    }
+    if (isLoaded(label, d)) return;
+    last = "not loaded after bootstrap";
+  }
+  throw new Error(`could not load ${label} with launchctl after ${BOOTSTRAP_TRIES} tries (${last || "unknown error"}); try again in a moment`);
 }
 
-export function isLoaded(label: string): boolean {
+export function isLoaded(label: string, deps: Partial<LaunchdDeps> = {}): boolean {
+  const { run } = { ...DEPS, ...deps };
   try {
-    execFileSync("/bin/launchctl", ["print", `${domain()}/${label}`], { stdio: "ignore" });
+    run(["print", `${domain()}/${label}`]);
     return true;
   } catch {
     return false;

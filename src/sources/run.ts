@@ -1,6 +1,7 @@
 /** Glue for the scanning entry points (api/scanning.ts): which sources go with which projects. */
 import { existsSync } from "node:fs";
 import { registerBuiltinExtractors } from "./builtin.ts";
+import { changedSourceInputs } from "./changes.ts";
 import { activeKinds } from "./registry.ts";
 import type { SourceOutcome } from "./scan.ts";
 import { forgetSource, listSources, saveSource } from "./store.ts";
@@ -20,11 +21,13 @@ export function gitRootsOf(paths: string[]): string[] {
 
 /**
  * Sources to scan with these projects: their git roots and, with `machine`, this machine's
- * agent configs. `onlyChanged`: the ones whose files changed. [] when no extractor is registered.
+ * agent configs. `onlyChanged` (check): the ones whose files changed, found from the records
+ * without walking the repos (sources/changes.ts). [] when no extractor is registered.
  */
 export function sourcesWith(projectPaths: string[], opts: { machine?: boolean; onlyChanged?: boolean } = {}): SourceInput[] {
   if (activeKinds().length === 0) return [];
-  return sourceInputs(gitRootsOf(projectPaths), opts);
+  const roots = gitRootsOf(projectPaths);
+  return opts.onlyChanged ? changedSourceInputs(roots, opts) : sourceInputs(roots, opts);
 }
 
 export function saveSourceOutcomes(outcomes: SourceOutcome[]): void {

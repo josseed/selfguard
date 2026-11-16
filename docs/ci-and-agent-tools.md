@@ -134,8 +134,13 @@ managed configs and the bunx, pnpm and uv caches aren't read.
 - `selfguard scan <dir>`: the repo's workflows and agent configs, in the same OSV request as its
   lockfile. A one-line summary points to `selfguard tools <dir>` when something needs a look.
 - `selfguard sync` and the scheduled sync: every tracked repo's sources and this machine's
-  agent configs. `selfguard check` and the watcher: sources whose files changed. A changed file
-  is read again, but OSV is only asked when its references changed or its last successful
+  agent configs. `selfguard check` and the watcher: sources whose files changed. Check doesn't
+  search the repos: it compares the files of the last scan (size and modification time, then
+  content) and the folders new ones appear in (`.github/workflows`, `.github`,
+  `.github/actions`, the composite actions' folders); a repo is searched again only when one
+  of those folders changed. A repo without results yet is picked up by check once it has a
+  workflow in `.github/workflows`; composite actions elsewhere are found by the next sync or
+  scan. A changed file is read again, but OSV is only asked when its references changed or its last successful
   check is more than 24 hours old (`~/.claude.json` changes all the time). When OSV can't be
   reached, the previous results are kept and the next check retries.
 - A source checked for the first time is a baseline: its findings don't notify, except

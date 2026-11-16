@@ -15,6 +15,7 @@ export { evaluateRef, lineAffected, type RefEvaluation } from "./sources/evaluat
 export { buildSourceFindings, queryFor, refVersion } from "./sources/findings.ts";
 export { forgetSource, listSources, loadSource, saveSource } from "./sources/store.ts";
 export { finishSources, prepareSources, refsSignature, REUSE_MS, scanSources, type SourceInventory, type SourceOutcome } from "./sources/scan.ts";
+export { changedSourceInputs, markersChanged } from "./sources/changes.ts";
 export { fileState, filesFor, gitRootOf, machineTarget, repoTarget, sourceChanged, sourceInputs, watchPathsFor, type SourceInput } from "./sources/targets.ts";
 
 /**
