@@ -223,3 +223,22 @@ test("adding a machine whose SSH is off says so and installs nothing", async () 
   assert.equal(sshCalls(), calls, "no ssh attempted");
   assert.ok(!api.listMachines().some((m) => m.name === "sshoff"), "not saved");
 });
+
+test("syncing an SSH machine whose SSH was turned off explains it", async () => {
+  const { createServer: tcpServer } = await import("node:net");
+  const srv = tcpServer((s) => s.end());
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+  const port = (srv.address() as AddressInfo).port;
+  await api.addMachine("wasssh", "127.0.0.1", { mode: "ssh", port, roots: [{ path: "~/code", depth: 3 }] });
+  await new Promise<void>((r) => srv.close(() => r()));
+  process.env.SG_FAKE_SSH_REFUSE = "1";
+  try {
+    const [r] = await machines.syncMachines({ only: ["wasssh"] });
+    assert.equal(r!.ok, false);
+    assert.match(r!.error!, /Remote Login \(SSH\) is off there, so selfguard can't read it over SSH/);
+    assert.equal(api.listMachines().find((m) => m.name === "wasssh")!.status.errorCode, "ssh_off");
+  } finally {
+    delete process.env.SG_FAKE_SSH_REFUSE;
+    await api.removeMachine("wasssh");
+  }
+});

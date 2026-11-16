@@ -12,6 +12,8 @@ for a; do
   prev=$a
 done
 if [ -n "${SG_FAKE_SSH_LOG:-}" ]; then printf '%s\n' "$*" >> "$SG_FAKE_SSH_LOG"; fi
+# SG_FAKE_SSH_REFUSE=1 plays a machine with SSH (Remote Login) turned off.
+if [ "${SG_FAKE_SSH_REFUSE:-}" = 1 ]; then echo "ssh: connect to host fake port 22: Connection refused" >&2; exit 255; fi
 if [ -n "${SG_FAKE_HOME:-}" ]; then HOME=$SG_FAKE_HOME; export HOME; cd "$HOME" || exit 255; fi
 if [ -n "$key" ]; then
   pub=$(cut -d' ' -f2 "$key.pub")
