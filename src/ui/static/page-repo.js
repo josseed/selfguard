@@ -19,11 +19,18 @@ export function pageRepo() {
   const scope = many ? state.ui.scope : "all";
   const mdQuery = () => `/api/repo/markdown?key=${encodeURIComponent(d.key)}${scope === "rep" ? `&path=${encodeURIComponent(rep.path)}` : ""}`;
   const copyBtn = h("button", { class: "btn primary", type: "button", title: "Copy the vulnerabilities as markdown" }, icon("copy"), "Copy markdown");
-  copyBtn.addEventListener("click", () => busy(copyBtn, "Copying…", async () => {
-    const md = await call("GET", mdQuery());
-    if (await copyText(md.markdown)) toast(`Copied ${plural(md.packages, "package")} as markdown`);
-    else showMarkdown(d.label, md.markdown);
-  }));
+  copyBtn.addEventListener("click", () => {
+    if (state.busy) return;
+    // Start the clipboard write inside the click (WebKit refuses it after an await); the
+    // text arrives when the request answers.
+    const md = call("GET", mdQuery());
+    const copied = copyText(md.then((m) => m.markdown));
+    busy(copyBtn, "Copying…", async () => {
+      const m = await md;
+      if (await copied) toast(`Copied ${plural(m.packages, "package")} as markdown`);
+      else showMarkdown(d.label, m.markdown);
+    });
+  });
   const previewBtn = h("button", { class: "btn", type: "button" }, "Preview");
   previewBtn.addEventListener("click", () => busy(previewBtn, "…", async () => showMarkdown(d.label, (await call("GET", mdQuery())).markdown)));
   const dismissBtn = d.dismissedAt
@@ -90,9 +97,19 @@ export function pageRepo() {
       d.checkouts.length > listed.length ? h("button", { class: "btn small", type: "button", onclick: () => { state.ui.allCheckouts = true; pageRepo(); } }, `Show all ${d.checkouts.length}`) : null)));
 }
 
+/**
+ * Copy text, or a promise of text. Safari and the Mac app (WebKit) only allow a clipboard
+ * write started during the click, so a promise is handed to a ClipboardItem right away
+ * instead of awaiting the text first.
+ */
 export async function copyText(text) {
   try {
-    await navigator.clipboard.writeText(text);
+    if (typeof text !== "string" && typeof ClipboardItem === "function" && navigator.clipboard?.write) {
+      const blob = Promise.resolve(text).then((t) => new Blob([t], { type: "text/plain" }));
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
+      return true;
+    }
+    await navigator.clipboard.writeText(await text);
     return true;
   } catch {
     return false;

@@ -17,6 +17,12 @@ All notable changes to this project are documented here. The format is based on
 - `GET /api/menubar`: the summary the app shows (state, totals, repos that need attention,
   services, last check and sync, update).
 
+### Fixed
+
+- Dashboard: "Copy markdown" works in Safari (and the Mac app). WebKit refuses a clipboard
+  write that starts after the markdown request; the write now starts during the click.
+- Two `selfguard ui` started at the same moment no longer start two dashboard servers.
+
 ## [0.10.1] - 2026-11-16
 
 ### Fixed

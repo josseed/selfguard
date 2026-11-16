@@ -17,6 +17,9 @@ final class AppModel: ObservableObject {
     let engine: Engine?
     private var instance: DashboardInstance?
     private var poller: Task<Void, Never>?
+    /// The dashboard start in progress: the menu and the window share it, so they never
+    /// start two servers.
+    private var starting: Task<DashboardInstance?, Never>?
     private static let pollSeconds: UInt64 = 60
 
     init() {
@@ -43,7 +46,7 @@ final class AppModel: ObservableObject {
         guard let engine else { return }
         for attempt in 0..<2 {
             if instance == nil || attempt > 0 {
-                instance = await engine.ensureDashboard()
+                instance = await startDashboard(engine)
             }
             guard let instance else { break }
             if let s = await fetchSummary(instance) {
@@ -55,6 +58,15 @@ final class AppModel: ObservableObject {
         }
         icon = .unavailable
         problem = "The selfguard dashboard isn't answering. See ~/.selfguard/selfguard.log."
+    }
+
+    private func startDashboard(_ engine: Engine) async -> DashboardInstance? {
+        if let starting { return await starting.value }
+        let task = Task { await engine.ensureDashboard() }
+        starting = task
+        let result = await task.value
+        starting = nil
+        return result
     }
 
     private func fetchSummary(_ i: DashboardInstance) async -> MenuBarSummary? {
@@ -83,7 +95,7 @@ final class AppModel: ObservableObject {
     func showDashboard(repo: String? = nil, page: String? = nil) async -> Bool {
         var alive = false
         if let current = instance { alive = await current.ping() != nil }
-        if !alive { instance = await engine?.ensureDashboard() }
+        if !alive, let engine { instance = await startDashboard(engine) }
         guard let instance else { return false }
         pageURL = instance.pageURL(repo: repo, page: page)
         return true
