@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Adding a machine over SSH when SSH is off there (for example, a Mac with Remote Login off)
+  used to fall through to "install the reader by hand", and the copied script could never be
+  used. selfguard now checks the SSH port first. If the machine refuses, nothing is saved or
+  installed, and the dashboard and CLI say that Remote Login (SSH) is off there. They explain
+  how to turn it on, or offer selfguard sharing for a Mac on the tailnet (or **Connect** when
+  sharing already answers). The Add a machine dialog warns as soon as you pick such a machine,
+  and **Verify** gives the same explanation.
+
 ## [0.8.1] - 2026-11-16
 
 ### Fixed

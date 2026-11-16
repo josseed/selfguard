@@ -295,6 +295,66 @@ function tcpOpen(host: string, port: number, timeoutMs: number): Promise<boolean
   });
 }
 
+export type SshProbe = "open" | "refused" | "timeout" | "unknown";
+
+/**
+ * Whether the machine's SSH port takes connections, without logging in. Uses `ssh -G` to see
+ * where the host really points (aliases, HostName, Port in ~/.ssh/config); hosts behind a
+ * ProxyJump or ProxyCommand, or names that don't resolve, are "unknown" and never blocked.
+ */
+export async function probeSsh(host: string, port?: number, timeoutMs = 2500): Promise<SshProbe> {
+  let target = host.replace(/^[^@]*@/, "");
+  let p = port ?? 22;
+  if (!process.env.SELFGUARD_SSH) {
+    try {
+      const args = ["-G", ...(port ? ["-p", String(port)] : []), "--", host];
+      const cfg = execFileSync("ssh", args, { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      const get = (k: string): string => cfg.match(new RegExp(`^${k} (.+)$`, "m"))?.[1]?.trim() ?? "";
+      const via = [get("proxyjump"), get("proxycommand")].filter((v) => v && v !== "none");
+      if (via.length) return "unknown";
+      target = get("hostname") || target;
+      const cp = Number(get("port"));
+      if (Number.isInteger(cp) && cp > 0 && cp < 65536) p = cp;
+    } catch {
+      /* no ssh -G: use the host as typed */
+    }
+  }
+  return new Promise((resolve) => {
+    const sock = connect({ host: target, port: p });
+    const timer = setTimeout(() => done("timeout"), timeoutMs);
+    function done(r: SshProbe): void {
+      clearTimeout(timer);
+      sock.destroy();
+      resolve(r);
+    }
+    sock.once("connect", () => done("open"));
+    sock.once("error", (e: NodeJS.ErrnoException) => done(e.code === "ECONNREFUSED" ? "refused" : e.code === "ETIMEDOUT" || e.code === "EHOSTUNREACH" ? "timeout" : "unknown"));
+  });
+}
+
+/**
+ * What to tell someone whose machine refuses SSH: Remote Login is off there. For a tailnet
+ * peer, suggests selfguard sharing (no SSH at all), or Connect if sharing already answers.
+ */
+export async function sshOffHint(host: string, port?: number): Promise<string> {
+  const bare = host.replace(/^[^@]*@/, "");
+  const peer = findPeer(bare);
+  const label = peer?.name ?? bare;
+  const ip = peer ? peerAddress(peer) : null;
+  const share = ip ? await probeShare(ip, DEFAULT_SHARE_PORT, 1500) : null;
+  const os = (peer?.os ?? "").toLowerCase();
+  const turnOn =
+    os === "macos"
+      ? `turn on Remote Login there (System Settings → General → Sharing → Remote Login)`
+      : os === "linux"
+      ? `start sshd there (sudo systemctl enable --now ssh)`
+      : `turn on SSH there (macOS: System Settings → General → Sharing → Remote Login; Linux: sudo systemctl enable --now ssh)`;
+  const head = `${label} refuses SSH connections${port && port !== 22 ? ` on port ${port}` : ""}: Remote Login (SSH) is off there, so nothing was installed.`;
+  if (share) return `${head} selfguard sharing is on there: connect with it instead (no SSH needed: Machines → Connect, or selfguard machines add ${bare} --via share).`;
+  if (peer) return `${head} If it runs selfguard, skip SSH: there, open Settings → Let my other machines see this one → Turn on, then Connect from here. Or ${turnOn}.`;
+  return `${head} To use SSH, ${turnOn}.`;
+}
+
 /** Tailnet peers with what they can do, probed in parallel (about 1.5 s at most). */
 export async function machinePeers(opts: { timeoutMs?: number; sharePort?: number } = {}): Promise<PeersResult> {
   const t = tailnet();
@@ -408,7 +468,10 @@ export async function verifyMachine(name: string): Promise<MachineInfo> {
     const h = await testHost(targetOf(m));
     saveMachineStatus(name, { home: h.home, os: h.os, error: null, errorCode: null });
   } catch (e) {
-    const err = toMachineError(e);
+    let err = toMachineError(e);
+    if (m.transport === "ssh" && err.code === "unreachable" && (await probeSsh(m.host, m.port)) === "refused") {
+      err = new MachineError("ssh_off", await sshOffHint(m.host, m.port));
+    }
     saveMachineStatus(name, { error: err.message, errorCode: err.code, lastAttempt: new Date().toISOString() });
     throw err;
   }
@@ -462,6 +525,8 @@ export async function addMachine(name: string, host: string, opts: AddMachineOpt
     if (!path) throw new MachineError("invalid", `invalid folder: ${r.path}`);
     return { path, depth: r.depth === undefined ? DEFAULT_DEPTH : clampDepth(r.depth) };
   });
+  // A machine that refuses SSH can't be read over SSH: say why instead of installing anything.
+  if ((await probeSsh(host, opts.port)) === "refused") throw new MachineError("ssh_off", await sshOffHint(host, opts.port));
   // ssh mode: the connection must work before saving.
   const info = mode === "ssh" ? await testMachine(host, opts.port) : null;
 

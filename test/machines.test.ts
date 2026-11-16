@@ -187,3 +187,39 @@ test("projects without a lockfile are not re-scanned on every check", async () =
   assert.equal((await api.checkMachines({ only: ["devbox2"] })).machines[0]!.rescanned, 1);
   assert.equal((await api.checkMachines({ only: ["devbox2"] })).machines[0]!.rescanned, 0);
 });
+
+test("probeSsh tells a refused SSH port from an open one", async () => {
+  const { createServer: tcpServer } = await import("node:net");
+  const open = tcpServer((s) => s.end());
+  await new Promise<void>((r) => open.listen(0, "127.0.0.1", r));
+  const openPort = (open.address() as AddressInfo).port;
+  // A port that was free a moment ago: nothing listens there now.
+  const gone = tcpServer();
+  await new Promise<void>((r) => gone.listen(0, "127.0.0.1", r));
+  const closedPort = (gone.address() as AddressInfo).port;
+  await new Promise<void>((r) => gone.close(() => r()));
+  try {
+    assert.equal(await machines.probeSsh("127.0.0.1", openPort), "open");
+    assert.equal(await machines.probeSsh("me@127.0.0.1", closedPort), "refused");
+    assert.equal(await machines.probeSsh("no-such-host.invalid", 22), "unknown");
+  } finally {
+    open.close();
+  }
+});
+
+test("adding a machine whose SSH is off says so and installs nothing", async () => {
+  const { createServer: tcpServer } = await import("node:net");
+  const gone = tcpServer();
+  await new Promise<void>((r) => gone.listen(0, "127.0.0.1", r));
+  const port = (gone.address() as AddressInfo).port;
+  await new Promise<void>((r) => gone.close(() => r()));
+  const calls = sshCalls();
+  await assert.rejects(api.addMachine("sshoff", "127.0.0.1", { port }), (e: Error & { code?: string }) => {
+    assert.equal(e.code, "ssh_off");
+    assert.match(e.message, /Remote Login \(SSH\) is off/);
+    assert.match(e.message, /nothing was installed/);
+    return true;
+  });
+  assert.equal(sshCalls(), calls, "no ssh attempted");
+  assert.ok(!api.listMachines().some((m) => m.name === "sshoff"), "not saved");
+});

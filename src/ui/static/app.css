@@ -436,3 +436,8 @@ label.place input { margin-top: 3px; }
 .list .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .list > li.dim { opacity: .6; }
 .steps li { margin-bottom: 4px; }
+
+/* ---------- inline notices (e.g. "Remote Login is off there") ---------- */
+.notice { display: grid; gap: 10px; padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.45; }
+.notice[hidden] { display: none; }
+.notice.warn { background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--moderate) 40%, transparent); }
