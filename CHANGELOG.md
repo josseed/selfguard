@@ -10,16 +10,25 @@ All notable changes to this project are documented here. The format is based on
 
 - **GitHub Actions workflows.** Actions referenced in `.github/workflows` and composite
   `action.yml` files are checked against OSV's GitHub Actions advisories (for example the
-  compromised `tj-actions/changed-files`). OSV doesn't match versions for actions, so they are
-  queried by name and evaluated locally: an exact tag is confirmed, `@v4` "may be affected",
-  a branch or bare SHA "version unknown". Warnings, without the network, for actions not
+  compromised `tj-actions/changed-files`). Action names never leave the machine: selfguard
+  keeps a local index of OSV's GitHub Actions advisories (the public `modified_id.csv` list,
+  refreshed every 6 hours, only changed advisories downloaded again) and matches names
+  case-insensitively, as GitHub does (`azure/setup-kubectl` gets `Azure/setup-kubectl`'s
+  advisories). Ranges are evaluated locally: an exact tag is confirmed, `@v4` "may be
+  affected"; a bare SHA lists every advisory with its fix, a branch only those that affect the
+  latest release. Warnings, without the network, for actions not
   pinned to a SHA, `pull_request_target` workflows that check out the PR head, and untrusted
   event text interpolated into `run:` scripts.
 - **MCP servers of AI agents.** Servers configured for Claude Code, Claude Desktop, Cursor,
   VS Code, Windsurf, Codex and Gemini CLI (on this machine and in each repo) and launched with
   npx, bunx, pnpm/yarn dlx, uvx or pipx are checked as npm or PyPI packages; unpinned ones are
-  warned about, with the version last run from the npx cache. Only names and versions are kept:
-  secrets in those configs are never stored or sent.
+  warned about, with the version last run from the npx cache. An unpinned server is still
+  checked by name (malicious advisories always apply); it lists advisories without a fix and
+  those affecting the version last run. Only names and versions are kept: secrets in those
+  configs are never stored or sent.
+- Sources are quiet by default: a source's first check is a baseline (only malicious findings
+  notify), the watcher only asks OSV when a file's references changed or a day has passed,
+  an offline check is retried, and `forget` also drops the repo's CI and agent config results.
 - `selfguard tools [dir]`, the `selfguard_sources` MCP tool, an Agent tools card and a sources
   section per repo in the dashboard. A malicious action or MCP server raises the same alert as
   a malicious package. `selfguard where` also finds actions and MCP servers.

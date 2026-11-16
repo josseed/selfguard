@@ -29,7 +29,16 @@ export const MATCHES: Record<string, string[]> = {
   "npm:lodash@*": ["GHSA-aaaa-bbbb-cccc"],
 };
 
-export const osv = { bodies: [] as any[], fail: false };
+/** Requests seen: querybatch bodies, advisory detail GETs, bucket CSV GETs. `failBucket`: the CSV fails. */
+export const osv = { bodies: [] as any[], fail: false, details: [] as string[], csv: 0, failBucket: false };
+
+/** The GitHub Actions bucket list (`modified,id`), as OSV publishes it. */
+export function ghaCsv(): string {
+  return Object.values(VULNS)
+    .filter((v: any) => (v.affected ?? []).some((a: any) => a.package?.ecosystem === GHA))
+    .map((v: any) => `${v.modified},${v.id}`)
+    .join("\n");
+}
 
 const read = (req: IncomingMessage) =>
   new Promise<string>((r) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => r(b)); });
@@ -37,6 +46,13 @@ const read = (req: IncomingMessage) =>
 export async function startOsv(): Promise<Server> {
   const server = createServer(async (req, res) => {
     res.setHeader("content-type", "application/json");
+    if (req.url === "/bucket/GitHub%20Actions/modified_id.csv") {
+      osv.csv++;
+      res.setHeader("content-type", "text/csv");
+      res.statusCode = osv.fail || osv.failBucket ? 503 : 200;
+      res.end(res.statusCode === 200 ? ghaCsv() : "");
+      return;
+    }
     if (osv.fail) {
       res.statusCode = 400; // fatal: no retries
       res.end("{}");
@@ -53,6 +69,7 @@ export async function startOsv(): Promise<Server> {
       return;
     }
     const m = /^\/v1\/vulns\/(.+)$/.exec(req.url ?? "");
+    if (m) osv.details.push(decodeURIComponent(m[1]!));
     if (m && VULNS[decodeURIComponent(m[1]!)]) {
       res.end(JSON.stringify(VULNS[decodeURIComponent(m[1]!)]));
       return;
@@ -61,7 +78,9 @@ export async function startOsv(): Promise<Server> {
     res.end("{}");
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  process.env.SELFGUARD_OSV_API = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  process.env.SELFGUARD_OSV_API = `${base}/v1`;
+  process.env.SELFGUARD_OSV_BUCKET = `${base}/bucket`;
   return server;
 }
 

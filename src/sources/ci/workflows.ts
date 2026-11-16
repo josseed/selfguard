@@ -5,7 +5,7 @@
  * follows symlinks (directory entries are lstat-typed).
  */
 import { readdirSync, type Dirent } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { SKIP_DIRS } from "../../discover.ts";
 import type { SourceTarget } from "../types.ts";
 
@@ -71,13 +71,17 @@ export function ciFiles(target: SourceTarget): string[] {
   return [...new Set([...workflowFiles(target.root), ...actionFiles(target.root)])];
 }
 
+/** The watcher's paths: `.github/workflows` and each folder holding a composite action file. */
 export function ciWatch(target: SourceTarget): string[] {
   if (target.scope !== "repo") return [];
+  const dirs: string[] = [];
   const dir = workflowsDir(target.root);
   try {
     readdirSync(dir);
-    return [dir];
+    dirs.push(dir);
   } catch {
-    return [];
+    /* no workflows folder */
   }
+  for (const f of actionFiles(target.root)) dirs.push(dirname(f));
+  return [...new Set(dirs)];
 }

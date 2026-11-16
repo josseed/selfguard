@@ -12,7 +12,7 @@ import { osv, startOsv } from "./sources-helpers.ts";
 
 const CLI = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 const SECRETS = fileURLToPath(new URL("./fixtures/agents/secrets.fixture.json", import.meta.url));
-const SECRET = /SECRET_|user:|Bearer|\?key=|acme\/x/;
+const SECRET = /SECRET_|user:|Bearer|\?key=|acme\/x|registry\.example/;
 const run = promisify(execFile);
 
 let server: Server;
@@ -28,6 +28,12 @@ before(async () => {
   mkdirSync(join(home, ".cursor"));
   writeFileSync(join(home, ".cursor", "mcp.json"), text);
   writeFileSync(join(home, ".claude.json"), text);
+  // The npx cache ran lodash 4.17.20; its lockfile holds a credential that must not be copied.
+  const npx = join(home, ".npm", "_npx", "0123abcd");
+  mkdirSync(npx, { recursive: true });
+  writeFileSync(join(npx, "package.json"), JSON.stringify({ _npx: { packages: ["lodash"] } }));
+  const resolved = "https://user:SECRET_NPX_12@registry.example.com/lodash.tgz";
+  writeFileSync(join(npx, "package-lock.json"), JSON.stringify({ packages: { "node_modules/lodash": { version: "4.17.20", resolved } } }));
   env = { ...process.env, HOME: home, SELFGUARD_HOME: state, SELFGUARD_NO_NOTIFY: "1", SELFGUARD_NO_LAUNCHD: "1", NO_COLOR: "1" };
   delete env.npm_config_cache;
 });
@@ -66,7 +72,10 @@ test("secrets in env, headers, URLs and arguments never reach records, logs, out
   assert.deepEqual(refs.sort(), ["Claude Code|leaky|leaky-mcp@1.0.0", "Claude Code|unpinned|lodash@?", "Cursor|leaky|leaky-mcp@1.0.0", "Cursor|unpinned|lodash@?"]);
   assert.equal(json.machine[0].skippedReferences, 4, "remote and git servers, in both files");
   assert.ok(json.machine[0].warnings.some((w: any) => w.message.includes("(mcp.example.com)")), "remote servers by host only");
-  assert.ok(json.machine[0].findings.some((f: any) => f.name === "lodash"), "the unpinned package is checked by name");
+  // Unpinned: checked by name; the fixed advisory applies only because the version last run is affected.
+  const lodash = json.machine[0].findings.filter((f: any) => f.name === "lodash");
+  assert.deepEqual(lodash.map((f: any) => [f.certainty, f.lastRun]), [["may-be-affected", "4.17.20"]]);
+  assert.match(text.stdout, /last run 4\.17\.20 is affected/);
   assert.match(text.stdout, /Agent tools on this machine/);
   assert.match(mcp, /leaky-mcp/);
 

@@ -9,8 +9,9 @@ import { evaluateRef, type RefEvaluation } from "./evaluate.ts";
 import type { SourceFinding, SourceRef } from "./types.ts";
 
 /**
- * GitHub Actions are never matched by version server-side, and a reference without an exact
- * version can only be asked by name: both are name-only queries evaluated locally.
+ * GitHub Actions are matched by name in the local index (never sent to OSV), and a reference
+ * without an exact version can only be asked by name: both are name-only queries evaluated
+ * locally.
  */
 export function queryFor(ref: SourceRef): PackageQuery {
   const exact = ref.versionKind === "exact" && ref.version !== null && ref.ecosystem !== "GitHub Actions";
@@ -30,7 +31,7 @@ const CERTAINTY_RANK: Record<Certainty, number> = { confirmed: 0, "may-be-affect
 function uniqueRefs(refs: SourceRef[]): Array<{ ref: SourceRef; locations: Array<{ file: string; line: number }> }> {
   const map = new Map<string, { ref: SourceRef; locations: Array<{ file: string; line: number }> }>();
   for (const ref of refs) {
-    const key = `${ref.ecosystem}|${ref.name}|${ref.versionKind}|${refVersion(ref)}`;
+    const key = `${ref.ecosystem}|${ref.name}|${ref.versionKind}|${refVersion(ref)}|${ref.unknownKind ?? ""}|${ref.lastRun ?? ""}`;
     let e = map.get(key);
     if (!e) {
       e = { ref, locations: [] };
@@ -88,6 +89,8 @@ export function buildSourceFindings(
       if (ref.ecosystem !== "npm") f.ecosystem = ref.ecosystem;
       if (certainty !== "confirmed") f.certainty = certainty;
       if (ref.pin && ref.versionKind !== "exact") f.pin = clean(ref.pin, 64);
+      const lastRun = certainty === "may-be-affected" ? applying.find((e) => e.lastRun)?.lastRun : undefined;
+      if (lastRun) f.lastRun = clean(lastRun, 64);
       f.firstSeen = prevSeen.get(findingKey(f)) ?? now;
       out.push(f);
     }

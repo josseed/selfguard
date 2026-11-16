@@ -6,8 +6,9 @@ tokens, source code) without being in any project lockfile:
 - **GitHub Actions** referenced by each repo's workflows.
 - **MCP servers** configured for AI agents, on this machine and in each repo.
 
-Files are read as data: nothing is executed, GitHub is never called, and only package or
-action names (and exact versions where OSV supports them) are sent to OSV. Results appear in
+Files are read as data: nothing is executed, GitHub is never called, and only MCP server
+package names (and exact versions) are sent to OSV. Action names never leave the machine: they
+are matched against a local index of OSV's GitHub Actions advisories. Results appear in
 `selfguard tools`, `selfguard where`, the `selfguard_sources` MCP tool, the dashboard (an
 **Agent tools** card and a section on each repo's page) and the usual alerts: a malicious
 action or MCP server opens the same dialog as a malicious package. Repo status counts cover
@@ -18,8 +19,13 @@ lockfiles only; sources are shown separately.
 - **Findings** come from OSV advisories, each with a `certainty`:
   - `confirmed`: the exact version written is affected.
   - `may-be-affected`: a mutable tag such as `@v4`; some release of that line is affected.
-  - `version-unknown`: a branch, a SHA without a version comment, or an unpinned package.
-    Every advisory of the package is listed.
+  - `version-unknown`: the version can't be known from the file.
+    - A commit SHA without a version comment is fixed but unknown: every advisory of the
+      package is listed, with the version that fixes it so you can check your SHA.
+    - A branch (`@main`), a tag such as `@latest`, or an unpinned package runs the latest
+      release: only advisories without a fix (they affect the latest release) are listed, plus,
+      for an unpinned npx package, those affecting the version last run (from the npx cache,
+      as `may-be-affected` with "last run … is affected").
 
   Malicious advisories (`MAL-*`) always apply, whatever the version.
 - **Warnings** are risky practices found without the network. They are never counted as
@@ -34,7 +40,8 @@ lockfiles only; sources are shown separately.
 - `action.yml` and `action.yaml` of composite actions anywhere in the repo, up to 6 levels
   deep. Dependency, build, hidden (except `.github`) and symlinked folders are skipped.
 
-The lockfile watcher also watches each `.github/workflows` folder.
+The lockfile watcher also watches each `.github/workflows` folder and the folders of the
+composite actions found.
 
 ### References
 
@@ -48,14 +55,21 @@ The lockfile watcher also watches each `.github/workflows` folder.
 | `./local` | through that folder's `action.yml` |
 | `docker://…`, values with `${{ }}` | skipped and counted |
 
-Action names keep the case they are written in. OSV stores GitHub's own spelling and matches
-it case-sensitively (`Azure/setup-kubectl` has advisories, `azure/setup-kubectl` none), so an
-action written in another case than its advisory isn't matched. `selfguard where` ignores case.
+Action names are matched **case-insensitively**, as GitHub resolves them: `azure/setup-kubectl`
+gets the advisories OSV stores as `Azure/setup-kubectl`. OSV's API matches names
+case-sensitively and doesn't match versions for this ecosystem, so actions are **never sent to
+OSV**. Instead selfguard keeps a local index of the whole GitHub Actions ecosystem (64
+advisories on 2026-11-16):
 
-OSV doesn't match versions for this ecosystem server-side: a query for
-`tj-actions/changed-files` at `45.0.7` returns nothing (checked on 2026-11-16). Every action is
-therefore queried **by name only**, and the advisory ranges are evaluated locally, including
-partial versions such as `fixed: 41`.
+- it downloads OSV's public list `GitHub%20Actions/modified_id.csv` from
+  `osv-vulnerabilities.storage.googleapis.com` (at most every 6 hours, when actions are
+  checked), then the details of the advisories that are new or changed since the last time;
+- names are compared lowercased, and the advisory ranges are evaluated locally, including
+  partial versions such as `fixed: 41`.
+
+Offline, the last index is used. Without any index yet, the source shows "could not refresh
+the GitHub Actions advisory index" and keeps its previous results; it is never reported clean.
+The index is stored in `~/.selfguard/cache/github-actions-index.json`.
 
 ### Warnings
 
@@ -98,7 +112,9 @@ JSON with comments and trailing commas is accepted. A file that can't be parsed 
 Only an exact version (`@1.2.3`, `==1.2.3`) is pinned. Tags and ranges (`@latest`, `^1`) are a
 version-unknown reference plus an `unpinned-mcp-server` warning (moderate): the server runs
 whatever is latest when the agent starts. For an unpinned npx package, the copy in the npx cache
-(`~/.npm/_npx`) gives the version last run, shown in the warning and checked as that version.
+(`~/.npm/_npx`) gives the version last run, shown in the warning. It doesn't make the reference
+exact: the package is still asked by name (so malicious advisories always apply), and the
+version last run only adds the advisories that affect it.
 
 ### Privacy
 
@@ -118,7 +134,14 @@ managed configs and the bunx, pnpm and uv caches aren't read.
 - `selfguard scan <dir>`: the repo's workflows and agent configs, in the same OSV request as its
   lockfile. A one-line summary points to `selfguard tools <dir>` when something needs a look.
 - `selfguard sync` and the scheduled sync: every tracked repo's sources and this machine's
-  agent configs. `selfguard check` and the watcher: sources whose files changed.
+  agent configs. `selfguard check` and the watcher: sources whose files changed. A changed file
+  is read again, but OSV is only asked when its references changed or its last successful
+  check is more than 24 hours old (`~/.claude.json` changes all the time). When OSV can't be
+  reached, the previous results are kept and the next check retries.
+- A source checked for the first time is a baseline: its findings don't notify, except
+  malicious ones.
+- `selfguard forget` also forgets the CI and agent config results of the project's git repo
+  when no other tracked project lives in it.
 - Other machines: not yet. Their reader would need to serve workflow and agent config files,
   which widens what a restricted key can read; that needs its own review.
 

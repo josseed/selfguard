@@ -59,11 +59,8 @@ test("scanSources: name-only queries for actions, local evaluation, certainty, w
   osv.bodies.length = 0;
   const [o] = await sources.scanSources([{ kind: "ci", target: sources.repoTarget(root) }]);
   assert.equal(osv.bodies.length, 1, "one batch");
-  const queries = osv.bodies[0].queries as any[];
-  const actionQueries = queries.filter((q) => q.package.ecosystem === "GitHub Actions");
-  assert.equal(actionQueries.length, 2, "deduplicated: one name-only query per action");
-  assert.ok(actionQueries.every((q) => !("version" in q)), "no version key for actions");
-  assert.deepEqual(queries.find((q) => q.package.ecosystem === "npm"), { package: { ecosystem: "npm", name: "lodash" }, version: "4.17.20" });
+  // Actions are matched in the local index, never sent: only the npm package is asked.
+  assert.deepEqual(osv.bodies[0].queries, [{ package: { ecosystem: "npm", name: "lodash" }, version: "4.17.20" }]);
 
   const rec = o!.record;
   assert.equal(rec.refs.length, 6, "invalid ecosystems and empty names dropped");
@@ -85,7 +82,8 @@ test("scanSources: name-only queries for actions, local evaluation, certainty, w
   assert.equal(rec.warnings.length, 1);
   assert.equal(rec.warnings[0]!.rule, "unpinned-action");
   assert.doesNotMatch(rec.warnings[0]!.message, /[\u0000-\u001f]/);
-  assert.equal(o!.newFindings.length, 4);
+  // A first scan is a baseline: only the malicious finding is news (no burst of notifications).
+  assert.deepEqual(o!.newFindings.map((f) => f.id), ["MAL-2026-7"]);
   assert.ok(o!.firstScan);
 
   // The malicious action raises the same blocking dialog as a malicious package.
@@ -126,11 +124,17 @@ test("network errors keep the previous findings", async () => {
   sources.saveSource(ok!.record);
   osv.fail = true;
   try {
+    const file = join(root, "fake-ci.json");
+    writeFileSync(file, JSON.stringify({ ...CONTENT, refs: CONTENT.refs.slice(5, 6) }));
     const [o] = await sources.scanSources([input]);
     assert.match(o!.record.error ?? "", /could not reach OSV/);
     assert.deepEqual(o!.record.findings, ok!.record.findings);
     assert.equal(o!.record.scannedAt, ok!.record.scannedAt);
     assert.deepEqual([o!.newFindings, o!.resolvedFindings], [[], []]);
+    // The previous file states are kept, so the next check sees the change and retries.
+    assert.deepEqual(o!.record.files, ok!.record.files);
+    sources.saveSource(o!.record);
+    assert.equal(sources.sourceChanged(sources.loadSource("ci", "repo", root), [file]), true);
   } finally {
     osv.fail = false;
   }
@@ -138,7 +142,7 @@ test("network errors keep the previous findings", async () => {
 
 test("api: machine-wide agent tools and repo sources; warnings are never vulnerable packages", async () => {
   writeFileSync(join(process.env.HOME!, "fake-agents.json"), JSON.stringify({
-    refs: [{ ecosystem: "npm", name: "lodash", version: null, versionKind: "unknown", pin: "latest", line: 4, agent: "Cursor", server: "x", launcher: "npx" }],
+    refs: [{ ecosystem: "npm", name: "lodash", version: null, versionKind: "unknown", unknownKind: "tracks-latest", lastRun: "4.17.20", pin: "latest", line: 4, agent: "Cursor", server: "x", launcher: "npx" }],
     warnings: [{ rule: "unpinned-server", message: "Pin a version", line: 4, severity: "high" }],
     skipped: 0,
   }));
@@ -155,7 +159,8 @@ test("api: machine-wide agent tools and repo sources; warnings are never vulnera
   const machine = all.machine[0]!;
   assert.equal(machine.label, "Agent tools");
   assert.equal(machine.repoKey, null);
-  assert.deepEqual(machine.findings.map((f) => [f.id, f.certainty, f.version]), [["GHSA-aaaa-bbbb-cccc", "version-unknown", "latest"]]);
+  // Unpinned: the fixed advisory applies only because the version last run is affected.
+  assert.deepEqual(machine.findings.map((f) => [f.id, f.certainty, f.version, f.lastRun, f.fixedIn]), [["GHSA-aaaa-bbbb-cccc", "may-be-affected", "latest", "4.17.20", "4.17.21"]]);
   assert.equal(machine.references[0]!.agent, "Cursor");
 
   const scoped = api.getSources({ path: join(onlyWarnings, ".git") });

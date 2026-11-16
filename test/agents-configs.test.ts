@@ -139,7 +139,7 @@ function npxEntry(cache: string, hash: string, specs: string[], name: string, ve
   else writeFileSync(join(dir, "node_modules", ...name.split("/"), "package.json"), JSON.stringify({ name, version }));
 }
 
-test("npx cache: an unpinned npx server gets the version it last ran, and keeps its warning", () => {
+test("npx cache: the version last run is kept apart, the reference stays unpinned (name-only query)", () => {
   const h = realpathSync(mkdtempSync(join(tmpdir(), "sg-agents-npx-")));
   process.env.HOME = h;
   try {
@@ -159,18 +159,18 @@ test("npx cache: an unpinned npx server gets the version it last ran, and keeps 
     };
     writeFileSync(join(h, ".cursor", "mcp.json"), JSON.stringify({ mcpServers: servers }, null, 2));
     const rec = extract("machine", h);
-    assert.deepEqual(rec.refs.map((r) => [r.server, r.version, r.versionKind]), [
-      ["memory", "0.6.2", "exact"],
-      ["latest", "3.0.0", "exact"],
-      ["other", null, "unknown"],
-      ["bunx", null, "unknown"],
+    assert.deepEqual(rec.refs.map((r) => [r.server, r.version, r.versionKind, r.unknownKind, r.lastRun ?? null]), [
+      ["memory", null, "unknown", "tracks-latest", "0.6.2"],
+      ["latest", null, "unknown", "tracks-latest", "3.0.0"],
+      ["other", null, "unknown", "tracks-latest", null],
+      ["bunx", null, "unknown", "tracks-latest", null],
     ]);
     const w = rec.warnings.filter((x) => x.rule === "unpinned-mcp-server");
     assert.equal(w.length, 4);
     assert.match(w[0]!.message, /Last run: 0\.6\.2\./);
     assert.match(w[1]!.message, /mcp-latest@latest .* Last run: 3\.0\.0\./);
     assert.doesNotMatch(w[2]!.message, /Last run/);
-    assert.deepEqual(sources.queryFor(rec.refs[0]!), { name: "@modelcontextprotocol/server-memory", version: "0.6.2", ecosystem: "npm" });
+    assert.deepEqual(sources.queryFor(rec.refs[0]!), { name: "@modelcontextprotocol/server-memory", ecosystem: "npm" });
   } finally {
     process.env.HOME = home;
   }

@@ -88,8 +88,8 @@ test("line and unknown references: certainty, and malicious advisories always ap
   assert.deepEqual(evaluateRef(CHANGED_FILES, line, false), { applies: true, certainty: "may-be-affected", fixedIn: "46.0.1" });
   assert.equal(evaluateRef(CHANGED_FILES, { ...line, lineOf: "47" }, false).applies, false);
 
-  const unknown = { ecosystem: GHA, name: "tj-actions/changed-files", version: null, versionKind: "unknown" as const };
-  assert.deepEqual(evaluateRef(CHANGED_FILES, unknown, false), { applies: true, certainty: "version-unknown" });
+  const unknown = { ecosystem: GHA, name: "tj-actions/changed-files", version: null, versionKind: "unknown" as const, unknownKind: "fixed-unknown" as const };
+  assert.deepEqual(evaluateRef(CHANGED_FILES, unknown, false), { applies: true, certainty: "version-unknown", fixedIn: "46.0.1" });
   assert.equal(evaluateRef(CHANGED_FILES, { ...unknown, name: "someone/else" }, false).applies, false, "only its own advisories");
 
   const evil = { ecosystem: GHA, name: "evil/action" };
@@ -97,6 +97,24 @@ test("line and unknown references: certainty, and malicious advisories always ap
   assert.deepEqual(evaluateRef(MAL, { ...evil, version: "9.9.9", versionKind: "exact" }, false), { applies: true, certainty: "may-be-affected" });
   assert.deepEqual(evaluateRef(MAL, { ...evil, version: null, versionKind: "line", lineOf: "3" }, false), { applies: true, certainty: "may-be-affected" });
   assert.deepEqual(evaluateRef(MAL, { ...evil, version: null, versionKind: "unknown" }, false), { applies: true, certainty: "version-unknown" });
+});
+
+test("unknown versions: a bare SHA lists everything with the fix; tracking the latest, only what affects it or the last run", () => {
+  const sha = { ecosystem: GHA, name: "TJ-Actions/Changed-Files", version: null, versionKind: "unknown" as const, unknownKind: "fixed-unknown" as const };
+  // Names are compared case-insensitively (GitHub ignores case; OSV keeps the repo's spelling).
+  assert.deepEqual(evaluateRef(OLD, sha, false), { applies: true, certainty: "version-unknown", fixedIn: "41" });
+  const branch = { ...sha, unknownKind: "tracks-latest" as const };
+  assert.deepEqual(evaluateRef(CHANGED_FILES, branch, false), { applies: false, certainty: "version-unknown", fixedIn: "46.0.1" }, "fixed: the latest isn't affected");
+  const open = (events: object[]): OsvVuln => ({ id: "GHSA-open", affected: [{ package: { ecosystem: GHA, name: "tj-actions/changed-files" }, ranges: [{ type: "ECOSYSTEM", events }] }] });
+  assert.deepEqual(evaluateRef(open([{ introduced: "40" }, { fixed: "41" }, { introduced: "45" }]), branch, false), { applies: true, certainty: "version-unknown", fixedIn: "41" }, "open range");
+  assert.equal(evaluateRef(open([{ introduced: "0" }, { last_affected: "45" }]), branch, false).applies, false, "closed by last_affected");
+  assert.equal(evaluateRef(MAL, { ...branch, name: "evil/action" }, false).applies, true, "malicious always");
+
+  const npx = { ecosystem: "npm" as const, name: "lodash", version: null, versionKind: "unknown" as const, unknownKind: "tracks-latest" as const };
+  const LODASH: OsvVuln = { id: "GHSA-l", affected: [{ package: { ecosystem: "npm", name: "lodash" }, ranges: [{ type: "SEMVER", events: [{ introduced: "0" }, { fixed: "4.17.21" }] }] }] };
+  assert.equal(evaluateRef(LODASH, npx, false).applies, false, "unpinned: a fixed advisory doesn't apply");
+  assert.deepEqual(evaluateRef(LODASH, { ...npx, lastRun: "4.17.20" }, false), { applies: true, certainty: "may-be-affected", lastRun: "4.17.20", fixedIn: "4.17.21" });
+  assert.equal(evaluateRef(LODASH, { ...npx, lastRun: "4.17.21" }, false).applies, false, "the last run is fixed");
 });
 
 test("queries: actions and inexact references by name only; exact npm/PyPI by version", () => {

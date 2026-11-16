@@ -4,6 +4,7 @@ import { evaluate, severityOf, severityRank, type Severity } from "../match.ts";
 import { getVulns, type OsvVuln } from "../osv.ts";
 import { groupByPackage } from "../report.ts";
 import { clean } from "../sanitize.ts";
+import { refVersion } from "../sources/findings.ts";
 import { listSources } from "../sources/store.ts";
 import type { SourceKind } from "../sources/types.ts";
 import { listAllRepos } from "../store.ts";
@@ -49,8 +50,9 @@ export function whereUsed(name: string, ecosystem?: Ecosystem): WhereResult {
     const refs = r.refs.filter(matches);
     if (!refs.length) continue;
     const versions = [...new Map(refs.map((ref) => {
-      const version = ref.version ?? (ref.lineOf ? `${ref.lineOf}.x` : (ref.pin ?? "*"));
-      const vulnerable = r.findings.some((f) => f.name === ref.name && ecosystemOf(f) === ecosystemOf(ref));
+      // Findings carry refVersion(ref) as their version: match on name and that version.
+      const version = refVersion(ref);
+      const vulnerable = r.findings.some((f) => f.name === ref.name && ecosystemOf(f) === ecosystemOf(ref) && f.version === version);
       return [`${ecosystemOf(ref)}:${version}`, { version, ecosystem: ecosystemOf(ref), direct: true, dev: false, vulnerable }];
     })).values()];
     usedIn.push({ path: r.path, machine: null, versions, source: r.kind });

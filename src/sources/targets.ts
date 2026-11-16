@@ -14,6 +14,8 @@ export const MAX_SOURCE_BYTES = 16 * 1024 * 1024;
 export interface SourceInput {
   kind: SourceKind;
   target: SourceTarget;
+  /** The files found by sourceInputs (and their extractors), so the scan doesn't walk again. */
+  files?: Map<string, SourceExtractor[]>;
 }
 
 export const machineTarget = (): SourceTarget => ({ scope: "machine", root: homedir() });
@@ -119,11 +121,12 @@ export function sourceInputs(roots: string[], opts: { machine?: boolean; onlyCha
   const out: SourceInput[] = [];
   for (const kind of activeKinds()) {
     for (const target of targets) {
-      const files = [...filesFor(kind, target).keys()];
+      const found = filesFor(kind, target);
+      const files = [...found.keys()];
       const rec = loadSource(kind, target.scope, target.root);
       if (files.length === 0 && !rec) continue;
       if (opts.onlyChanged && !sourceChanged(rec, files)) continue;
-      out.push({ kind, target });
+      out.push({ kind, target, files: found });
     }
   }
   return out;

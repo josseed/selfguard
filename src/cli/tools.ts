@@ -26,7 +26,8 @@ function renderSource(s: api.SourceReport, c: Painter, verbose: boolean): string
   const shown = verbose ? s.findings : s.findings.slice(0, 10);
   for (const f of shown) {
     const pkg = `${clean(f.name, 120)}@${clean(f.version, 60)}`;
-    const tags = [f.ecosystem === "npm" ? "" : f.ecosystem, CERTAINTY[f.certainty]].filter(Boolean).join(", ");
+    const certainty = f.lastRun ? `last run ${clean(f.lastRun, 40)} is affected` : CERTAINTY[f.certainty];
+    const tags = [f.ecosystem === "npm" ? "" : f.ecosystem, certainty].filter(Boolean).join(", ");
     lines.push(`  ${severityLabel(f.severity, c)} ${c.bold(pkg)} ${clean(f.id, 64)}${tags ? c.dim(` (${tags})`) : ""}`);
     if (f.summary) lines.push(`    ${clean(f.summary, 100)}`);
     const loc = f.locations[0];

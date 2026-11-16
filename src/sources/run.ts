@@ -43,6 +43,27 @@ export function pruneSources(trackedProjectPaths: string[]): string[] {
   return pruned;
 }
 
+/**
+ * After projects were forgotten: forget the sources of their git roots where no other tracked
+ * project lives. Returns the git roots whose sources were forgotten.
+ */
+export function forgetSourcesOf(forgottenPaths: string[], trackedProjectPaths: string[]): string[] {
+  const still = new Set(gitRootsOf(trackedProjectPaths));
+  const candidates = new Set(gitRootsOf(forgottenPaths));
+  // A folder already gone has no git root to find: use the records around it.
+  for (const rec of listSources({ scope: "repo" })) {
+    if (forgottenPaths.some((p) => p === rec.path || p.startsWith(`${rec.path}/`))) candidates.add(rec.path);
+  }
+  const out: string[] = [];
+  for (const root of candidates) {
+    if (still.has(root)) continue;
+    let any = false;
+    for (const rec of listSources({ scope: "repo", path: root })) any = forgetSource(rec.kind, rec.scope, rec.path) || any;
+    if (any) out.push(root);
+  }
+  return out;
+}
+
 /** Paths for the background watcher: this machine's agent configs, then each repo's sources. */
 export function sourceWatchPaths(projectPaths: string[]): { machine: string[]; byProject: Map<string, string[]> } {
   const byProject = new Map<string, string[]>();

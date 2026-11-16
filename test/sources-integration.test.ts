@@ -38,8 +38,9 @@ function project(): string {
   return root;
 }
 
-function writeCi(root: string, name: string): void {
-  writeFileSync(join(root, "fake-ci.json"), JSON.stringify({ refs: [{ ecosystem: "GitHub Actions", name, version: null, versionKind: "unknown", pin: "main", line: 7 }], warnings: [], skipped: 0 }));
+function writeCi(root: string, name: string, extra: Record<string, unknown> = {}): void {
+  const ref = { ecosystem: "GitHub Actions", name, version: null, versionKind: "unknown", pin: "main", line: 7, ...extra };
+  writeFileSync(join(root, "fake-ci.json"), JSON.stringify({ refs: [ref], warnings: [], skipped: 0 }));
 }
 
 test("without extractors, scanning is exactly the lockfile scan", async () => {
@@ -61,11 +62,9 @@ test("with an extractor: one batch for lockfile and sources; check re-scans chan
   const root = project();
   osv.bodies.length = 0;
   const r = await api.scanPath(root);
-  assert.equal(osv.bodies.length, 1, "lockfile and CI references share one batch");
-  assert.deepEqual(osv.bodies[0].queries, [
-    { package: { ecosystem: "npm", name: "lodash" }, version: "4.17.20" },
-    { package: { ecosystem: "GitHub Actions", name: "evil/action" } },
-  ]);
+  assert.equal(osv.bodies.length, 1, "lockfile and CI references share one scan");
+  // Actions are matched in the local index: their names are never sent.
+  assert.deepEqual(osv.bodies[0].queries, [{ package: { ecosystem: "npm", name: "lodash" }, version: "4.17.20" }]);
   // The lockfile report is unchanged by sources.
   assert.equal(r.project.vulnerablePackages, 1);
   assert.equal(r.newAdvisories, 1);
@@ -86,13 +85,23 @@ test("with an extractor: one batch for lockfile and sources; check re-scans chan
   assert.deepEqual(await api.check(), { rescanned: [], errors: [] });
   assert.equal(osv.bodies.length, 0, "nothing changed: no network");
 
-  writeCi(root, "tj-actions/changed-files");
+  writeCi(root, "TJ-Actions/changed-files", { pin: "0123456789ab", unknownKind: "fixed-unknown" });
   const c = await api.check();
   assert.deepEqual(c.rescanned, [], "the lockfile didn't change");
-  assert.equal(osv.bodies.length, 1);
-  assert.deepEqual(osv.bodies[0].queries, [{ package: { ecosystem: "GitHub Actions", name: "tj-actions/changed-files" } }]);
+  assert.equal(osv.bodies.length, 0, "actions are not sent");
   const after = sources.loadSource("ci", "repo", root)!;
-  assert.deepEqual(after.findings.map((f) => [f.id, f.version, f.certainty]), [["GHSA-mrrh-fwg8-r2c3", "main", "version-unknown"]]);
+  assert.deepEqual(after.findings.map((f) => [f.id, f.version, f.certainty, f.fixedIn]), [["GHSA-mrrh-fwg8-r2c3", "0123456789ab", "version-unknown", "46.0.1"]]);
+
+  // The file changes but its references don't (a moved line): no lookup, findings relocated.
+  const csv = osv.csv;
+  const details = osv.details.length;
+  writeCi(root, "TJ-Actions/changed-files", { pin: "0123456789ab", unknownKind: "fixed-unknown", line: 9 });
+  await api.check();
+  assert.deepEqual([osv.bodies.length, osv.csv, osv.details.length], [0, csv, details], "no network");
+  const moved = sources.loadSource("ci", "repo", root)!;
+  assert.equal(moved.scannedAt, after.scannedAt);
+  assert.deepEqual(moved.findings[0]!.locations, [{ file: join(root, "fake-ci.json"), line: 9 }]);
+  assert.equal(sources.sourceChanged(moved, [join(root, "fake-ci.json")]), false, "file states updated");
 });
 
 test("selfguard tools --json: a stable document with the built-in kinds, empty before any scan", () => {

@@ -229,7 +229,9 @@ export async function check(opts: { notify?: boolean } = {}): Promise<CheckResul
     pruneDismissed(cfg);
     const changedSources = sourcesWith(tracked, { machine: true, onlyChanged: true });
     if (changed.length === 0 && changedSources.length === 0) return { rescanned: [], errors: [] };
-    const { outcomes, sources } = await scanTogether(changed, changedSources);
+    // A changed agent config (~/.claude.json changes all the time) is re-read, but OSV is only
+    // asked when its references changed or its last scan is a day old.
+    const { outcomes, sources } = await scanTogether(changed, changedSources, { reuseRecent: true });
     for (const o of outcomes) saveRepo(o.record);
     saveSourceOutcomes(sources);
     await announce(outcomes, { notify: opts.notify ?? false, sources });

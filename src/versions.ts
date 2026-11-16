@@ -51,5 +51,6 @@ export function compareVersions(eco: Ecosystem, a: string, b: string): number {
 
 /** Package names as OSV and the registry compare them. */
 export function normalizeName(eco: Ecosystem, name: string): string {
+  if (eco === "GitHub Actions") return name.toLowerCase(); // GitHub owner/repo names ignore case
   return eco === "PyPI" ? normalizePyName(name) : name;
 }

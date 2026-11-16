@@ -15,6 +15,8 @@ export const machineReposDir = (machine: string): string => join(machineDir(mach
 /** Records of CI workflows and agent configs (src/sources), beside the lockfile records. */
 export const sourcesDir = (): string => join(stateRoot(), "sources");
 export const vulnCacheDir = (): string => join(stateRoot(), "cache", "vulns");
+/** Local index of the GitHub Actions advisories (src/scan/gha-index.ts). */
+export const ghaIndexFile = (): string => join(stateRoot(), "cache", "github-actions-index.json");
 export const locksDir = (): string => join(stateRoot(), "locks");
 export const logFile = (): string => join(stateRoot(), "selfguard.log");
 export const eventsFile = (): string => join(stateRoot(), "events.jsonl");

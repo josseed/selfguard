@@ -7,10 +7,10 @@
 import { parseToml } from "../../lockfile/toml.ts";
 import type { ExtractResult } from "../types.ts";
 import type { AgentConfig } from "./configs.ts";
-import { parseJsonc } from "./jsonc.ts";
+import { parseJsonc, stripJsonc } from "./jsonc.ts";
 import { parseLaunch } from "./launchers.ts";
 import { cachedVersion, type NpxCache } from "./npx-cache.ts";
-import { jsonKeyOffset, lineAt, specLine, tomlHeaderOffset } from "./lines.ts";
+import { jsonKeyOffset, lineAt, members, rootObject, specLine, tomlHeaderOffset, valueAt } from "./lines.ts";
 
 const MAX_SERVERS = 500;
 const MAX_PROJECTS = 2000;
@@ -23,6 +23,8 @@ interface ServerTable {
   servers: Obj;
   /** Offset of the table's key in the text, to look for server lines after it. */
   from: number;
+  /** JSON: offset of each server's key in the table (depth-aware). */
+  keys: Map<string, number>;
   /** ~/.claude.json per-project entry: the project folder ("~/code/app"). */
   project?: string;
 }
@@ -48,18 +50,28 @@ function isRemote(def: Obj): boolean {
   return typeof def.type === "string" && REMOTE_TYPES.has(def.type.toLowerCase());
 }
 
+/**
+ * The server tables of a config, each with the offsets of its server keys. JSON offsets come
+ * from a depth-aware walk of the text (comments blanked): the top-level `mcpServers`, and each
+ * project's own `mcpServers` inside its entry, never a same-named key elsewhere.
+ */
 function tables(cfg: AgentConfig, data: Obj, text: string, home: string): ServerTable[] {
   const out: ServerTable[] = [];
+  const json = cfg.format === "json" ? stripJsonc(text) : "";
+  const root = json ? members(json, rootObject(json)) : new Map<string, number>();
+  const keysOf = (keyOffset: number | undefined): Map<string, number> => members(json, valueAt(json, keyOffset));
   const top = obj(data[cfg.key]);
-  const keyAt = (needle: string, from = 0) => Math.max(0, text.indexOf(needle, from));
-  if (top) out.push({ servers: top, from: cfg.format === "json" ? keyAt(JSON.stringify(cfg.key)) : 0 });
+  if (top) out.push({ servers: top, from: Math.max(0, root.get(cfg.key) ?? 0), keys: keysOf(root.get(cfg.key)) });
   const projects = cfg.perProject ? obj(data.projects) : null;
   if (projects) {
+    let byPath: Map<string, number> | null = null;
     for (const [path, p] of Object.entries(projects).slice(0, MAX_PROJECTS)) {
       const servers = obj(obj(p)?.mcpServers);
       if (!servers || Object.keys(servers).length === 0) continue;
+      byPath ??= json ? keysOf(root.get("projects")) : new Map();
+      const own = members(json, valueAt(json, byPath.get(path))).get("mcpServers");
       const project = path === home ? "~" : path.startsWith(`${home}/`) ? `~/${path.slice(home.length + 1)}` : path;
-      out.push({ servers, from: keyAt(JSON.stringify(cfg.key), keyAt(JSON.stringify(path))), project });
+      out.push({ servers, from: Math.max(0, own ?? byPath.get(path) ?? 0), keys: keysOf(own), project });
     }
   }
   return out;
@@ -89,7 +101,7 @@ export function extractAgentConfig(cfg: AgentConfig, text: string, deps: Extract
     for (const [name, raw] of Object.entries(table.servers)) {
       if (++count > MAX_SERVERS) return res;
       const server = table.project ? `${name} (project ${table.project})` : name;
-      const at = cfg.format === "toml" ? tomlHeaderOffset(text, cfg.key, name) : jsonKeyOffset(text, name, table.from);
+      const at = cfg.format === "toml" ? tomlHeaderOffset(text, cfg.key, name) : (table.keys.get(name) ?? jsonKeyOffset(text, name, table.from));
       const line = lineAt(text, at);
       const def = obj(raw);
       if (!def) {
@@ -108,19 +120,21 @@ export function extractAgentConfig(cfg: AgentConfig, text: string, deps: Extract
         continue;
       }
       for (const pkg of launch.packages) {
-        let version = pkg.version;
-        let lastRun: string | null = null;
-        if (version === null && launch.launcher === "npx" && pkg.raw) lastRun = version = cachedVersion(deps.npxCache(), pkg.name, pkg.raw);
+        // The npx cache tells what ran last time, not what runs next: the reference stays
+        // unpinned (name-only query, so malicious advisories always apply).
+        const lastRun = pkg.version === null && launch.launcher === "npx" && pkg.raw ? cachedVersion(deps.npxCache(), pkg.name, pkg.raw) : null;
         const ref: ExtractResult["refs"][number] = {
           ecosystem: pkg.ecosystem,
           name: pkg.name,
-          version,
-          versionKind: version ? "exact" : "unknown",
+          version: pkg.version,
+          versionKind: pkg.version ? "exact" : "unknown",
           line: (pkg.raw && specLine(text, pkg.raw, at)) || line,
           agent: cfg.agent,
           server,
           launcher: launch.launcher,
         };
+        if (!pkg.version) ref.unknownKind = "tracks-latest";
+        if (lastRun) ref.lastRun = lastRun;
         if (pkg.pin) ref.pin = pkg.pin;
         res.refs.push(ref);
         if (pkg.version !== null) continue;

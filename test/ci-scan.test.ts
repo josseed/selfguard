@@ -53,7 +53,8 @@ test("files(): workflows and action files, bounded, no dependency folders or sym
 
   const t = sources.repoTarget(root);
   assert.deepEqual(ci.GITHUB_ACTIONS.files(t), [wf, wf2, local, sub]);
-  assert.deepEqual(ci.GITHUB_ACTIONS.watch!(t), [join(root, ".github", "workflows")]);
+  // The watcher also watches the folders of composite actions.
+  assert.deepEqual(ci.GITHUB_ACTIONS.watch!(t), [join(root, ".github", "workflows"), dirname(local), dirname(sub)]);
   assert.deepEqual(ci.GITHUB_ACTIONS.files(sources.machineTarget()), []);
   assert.deepEqual(ci.GITHUB_ACTIONS.watch!(sources.machineTarget()), []);
   const bare = repo();
@@ -94,20 +95,19 @@ test("scanSources: tags matched locally, lines may be affected, bare SHAs unknow
   assert.deepEqual(rec.files.map((f) => f.path), [wf, action]);
   assert.equal(rec.skipped, 1, "the docker image");
 
-  // Every action is asked by name only (OSV doesn't match GitHub Actions versions).
-  const asked = osv.bodies.flatMap((b) => b.queries);
-  assert.ok(asked.every((q: any) => q.version === undefined && q.package.ecosystem === "GitHub Actions"));
-  assert.deepEqual([...new Set(asked.map((q: any) => q.package.name))].sort(), ["actions/checkout", "evil/action", "tj-actions/changed-files"]);
+  // Actions are never sent: they are matched in the local index of the ecosystem.
+  assert.deepEqual(osv.bodies, [], "no querybatch for actions");
 
   const got = rec.findings.map((f) => `${f.id} ${f.name}@${f.version} ${f.certainty ?? "confirmed"} ${f.locations.map((l) => `${l.file === action ? "action" : "wf"}:${l.line}`).join(",")}`);
   assert.deepEqual(got.sort(), [
-    "GHSA-mrrh-fwg8-r2c3 tj-actions/changed-files@0123456789ab version-unknown wf:9",
+    "GHSA-mrrh-fwg8-r2c3 tj-actions/changed-files@0123456789ab version-unknown wf:9", // bare SHA: listed, with the fix
     "GHSA-mrrh-fwg8-r2c3 tj-actions/changed-files@45.0.7 confirmed wf:6,action:4",
     "GHSA-mrrh-fwg8-r2c3 tj-actions/changed-files@45.x may-be-affected wf:8",
     "MAL-2026-7 evil/action@9.9.9 may-be-affected wf:11",
   ]);
   const confirmed = rec.findings.find((f) => f.version === "45.0.7")!;
   assert.equal(confirmed.fixedIn, "46.0.1");
+  assert.equal(rec.findings.find((f) => f.version === "0123456789ab")!.fixedIn, "46.0.1", "a bare SHA gets the fix to compare with");
   assert.equal(rec.findings.find((f) => f.id === "MAL-2026-7")!.severity, "malicious");
   assert.equal(rec.findings.find((f) => f.version === "45.x")!.pin, "v45");
 

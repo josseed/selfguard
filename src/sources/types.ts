@@ -27,6 +27,14 @@ export interface SourceTarget {
  */
 export type VersionKind = "exact" | "line" | "unknown";
 
+/**
+ * For versionKind "unknown": does the reference follow new releases?
+ * - "tracks-latest": a branch (@main), a tag such as @latest, an unpinned or ranged package.
+ *   Only advisories that affect the latest release (no fix) apply, plus those affecting `lastRun`.
+ * - "fixed-unknown": a bare commit SHA: fixed, but which release it is can't be known.
+ */
+export type UnknownKind = "tracks-latest" | "fixed-unknown";
+
 /** A package referenced by a source file (an action, an MCP server package). */
 export interface SourceRef {
   ecosystem: Ecosystem;
@@ -39,6 +47,10 @@ export interface SourceRef {
   lineOf?: string;
   /** What the file says, shown to the user: "v4", "main", "8f4b7f8", "latest". Never secrets. */
   pin?: string;
+  /** versionKind "unknown" only; absent means "tracks-latest". */
+  unknownKind?: UnknownKind;
+  /** Unpinned npx package: the version found in the npx cache (last run). Never makes the ref exact. */
+  lastRun?: string;
   /** Absolute path of the file it comes from, and 1-based line. */
   file: string;
   line: number;
@@ -63,6 +75,8 @@ export interface SourceFinding extends Finding {
   locations: Array<{ file: string; line: number }>;
   /** The reference as written ("v4", "main"…), when it isn't an exact version. */
   pin?: string;
+  /** Set when the advisory applies because it affects the version last run (npx cache). */
+  lastRun?: string;
 }
 
 /** Change detection, as for lockfiles: size and mtime first, hash when they changed. */

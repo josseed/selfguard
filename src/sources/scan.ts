@@ -8,10 +8,10 @@ import { clean } from "../sanitize.ts";
 import { lookup, type Lookup } from "../scan/lookup.ts";
 import { updateSeen } from "../scan.ts";
 import { findingKey } from "../store.ts";
-import { buildSourceFindings, queryFor } from "./findings.ts";
+import { buildSourceFindings, queryFor, refVersion } from "./findings.ts";
 import { loadSource } from "./store.ts";
 import { fileState, filesFor, type SourceInput } from "./targets.ts";
-import type { ExtractResult, SourceFinding, SourceRecord, SourceRef, SourceWarning } from "./types.ts";
+import type { ExtractResult, SourceFinding, SourceRecord, SourceRef, SourceWarning, UnknownKind } from "./types.ts";
 
 export interface SourceOutcome {
   record: SourceRecord;
@@ -23,12 +23,19 @@ export interface SourceOutcome {
 export interface SourceInventory {
   record: SourceRecord;
   previous: SourceRecord | null;
+  /** Same references as the last (recent, successful) scan: no OSV query, findings kept. */
+  reuse?: boolean;
 }
+
+/** How long a successful scan is reused while the references don't change. */
+export const REUSE_MS = 24 * 60 * 60 * 1000;
 
 const MAX_REFS = 5000;
 const MAX_WARNINGS = 1000;
 const SEVERITIES = new Set(["high", "moderate", "low"]);
 const VERSION_KINDS = new Set(["exact", "line", "unknown"]);
+const UNKNOWN_KINDS = new Set(["tracks-latest", "fixed-unknown"]);
+const RELEASE = /^\d+(?:\.\d+){0,3}(?:[-+][0-9A-Za-z.+-]+)?$/;
 
 const opt = (v: unknown, n: number): string | undefined => (typeof v === "string" && v.trim() ? clean(v, n) : undefined);
 const lineOf = (v: unknown): number => (typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : 0);
@@ -55,6 +62,11 @@ function cleanRef(r: ExtractResult["refs"][number], file: string): SourceRef | n
     const v = opt(r[k], n);
     if (v) ref[k] = v;
   }
+  if (ref.versionKind === "unknown") {
+    if (UNKNOWN_KINDS.has(r.unknownKind as string)) ref.unknownKind = r.unknownKind as UnknownKind;
+    const lastRun = opt(r.lastRun, 64);
+    if (lastRun && RELEASE.test(lastRun)) ref.lastRun = lastRun;
+  }
   return ref;
 }
 
@@ -63,6 +75,12 @@ function cleanWarning(w: ExtractResult["warnings"][number], file: string): Sourc
   const message = opt(w?.message, 300);
   if (!rule || !message) return null;
   return { rule, message, file, line: lineOf(w.line), severity: SEVERITIES.has(w.severity) ? w.severity : "low" };
+}
+
+/** What a scan depends on: each reference's package and version, not where it is written. */
+export function refsSignature(refs: SourceRef[]): string {
+  const keys = refs.map((r) => [r.ecosystem, r.name, r.versionKind, r.version ?? "", r.lineOf ?? "", r.pin ?? "", r.unknownKind ?? "", r.lastRun ?? ""].join("|"));
+  return JSON.stringify([...new Set(keys)].sort());
 }
 
 function inventory(input: SourceInput, now: string): SourceInventory {
@@ -81,7 +99,7 @@ function inventory(input: SourceInput, now: string): SourceInventory {
     warnings: [],
     skipped: 0,
   };
-  for (const [file, extractors] of filesFor(kind, target)) {
+  for (const [file, extractors] of input.files ?? filesFor(kind, target)) {
     const read = fileState(file);
     if (!read) continue;
     record.files.push(read.state);
@@ -107,17 +125,51 @@ function inventory(input: SourceInput, now: string): SourceInventory {
   return { record, previous };
 }
 
-/** Read the sources and list what to ask OSV (to batch with lockfiles). */
-export function prepareSources(inputs: SourceInput[], now = new Date().toISOString()): { inventories: SourceInventory[]; queries: PackageQuery[] } {
+/**
+ * Read the sources and list what to ask OSV (to batch with lockfiles). With `reuseRecent`
+ * (the watcher's check), a source whose references are those of its last successful scan,
+ * less than REUSE_MS ago, isn't queried: its findings are kept, its file states updated.
+ */
+export function prepareSources(
+  inputs: SourceInput[],
+  now = new Date().toISOString(),
+  opts: { reuseRecent?: boolean } = {},
+): { inventories: SourceInventory[]; queries: PackageQuery[] } {
   const inventories = inputs.map((i) => inventory(i, now));
-  return { inventories, queries: inventories.flatMap((i) => i.record.refs.map(queryFor)) };
+  for (const inv of inventories) {
+    const p = inv.previous;
+    if (!opts.reuseRecent || !p?.scannedAt || p.error) continue;
+    const age = Date.parse(now) - Date.parse(p.scannedAt);
+    if (age >= 0 && age < REUSE_MS && refsSignature(p.refs) === refsSignature(inv.record.refs)) inv.reuse = true;
+  }
+  return { inventories, queries: inventories.filter((i) => !i.reuse).flatMap((i) => i.record.refs.map(queryFor)) };
+}
+
+/** Previous findings, located with the current references (lines may have moved). */
+function relocate(findings: SourceFinding[], refs: SourceRef[]): SourceFinding[] {
+  return findings.map((f) => {
+    const locations = refs
+      .filter((r) => r.name === f.name && r.ecosystem === (f.ecosystem ?? "npm") && refVersion(r) === f.version)
+      .map((r) => ({ file: r.file, line: r.line }));
+    return locations.length ? { ...f, locations: locations.slice(0, 50) } : f;
+  });
 }
 
 export function finishSources(inventories: SourceInventory[], found: Lookup, now = new Date().toISOString()): SourceOutcome[] {
-  return inventories.map(({ record, previous }) => {
-    if (found.error && record.refs.length > 0) {
-      // Keep the last known findings rather than pretending everything is fine.
-      record.error = found.error;
+  return inventories.map(({ record, previous, reuse }) => {
+    if (reuse && previous) {
+      record.findings = relocate(previous.findings, record.refs);
+      record.scannedAt = previous.scannedAt;
+      record.seen = previous.seen ?? {};
+      return { record, newFindings: [], resolvedFindings: [], firstScan: false };
+    }
+    const actions = record.refs.some((r) => r.ecosystem === "GitHub Actions");
+    const error = found.error ?? (actions ? found.ghaError : undefined);
+    if (error && record.refs.length > 0) {
+      // Keep the last known findings rather than pretending everything is fine, and the last
+      // file states so that the next check retries.
+      record.error = error;
+      record.files = previous?.files ?? [];
       record.findings = previous?.findings ?? [];
       record.scannedAt = previous?.scannedAt ?? null;
       record.seen = previous?.seen ?? {};
@@ -127,7 +179,10 @@ export function finishSources(inventories: SourceInventory[], found: Lookup, now
     record.scannedAt = now;
     const before = new Set((previous?.findings ?? []).map(findingKey));
     const history = previous?.seen ?? {};
-    const newFindings = record.findings.filter((f) => !before.has(findingKey(f)) && !Object.hasOwn(history, findingKey(f)));
+    // A first scan is a baseline, like a machine's first sync: only malicious findings are news.
+    const newFindings = record.findings.filter(
+      (f) => !before.has(findingKey(f)) && !Object.hasOwn(history, findingKey(f)) && (previous !== null || f.severity === "malicious"),
+    );
     const after = new Set(record.findings.map(findingKey));
     const resolvedFindings = previous ? previous.findings.filter((f) => !after.has(findingKey(f))) : [];
     record.seen = updateSeen(previous, record.findings, now);
@@ -136,7 +191,7 @@ export function finishSources(inventories: SourceInventory[], found: Lookup, now
 }
 
 /** Scan sources on their own (one OSV batch). Records are returned, not saved. */
-export async function scanSources(inputs: SourceInput[]): Promise<SourceOutcome[]> {
-  const { inventories, queries } = prepareSources(inputs);
+export async function scanSources(inputs: SourceInput[], opts: { reuseRecent?: boolean } = {}): Promise<SourceOutcome[]> {
+  const { inventories, queries } = prepareSources(inputs, new Date().toISOString(), opts);
   return finishSources(inventories, await lookup(queries));
 }

@@ -6,10 +6,9 @@
  *   ./path                                      -> local action: ignored (its action.yml is read)
  *   docker://image, values with ${{ }}, junk    -> skipped and counted
  *
- * Names keep the case they are written in: GitHub resolves them case-insensitively, but OSV
- * names are case-sensitive and use the repository's own case ("Azure/setup-kubectl",
- * "tj-actions/changed-files"), which is how workflows usually copy them. Nothing is resolved
- * through GitHub: a bare SHA or a branch has an unknown version.
+ * Names keep the case they are written in (shown to the user); GitHub resolves them
+ * case-insensitively, and so does the advisory matching (scan/gha-index.ts). Nothing is
+ * resolved through GitHub: a bare SHA or a branch has an unknown version.
  */
 import type { ExtractResult } from "../types.ts";
 import { scalar, type Line } from "./lines.ts";
@@ -83,7 +82,9 @@ export function scanUses(lines: Line[]): UsesScan {
     const sha = SHA.test(ref);
     const v = sha ? commentVersion(comment) : tagVersion(ref);
     const pin = sha ? ref.slice(0, 12).toLowerCase() : ref;
-    out.refs.push({ ecosystem: "GitHub Actions", name, ...(v ?? { version: null, versionKind: "unknown" }), pin, line: l.n });
+    // Unknown version: a bare SHA is fixed (just unknown), a branch or other tag tracks the latest.
+    const unknown: Pick<Ref, "version" | "versionKind" | "unknownKind"> = { version: null, versionKind: "unknown", unknownKind: sha ? "fixed-unknown" : "tracks-latest" };
+    out.refs.push({ ecosystem: "GitHub Actions", name, ...(v ?? unknown), pin, line: l.n });
     out.uses.push({ index, line: l.n, name, owner, ref, sha });
   });
   return out;

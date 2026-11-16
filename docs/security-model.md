@@ -41,22 +41,28 @@ host only. Nothing is executed, and GitHub is never queried to resolve commit SH
 
 ## What leaves your machine
 
-Calls to the OSV.dev API at `https://api.osv.dev/v1`, plus the daily update check described
-below:
+Calls to the OSV.dev API at `https://api.osv.dev/v1` and to OSV's public data bucket, plus the
+daily update check described below:
 
 - `POST /querybatch` with `{ "package": { "ecosystem": …, "name": … }, "version": … }` for
-  each unique dependency. The ecosystem is `npm`, `PyPI`, `crates.io`, `Go` or
-  `GitHub Actions`; Go module paths (`github.com/org/module`) and actions (`owner/repo`) are
-  public names, sent like any package name. Actions, and MCP servers without an exact version,
-  are sent without `version`;
-- `GET /vulns/{id}` for advisory details not already cached.
+  each unique dependency. The ecosystem is `npm`, `PyPI`, `crates.io` or `Go`; Go module paths
+  (`github.com/org/module`) are public names, sent like any package name. MCP servers without
+  an exact version are sent without `version`;
+- `GET /vulns/{id}` for advisory details not already cached;
+- when a repo has GitHub Actions workflows, at most every 6 hours,
+  `GET https://osv-vulnerabilities.storage.googleapis.com/GitHub%20Actions/modified_id.csv`:
+  the public list of every GitHub Actions advisory (id and last change), followed by
+  `GET /vulns/{id}` for the ones that are new or changed. The same request for every user:
+  **no action name is sent**. Actions are matched locally against that index. The list is
+  size-capped (1 MB, 10,000 lines) and its ids validated.
 
 Requests carry the `User-Agent: selfguard/<version>` header. No file paths, project or repo
 names, git remotes, source code or identifiers are sent. Redirects are refused, responses are
 size-capped, and requests time out.
 
 OSV can infer which open-source packages and versions you use, but not who you are or what you
-build. If even that is too much, point `SELFGUARD_OSV_API` at a mirror you control.
+build. If even that is too much, point `SELFGUARD_OSV_API` (and `SELFGUARD_OSV_BUCKET` for the
+GitHub Actions list) at a mirror you control.
 
 **Update check.** At most once a day, selfguard sends `GET https://registry.npmjs.org/selfguard/latest`
 to learn whether a newer selfguard exists. The request has the same safeguards (no redirects,

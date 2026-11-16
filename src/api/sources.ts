@@ -25,6 +25,8 @@ export interface SourceFindingReport {
   /** Exact version, "4.x" for a release line, or what is written (branch, SHA). */
   version: string;
   pin: string | null;
+  /** Unpinned npx package: the version last run, when the advisory applies because of it. */
+  lastRun: string | null;
   fixedIn: string | null;
   firstSeen: string;
   url: string;
@@ -98,6 +100,7 @@ export function toSourceReport(rec: SourceRecord): SourceReport {
       ecosystem: f.ecosystem ?? "npm",
       version: f.version,
       pin: f.pin ?? null,
+      lastRun: f.lastRun ?? null,
       fixedIn: f.fixedIn ?? null,
       firstSeen: f.firstSeen,
       url: advisoryUrl(f.id),
