@@ -6,6 +6,38 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-16
+
+### Added
+
+- selfguard sharing: add your other Macs from the dashboard without SSH. On the machine to
+  watch, "Let my other machines see this one" (`selfguard share on`) starts a small read-only
+  service (launchd agent, systemd user unit on Linux). It listens only on that machine's
+  Tailscale addresses and answers the same reader requests as the SSH reader (`reader.ts`, a
+  byte-identical TypeScript port), with the same limits and a folder scope.
+- Pairing: press **Connect** and both screens show the same 6-digit code, derived from an X25519
+  exchange. You approve on the other machine and choose the folder it may read. The credential
+  is sealed for the requester only, stored there as a hash, bound to its Tailscale node ID (a
+  mismatch revokes it), and limited by default to machines of your own Tailscale user. Requests
+  are rate limited, accesses logged, and `share off` stops answering at once. **Machines that
+  can see this one** lists paired machines with their last connection and **Revoke**
+  (`selfguard share list | revoke <name>`).
+- Machines page: **On your tailnet** lists every peer with its state (online, last seen) and
+  what it can do (selfguard sharing, SSH, Tailscale SSH), probed in parallel. Each one gets the
+  right next step: Connect, Turn on sharing there (with automatic retry), or Add with SSH. The
+  long manual install script is now behind "Advanced". There are clear messages when Tailscale
+  is missing or stopped.
+- Machines gain a `transport` (`ssh` or `share`; configs without it stay `ssh`).
+  `selfguard machines add <peer>` picks sharing when available (`--via share|ssh`), and
+  `selfguard machines migrate <name> --via share|ssh` keeps history and folders.
+  `selfguard machines peers` shows capabilities.
+- MCP: `selfguard_machines_peers`. The agent guide documents the share transport.
+
+### Security
+
+- The restricted SSH reader now also confines git facts to its granted folder: a parent repo's
+  remote URL (which may embed a token) is no longer reported for a narrower grant.
+
 ## [0.7.1] - 2026-11-15
 
 ### Added
@@ -158,7 +190,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/josseed/selfguard/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/josseed/selfguard/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/josseed/selfguard/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/josseed/selfguard/compare/v0.5.0...v0.6.0

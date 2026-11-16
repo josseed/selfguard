@@ -15,16 +15,16 @@
  * never writes (except when you install/revoke the reader), never runs git, a package
  * manager or anything from a project. What comes back is treated as untrusted.
  */
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
 import { posix } from "node:path";
 import { gunzipSync } from "node:zlib";
-import { SSH_HOST_RE, type Root } from "./config.ts";
+import { DEFAULT_SHARE_PORT, SSH_HOST_RE, type Root } from "./config.ts";
 import { LOCKFILES } from "./lockfile/detect.ts";
 import type { LockfileType } from "./lockfile/types.ts";
 import type { GitFacts } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
+import { tailnet, urlHost, type TailnetPeer } from "./tailnet.ts";
 
 export class RemoteError extends Error {
   readonly code: "unreachable" | "auth" | "failed" | "too_large" | "protocol" | "not_installed" | "outdated";
@@ -34,12 +34,21 @@ export class RemoteError extends Error {
   }
 }
 
-/** Where to connect. With `key`, the machine runs the reader for us (restricted mode). */
+/**
+ * Where to connect. With `key`, the machine runs the reader for us (restricted SSH mode).
+ * With transport "share", it is another selfguard answering over the tailnet (see share.ts)
+ * and `credential` is what pairing gave us.
+ */
 export interface Target {
   host: string;
   port?: number;
   key?: string;
+  transport?: "ssh" | "share";
+  credential?: string;
 }
+
+/** Answered by a reader (SSH restricted key, or selfguard sharing): requests are data. */
+export const isReader = (t: Target): boolean => Boolean(t.key) || t.transport === "share";
 
 /** Bumped when the reader's request/answer format changes (installed readers then need an update). */
 export const READER_PROTOCOL = "r1";
@@ -52,9 +61,9 @@ export function shq(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-const FETCHABLE = new Set([...LOCKFILES.map(([f]) => f).filter((f) => f !== "bun.lockb"), "package.json"]);
-const SKIP = ["node_modules", "bower_components", "jspm_packages", "vendor", "Pods", "venv", "__pycache__", "target"];
-const MAX_FILE_BYTES = 50 * 1024 * 1024;
+export const FETCHABLE: ReadonlySet<string> = new Set([...LOCKFILES.map(([f]) => f).filter((f) => f !== "bun.lockb"), "package.json"]);
+export const SKIP: readonly string[] = ["node_modules", "bower_components", "jspm_packages", "vendor", "Pods", "venv", "__pycache__", "target"];
+export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_LIST_BYTES = 16 * 1024 * 1024;
 const MAX_FETCH_BYTES = 200 * 1024 * 1024;
 
@@ -91,6 +100,7 @@ const sshBin = (): string => process.env.SELFGUARD_SSH || "ssh";
 
 /** Send `input` on stdin (a script, or a reader request); resolves with stdout (capped). */
 export function runRemote(t: Target, input: string, opts: { maxBytes: number; timeoutMs: number }): Promise<Buffer> {
+  if (t.transport === "share") return shareRead(t, input, opts);
   return new Promise((resolve, reject) => {
     const child = spawn(sshBin(), sshArgs(t), { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, LC_ALL: "C" } });
     const chunks: Buffer[] = [];
@@ -138,6 +148,44 @@ export function runRemote(t: Target, input: string, opts: { maxBytes: number; ti
   });
 }
 
+/** The same request, sent to another selfguard over the tailnet (POST /read with the credential). */
+async function shareRead(t: Target, input: string, opts: { maxBytes: number; timeoutMs: number }): Promise<Buffer> {
+  if (!t.credential) throw new RemoteError("not_installed", "not paired with this machine yet");
+  if (!/^[0-9a-fA-F.:]+$/.test(t.host)) throw new RemoteError("protocol", "invalid tailnet address");
+  let res: Response;
+  try {
+    res = await fetch(`http://${urlHost(t.host)}:${t.port ?? DEFAULT_SHARE_PORT}/read`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${t.credential}`, "content-type": "text/plain; charset=utf-8" },
+      body: input,
+      redirect: "error",
+      signal: AbortSignal.timeout(opts.timeoutMs),
+    });
+  } catch (e) {
+    const timeout = (e as Error).name === "TimeoutError";
+    throw new RemoteError("unreachable", timeout ? `timed out after ${Math.round(opts.timeoutMs / 1000)}s` : "the machine didn't answer (offline, or sharing turned off there)");
+  }
+  if (res.status === 401 || res.status === 403) throw new RemoteError("auth", "the machine no longer accepts this one (access revoked): pair again");
+  if (res.status === 503) {
+    const code = await res.json().then((j) => (j as { error?: { code?: unknown } } | null)?.error?.code, () => null);
+    throw new RemoteError(
+      "unreachable",
+      code === "off" ? "sharing is turned off on that machine" : "that machine couldn't check this one with Tailscale right now; it will be retried",
+    );
+  }
+  if (res.status !== 200) throw new RemoteError("failed", `the machine answered ${res.status}`);
+  const chunks: Buffer[] = [];
+  let size = 0;
+  if (res.body) {
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      size += chunk.length;
+      if (size > opts.maxBytes) throw new RemoteError("too_large", `answer larger than ${Math.round(opts.maxBytes / 1048576)} MB`);
+      chunks.push(Buffer.from(chunk));
+    }
+  }
+  return Buffer.concat(chunks);
+}
+
 const notReader = (): RemoteError =>
   new RemoteError(
     "not_installed",
@@ -170,6 +218,8 @@ sg_expand() {
   esac
 }
 sg_header() { printf 'SG1\t%s\t%s\t%s\t%s\n' "$HOME" "$(uname -s 2>/dev/null)" "$1" "$2"; }
+# Inside the granted folder (restricted reader only; SG_SCOPE is its physical path).
+sg_inside() { case $1 in "$SG_SCOPE"|"$SG_SCOPE"/*) return 0 ;; esac; return 1; }
 
 # Git facts for a project: walks up to the folder holding .git and reads HEAD, commondir,
 # the worktree pointer and the [section]/url lines of the config. Never runs git.
@@ -183,10 +233,16 @@ sg_git() {
       case $p in /*) g=$p ;; "") break ;; *) g="$d/$p" ;; esac
       wt=1; break
     fi
-    if [ "$d" = "$HOME" ] || [ "$d" = / ] || [ -z "$d" ]; then break; fi
+    # Never above the granted folder (nor the home).
+    if [ "$d" = "@{SG_SCOPE:-}" ] || [ "$d" = "$HOME" ] || [ "$d" = / ] || [ -z "$d" ]; then break; fi
     d=@{d%/*}; [ -n "$d" ] || d=/
   done
   [ -n "$g" ] || return 0
+  # Restricted reader: the git dir must be inside the granted folder too.
+  if [ -n "@{SG_SCOPE:-}" ]; then
+    gr=$(cd -- "$g" 2>/dev/null && pwd -P) || return 0
+    sg_inside "$gr" || return 0
+  fi
   if [ -d "$g" ]; then ok=1; else ok=0; fi
   head=; [ -f "$g/HEAD" ] && { IFS= read -r head < "$g/HEAD" || true; }
   cd_=$g
@@ -195,6 +251,9 @@ sg_git() {
     case $c in /*) cd_=$c ;; "") ;; *) cd_="$g/$c" ;; esac
   fi
   cdr=$(cd -- "$cd_" 2>/dev/null && pwd -P)
+  if [ -n "@{SG_SCOPE:-}" ]; then
+    [ -n "$cdr" ] && sg_inside "$cdr" || return 0
+  fi
   a=0
   for m in $(sg_mtimes "$g/HEAD" "$g/index" "$g/logs/HEAD"); do
     [ "$m" -gt "$a" ] 2>/dev/null && a=$m
@@ -328,17 +387,17 @@ function openScript(vars: Record<string, string>, call: string, tag = "sh"): str
 export function listRequest(t: Target, roots: Root[]): string {
   const lines = roots.map((r) => `${r.depth}\t${r.path}`);
   for (const l of lines) if (/[\n\u0000]/.test(l)) throw new RemoteError("protocol", "newline in path");
-  return t.key ? `SGREQ1 list\n${lines.join("\n")}\n` : openScript({ SG_ROOTS: lines.join("\n") }, "sg_list");
+  return isReader(t) ? `SGREQ1 list\n${lines.join("\n")}\n` : openScript({ SG_ROOTS: lines.join("\n") }, "sg_list");
 }
 
 export function fetchRequest(t: Target, files: string[]): string {
   for (const f of files) if (/[\n\u0000]/.test(f)) throw new RemoteError("protocol", "newline in path");
-  return t.key ? `SGREQ1 fetch\n${files.join("\n")}\n` : openScript({ SG_FILES: files.join("\n") }, "printf '\\n'\nsg_fetch");
+  return isReader(t) ? `SGREQ1 fetch\n${files.join("\n")}\n` : openScript({ SG_FILES: files.join("\n") }, "printf '\\n'\nsg_fetch");
 }
 
 export function browseRequest(t: Target, path: string): string {
   if (/[\n\u0000]/.test(path)) throw new RemoteError("protocol", "newline in path");
-  return t.key ? `SGREQ1 browse\n${path}\n` : openScript({ SG_PATH: path }, `SG_PATH=$(sg_expand "$SG_PATH")\nsg_browse`);
+  return isReader(t) ? `SGREQ1 browse\n${path}\n` : openScript({ SG_PATH: path }, `SG_PATH=$(sg_expand "$SG_PATH")\nsg_browse`);
 }
 
 // ---------- install / revoke (run once with your own SSH access) ----------
@@ -399,7 +458,7 @@ printf 'SGOK\\n'
 }
 
 export async function runInstall(t: Target, script: string): Promise<void> {
-  if (t.key) throw new RemoteError("protocol", "install needs your own SSH access");
+  if (isReader(t)) throw new RemoteError("protocol", "install needs your own SSH access");
   const out = (await runRemote(t, script, { maxBytes: 64 * 1024, timeoutMs: 30_000 })).toString("utf8");
   if (!out.includes("SGOK")) throw new RemoteError("failed", "the install script did not finish");
 }
@@ -434,11 +493,11 @@ const absPath = (p: string): boolean => p.startsWith("/") && !p.split("/").inclu
 /** First line of every answer. Restricted targets must be answered by a current reader. */
 export function parseHeader(line: string, t: Target): Header {
   const h = line.split("\t");
-  if (h[0] !== "SG1") throw t.key ? notReader() : new RemoteError("protocol", "unexpected answer (is /bin/sh a POSIX shell there?)");
+  if (h[0] !== "SG1") throw isReader(t) ? notReader() : new RemoteError("protocol", "unexpected answer (is /bin/sh a POSIX shell there?)");
   const home = h[1] ?? "";
   if (!absPath(home)) throw new RemoteError("protocol", "bad home directory");
   const tag = h[3] ?? "";
-  if (t.key) {
+  if (isReader(t)) {
     if (!tag.startsWith("reader ")) throw notReader();
     if (tag !== `reader ${READER_PROTOCOL}`) throw new RemoteError("outdated", "the reader on the machine is from another selfguard version: reinstall it (selfguard machines install <name>)");
   } else if (tag.startsWith("reader")) {
@@ -611,60 +670,18 @@ export async function browseMachine(t: Target, path: string): Promise<BrowseResu
 
 /** Connection test: the remote home, OS and (restricted) allowed folder. */
 export async function testHost(t: Target): Promise<Header> {
-  const input = t.key ? "SGREQ1 ping\n" : openScript({}, "");
+  const input = isReader(t) ? "SGREQ1 ping\n" : openScript({}, "");
   const [first] = firstLine(await runRemote(t, input, { maxBytes: 64 * 1024, timeoutMs: 20_000 }));
   return parseHeader(first, t);
 }
 
 // ---------- tailscale ----------
 
-export interface TailnetPeer {
-  name: string;
-  dnsName: string;
-  os: string;
-  online: boolean;
-  ips: string[];
-}
-
-function tailscaleBin(): string | null {
-  for (const p of ["/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/usr/bin/tailscale"]) {
-    if (existsSync(p)) return p;
-  }
-  return null;
-}
-
-function tailscaleStatus(): Record<string, unknown> | null {
-  const bin = tailscaleBin();
-  if (!bin) return null;
-  try {
-    const raw = JSON.parse(execFileSync(bin, ["status", "--json"], { encoding: "utf8", timeout: 5000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] }));
-    return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
-
-const ipsOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && /^[0-9a-fA-F.:]+$/.test(x)) : []);
+export type { TailnetPeer } from "./tailnet.ts";
 
 /** Machines on your tailnet (if Tailscale is installed), to pick from when adding one. */
 export function tailnetPeers(): TailnetPeer[] {
-  const peers = tailscaleStatus()?.Peer;
-  if (!peers || typeof peers !== "object") return [];
-  const out: TailnetPeer[] = [];
-  for (const p of Object.values(peers)) {
-    if (!p || typeof p !== "object") continue;
-    const r = p as Record<string, unknown>;
-    const dnsName = typeof r.DNSName === "string" ? r.DNSName.replace(/\.$/, "") : "";
-    if (!dnsName || !SSH_HOST_RE.test(dnsName)) continue;
-    out.push({
-      name: clean(typeof r.HostName === "string" ? r.HostName : dnsName.split(".")[0], 64),
-      dnsName,
-      os: clean(typeof r.OS === "string" ? r.OS : "", 20),
-      online: r.Online === true,
-      ips: ipsOf(r.TailscaleIPs),
-    });
-  }
-  return out.sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
+  return tailnet().peers;
 }
 
 /**
@@ -672,18 +689,15 @@ export function tailnetPeers(): TailnetPeer[] {
  * then pinned to them (authorized_keys from="…"), so it is useless from anywhere else.
  */
 export function tailnetSourceIps(host: string): string[] {
-  const status = tailscaleStatus();
-  if (!status) return [];
+  const t = tailnet();
+  if (!t.self) return [];
   const bare = host.replace(/^[^@]*@/, "").replace(/\.$/, "").toLowerCase();
-  const peers = Object.values((status.Peer as Record<string, unknown>) ?? {}) as Array<Record<string, unknown>>;
   const viaTailnet =
     /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(bare) ||
     /^fd7a:115c:a1e0:/i.test(bare) ||
-    peers.some((p) => {
-      const dns = typeof p.DNSName === "string" ? p.DNSName.replace(/\.$/, "").toLowerCase() : "";
-      const hn = typeof p.HostName === "string" ? p.HostName.toLowerCase() : "";
-      return bare === dns || bare === dns.split(".")[0] || bare === hn || ipsOf(p.TailscaleIPs).includes(bare);
+    t.peers.some((p) => {
+      const d = p.dnsName.toLowerCase();
+      return bare === d || bare === d.split(".")[0] || bare === p.name.toLowerCase() || p.ips.includes(bare);
     });
-  if (!viaTailnet) return [];
-  return ipsOf((status.Self as Record<string, unknown> | undefined)?.TailscaleIPs);
+  return viaTailnet ? t.self.ips : [];
 }

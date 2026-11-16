@@ -156,8 +156,26 @@ in Settings or with `selfguard settings --auto-discover off`.
 
 ## Dev servers and other machines
 
+### Your other Macs (selfguard on both, over Tailscale)
+
+1. On the machine to watch, open selfguard → **Settings → Let my other machines see this one →
+   Turn on** (or `selfguard share on`). It listens only on its Tailscale address.
+2. On this machine, open **Machines**. Under "On your tailnet" it shows up with **Connect**.
+3. Press Connect. Both screens show the same 6-digit code. Approve it on the other machine and
+   choose which folder it may read.
+
+![On your tailnet: Connect](images/machines-tailnet.png)
+
+![The same code on both screens, approved on the other machine](images/machines-pairing-request.png)
+
+No SSH, no Remote Login, nothing to paste. From the terminal: `selfguard machines add <name>`
+(it picks sharing when the other machine answers), then `selfguard share approve <id>` over
+there. Both machines need to be on your tailnet with the same Tailscale user.
+
+### Servers without selfguard (SSH)
+
 If you also code on servers (for example, agents working on a dev box on your tailnet), add them
-from **Machines → Add machine** in the dashboard, or from the terminal:
+with **Machines → Add with SSH** in the dashboard, or from the terminal:
 
 ```sh
 selfguard machines peers                       # machines on your tailnet

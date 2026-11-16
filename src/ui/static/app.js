@@ -11,6 +11,8 @@ const state = {
   packages: null,
   folders: null,
   machines: null,
+  peers: null, // { tailscale, self, peers } from /api/machines/peers
+  share: null, // sharing on this machine: { enabled, requests, grants, suggestions, … }
   find: null, // "find my projects" job: { running, progress, result, error }
   findChoice: null,
   repo: null, // { key, data }
@@ -176,6 +178,35 @@ async function loadMachines() {
   state.machines = (await call("GET", "/api/machines")).machines;
 }
 
+async function loadShare() {
+  state.share = await call("GET", "/api/share");
+}
+
+// While sharing is on, pairing requests should show up within seconds on the Machines page.
+setInterval(async () => {
+  if (state.route.name !== "machines" || !state.share?.enabled || !$("modal").hidden || state.busy) return;
+  const before = JSON.stringify(state.share.requests);
+  try {
+    await loadShare();
+  } catch {
+    return;
+  }
+  if (JSON.stringify(state.share.requests) !== before) pageMachines();
+}, 5000);
+
+let peersLoading = null;
+/** Peers are probed (about 1.5 s): load them in the background and re-render when ready. */
+function loadPeers() {
+  peersLoading ??= call("GET", "/api/machines/peers")
+    .then((r) => { state.peers = r; })
+    .catch((e) => { state.peers = { tailscale: { ok: false, reason: "error", message: e.message }, self: null, peers: [] }; })
+    .finally(() => {
+      peersLoading = null;
+      if (state.route.name === "machines") pageMachines();
+    });
+  return peersLoading;
+}
+
 async function loadRepo(key) {
   state.repo = { key, data: await call("GET", `/api/repo?key=${encodeURIComponent(key)}`) };
 }
@@ -266,7 +297,9 @@ function renderNav() {
   const counts = {
     repos: o ? [o.needsAttention.length, o.needsAttention.length > 0] : null,
     folders: o ? [o.roots, false] : null,
-    machines: o && o.machines ? [o.machines.filter((m) => m.error).length || o.machines.length, o.machines.some((m) => m.error)] : null,
+    machines: o && o.share && o.share.requests
+      ? [o.share.requests, true]
+      : o && o.machines ? [o.machines.filter((m) => m.error).length || o.machines.length, o.machines.some((m) => m.error)] : null,
   };
   const current = state.route.name === "repo" ? "repos" : state.route.name;
   $("nav").replaceChildren(
@@ -1008,20 +1041,25 @@ function machineStatus(m) {
 }
 
 function pageMachines() {
-  const addBtn = h("button", { class: "btn primary", type: "button", onclick: () => openAddMachine() }, icon("plus"), "Add machine");
-  setHead("Machines", [], [addBtn]);
+  const refreshBtn = h("button", { class: "btn", type: "button" }, icon("refresh"), "Refresh");
+  refreshBtn.addEventListener("click", () => busy(refreshBtn, "Looking…", async () => {
+    await Promise.all([loadMachines(), loadShare(), loadPeers()]);
+    pageMachines();
+  }));
+  const addBtn = h("button", { class: "btn", type: "button", onclick: () => openAddMachine() }, icon("plus"), "Add with SSH");
+  setHead("Machines", [], [refreshBtn, addBtn]);
   const list = state.machines;
   if (!list) {
     $("page").replaceChildren(h("div", { class: "skeleton" }));
     return;
   }
   const intro = card("How it works", null, h("div", { class: "prose small" },
-    h("p", {}, "selfguard checks your dev servers from this Mac over SSH. By default it uses a key made only for this: the machine accepts it just for a small read-only script (the reader) limited to one folder, so even a leaked key can't open a shell or read anything but lockfiles there. The reader lists lockfiles and reads them with a few git files (branch, last activity); it never runs git, package managers or project code."),
-    h("p", {}, "The scan happens here, so advisories are checked once for all machines. Servers are checked every 15 minutes while background watching is on; alerts name the machine.")));
+    h("p", {}, "selfguard reads lockfiles from your other machines and scans them here, so advisories are checked once for all of them. It never runs git, package managers or project code over there."),
+    h("p", {}, "Machines running selfguard connect through selfguard sharing: they answer only on their Tailscale address, only to machines you paired them with, and only inside the folder you allowed. No SSH and no Remote Login needed. For servers without selfguard, it uses SSH with a key that only runs a small read-only script."),
+    h("p", {}, "They are checked every 15 minutes while background watching is on; alerts name the machine.")));
+  const sections = [shareRequestsCard(), tailnetCard()].filter(Boolean);
   if (list.length === 0) {
-    $("page").replaceChildren(h("div", { class: "stack" },
-      card(null, null, empty("No other machines yet", "Add a dev server you reach over SSH or Tailscale to watch its repos here too.")),
-      intro));
+    $("page").replaceChildren(h("div", { class: "stack" }, ...sections, sharingCard(), intro));
     return;
   }
   const cards = list.map((m) => {
@@ -1040,7 +1078,8 @@ function pageMachines() {
         await refresh();
       });
     });
-    const needsReader = m.mode === "restricted" && ["not_installed", "outdated"].includes(m.status.errorCode);
+    const shared = m.transport === "share";
+    const needsReader = !shared && m.mode === "restricted" && ["not_installed", "outdated"].includes(m.status.errorCode);
     const installBtn = needsReader ? h("button", { class: "btn small primary", type: "button" }, m.status.errorCode === "outdated" ? "Update reader" : "Install reader") : null;
     if (installBtn) installBtn.addEventListener("click", () => busy(installBtn, "Installing…", async () => {
       try {
@@ -1052,7 +1091,14 @@ function pageMachines() {
         openSetup(m.name, e.message);
       }
     }));
-    const setupBtn = m.mode === "restricted" ? h("button", { class: "btn small", type: "button", onclick: () => openSetup(m.name) }, needsReader ? "Install by hand" : "What's installed") : null;
+    const setupBtn = !shared && m.mode === "restricted" ? h("button", { class: "btn small", type: "button", onclick: () => openSetup(m.name) }, needsReader ? "Install by hand" : "What's installed") : null;
+    const peer = state.peers?.peers?.find((x) => x.added === m.name);
+    const migrateBtn = !shared && peer?.share
+      ? h("button", { class: "btn small primary", type: "button", title: "It runs selfguard with sharing on: connect without SSH, keeping its history", onclick: () => openPairing({ replace: m.name, peerName: peer.name }) }, "Switch to sharing")
+      : null;
+    const repairBtn = shared && m.status.errorCode === "auth" && peer?.share
+      ? h("button", { class: "btn small primary", type: "button", onclick: () => openPairing({ replace: m.name, peerName: peer.name }) }, "Pair again")
+      : null;
     const status = m.status.roots || [];
     const roots = m.roots.length
       ? h("ul", { class: "list" }, ...m.roots.map((r) => {
@@ -1096,23 +1142,25 @@ function pageMachines() {
       h("span", { class: "folder-icon" }, icon("machines")),
       h("div", { class: "grow" },
         h("div", { class: "title" }, h("strong", {}, m.name), " ", machineStatus(m)),
-        h("div", { class: "sub mono" }, `ssh ${m.host}${m.port ? `:${m.port}` : ""}${m.status.os ? ` · ${m.status.os}` : ""} · ${plural(m.trackedProjects, "project")}`),
-        h("div", { class: "sub" }, m.mode === "restricted"
-          ? `Restricted key: can only read lockfiles under ${m.scope}`
-          : "Uses your own SSH access (full shell); consider the restricted mode"),
+        h("div", { class: "sub mono" }, `${shared ? "tailnet" : "ssh"} ${m.host}${m.port && !shared ? `:${m.port}` : ""}${m.status.os ? ` · ${m.status.os}` : ""} · ${plural(m.trackedProjects, "project")}`),
+        h("div", { class: "sub" }, shared
+          ? `selfguard sharing over the tailnet: reads lockfiles under ${m.scope} (no SSH)`
+          : m.mode === "restricted"
+            ? `Restricted SSH key: can only read lockfiles under ${m.scope}`
+            : "Uses your own SSH access (full shell); consider the restricted mode"),
         m.status.error ? h("div", { class: "sub warn-text" }, m.status.error) : null),
-      h("div", { class: "actions" }, installBtn, needsReader ? null : sync, needsReader ? null : addFolderBtn, setupBtn, remove));
+      h("div", { class: "actions" }, installBtn, repairBtn, migrateBtn, needsReader ? null : sync, needsReader ? null : addFolderBtn, setupBtn, remove));
     const reposLink = m.trackedProjects
       ? h("a", { href: "#/repos", onclick: () => { state.ui.repoMachine = m.name; state.ui.repoFilter = "all"; } }, `See its repos →`)
       : null;
     return h("section", { class: "card machine" }, head, h("div", { class: "card-body" }, roots, excluded), reposLink ? h("footer", { class: "card-foot" }, reposLink) : null);
   });
-  $("page").replaceChildren(h("div", { class: "stack" }, ...cards, intro));
+  $("page").replaceChildren(h("div", { class: "stack" }, ...sections, ...cards, sharingCard(), intro));
 }
 
-function openAddMachine() {
+function openAddMachine(prefill) {
   const modal = $("modal");
-  const hostInput = h("input", { type: "text", spellcheck: "false", placeholder: "devbox, devbox.tailnet.ts.net or user@host", "aria-label": "SSH host" });
+  const hostInput = h("input", { type: "text", spellcheck: "false", placeholder: "devbox, devbox.tailnet.ts.net or user@host", "aria-label": "SSH host", value: prefill?.host || "" });
   const nameInput = h("input", { type: "text", spellcheck: "false", placeholder: "name (optional)", "aria-label": "Name", maxlength: "32" });
   const scopeInput = h("input", { type: "text", spellcheck: "false", value: "~", "aria-label": "Allowed folder" });
   const portInput = h("input", { type: "text", inputmode: "numeric", placeholder: "22", "aria-label": "Port", class: "port" });
@@ -1219,6 +1267,218 @@ async function openSetup(name, problem) {
   modal.onclick = (e) => { if (e.target === modal) close(); };
 }
 
+// ---------- tailnet: peers, pairing, sharing ----------
+
+const ACTION_TEXT = {
+  connect: "selfguard sharing is on there: connect without SSH.",
+  "enable-share": "No selfguard sharing or SSH answering. Turn on sharing there (recommended for your own Macs).",
+  ssh: "SSH answers there. You can add it with SSH, or turn on selfguard sharing there to skip SSH.",
+  offline: "Offline",
+  added: "Already added",
+};
+
+/** "On your tailnet": every peer with what it can do and the right next step. */
+function tailnetCard() {
+  const r = state.peers;
+  if (!r) return card("On your tailnet", "Looking for your machines…", h("div", { class: "find-progress" }, h("span", { class: "spinner" }), h("div", { class: "small muted" }, "Asking Tailscale and checking what each machine answers (a second or two).")));
+  if (!r.tailscale.ok) {
+    return card("On your tailnet", null, empty(r.tailscale.reason === "not_installed" ? "Tailscale isn't installed" : "Tailscale isn't running",
+      `${r.tailscale.message} selfguard uses your tailnet to find and reach your other machines. You can still add a server with SSH.`));
+  }
+  if (r.peers.length === 0) return card("On your tailnet", null, empty("No other machines on your tailnet", "Log in to Tailscale on your other machines with the same account and they show up here."));
+  const items = r.peers.map((p) => {
+    const caps = [p.share ? `selfguard ${p.share.version}` : null, p.sshPort ? "SSH" : null, p.tailscaleSsh ? "Tailscale SSH" : null].filter(Boolean);
+    let actions = [];
+    if (p.action === "connect") actions = [h("button", { class: "btn small primary", type: "button", onclick: () => openPairing({ peer: p.dnsName, peerName: p.name }) }, "Connect")];
+    else if (p.action === "enable-share") actions = [h("button", { class: "btn small primary", type: "button", onclick: () => openEnableShare(p) }, `Turn on sharing on ${p.name}`)];
+    else if (p.action === "ssh") actions = [
+      h("button", { class: "btn small primary", type: "button", onclick: () => openAddMachine({ host: p.dnsName }) }, "Add with SSH"),
+      h("button", { class: "btn small", type: "button", onclick: () => openEnableShare(p) }, "Use sharing instead"),
+    ];
+    else if (p.action === "added") actions = [h("span", { class: "badge ok" }, `added as ${p.added}`)];
+    const sub = p.online
+      ? `${p.os} · ${caps.length ? caps.join(" · ") : "nothing answering"}`
+      : `${p.os} · offline${p.lastSeen ? ` · last seen ${ago(p.lastSeen)}` : ""}`;
+    return h("li", { class: p.online ? "" : "dim" },
+      h("span", { class: `status-dot ${p.online ? "on" : ""}` }),
+      h("div", { class: "grow" },
+        h("div", { class: "title" }, p.name, h("span", { class: "faint mono small" }, `  ${p.dnsName}`)),
+        h("div", { class: "sub" }, sub),
+        p.online && p.action !== "added" ? h("div", { class: "sub" }, ACTION_TEXT[p.action]) : null),
+      h("div", { class: "actions" }, ...actions));
+  });
+  return card("On your tailnet", `This machine: ${r.self?.name || "?"}`, h("ul", { class: "list" }, ...items));
+}
+
+/** Pairing requests from other machines (we are the machine being looked at). */
+function shareRequestsCard() {
+  const sh = state.share;
+  if (!sh || !sh.requests || sh.requests.length === 0) return null;
+  const items = sh.requests.map((r) => {
+    // Narrowest sensible default: the one folder this machine watches, if there is one.
+    const sug = sh.suggestions || [];
+    const scope = h("input", { type: "text", spellcheck: "false", value: sug.length === 1 ? sug[0].path : "~", "aria-label": "Allowed folder" });
+    const roots = (sh.suggestions || []).map((x) => ({ ...x, box: h("input", { type: "checkbox", checked: true, "aria-label": `Suggest ${x.path}` }) }));
+    const approve = h("button", { class: "btn small primary", type: "button" }, "Approve");
+    approve.addEventListener("click", () => busy(approve, "Approving…", async () => {
+      await call("POST", "/api/share/approve", { id: r.id, scope: scope.value.trim() || "~", roots: roots.filter((x) => x.box.checked).map((x) => ({ path: x.path, depth: x.depth })) });
+      toast(`${r.name} can now see the repos under ${scope.value.trim() || "~"}`);
+      await loadShare();
+      pageMachines();
+    }));
+    const reject = h("button", { class: "btn small danger", type: "button" }, "Reject");
+    reject.addEventListener("click", () => busy(reject, "…", async () => {
+      await call("POST", "/api/share/reject", { id: r.id });
+      await loadShare();
+      pageMachines();
+    }));
+    return h("li", { class: "request" },
+      h("div", { class: "grow" },
+        h("div", { class: "title" }, `${r.name} wants to see your repos`),
+        h("div", { class: "sub" }, `${r.hostName}${r.login ? ` · ${r.login}` : ""} · expires in ${Math.max(1, Math.ceil((Date.parse(r.expiresAt) - Date.now()) / 60000))} min`),
+        h("div", { class: "pair-code" }, `${r.code.slice(0, 3)} ${r.code.slice(3)}`),
+        h("div", { class: "small muted" }, "Approve only if the other screen shows this same code."),
+        h("label", { class: "field" }, h("span", {}, "It may read lockfiles under"), scope),
+        roots.length ? h("div", { class: "small muted gap-top" }, "Suggest these folders to it:") : null,
+        ...roots.map((x) => h("label", { class: "place" }, x.box, h("span", { class: "mono small" }, x.path)))),
+      h("div", { class: "actions" }, approve, reject));
+  });
+  return card("Pairing requests", "Another machine asked to see this one", h("ul", { class: "list" }, ...items));
+}
+
+/** "Machines that can see this one": the sharing switch, who is paired, revoke. */
+function sharingCard() {
+  const sh = state.share;
+  if (!sh) return null;
+  const toggle = h("button", { class: `btn small${sh.enabled ? "" : " primary"}`, type: "button" }, sh.enabled ? "Turn off" : "Turn on");
+  toggle.addEventListener("click", () => busy(toggle, "…", async () => {
+    await call("POST", "/api/share", { enabled: !sh.enabled });
+    toast(sh.enabled ? "Sharing off: no machine can read this one now" : "Sharing on: your other machines can ask to see this one");
+    await Promise.all([loadShare(), refresh()]);
+  }));
+  const status = !sh.tailscale.ok
+    ? h("div", { class: "sub warn-text" }, sh.tailscale.message)
+    : sh.enabled
+      ? h("div", { class: "sub" }, sh.answering ? `On: answering on ${sh.addresses.join(", ")} (port ${sh.port}), tailnet only.` : "On, but not answering yet (starting…).")
+      : h("div", { class: "sub" }, "Off: other machines can't see this one.");
+  const grants = sh.grants.length
+    ? h("ul", { class: "list" }, ...sh.grants.map((g) => {
+        const revoke = h("button", { class: "btn small danger", type: "button" }, "Revoke");
+        revoke.addEventListener("click", () => {
+          if (!confirm(`Revoke ${g.name}?\n\nIt can no longer read anything from this machine. To see it again, it has to pair again.`)) return;
+          busy(revoke, "…", async () => {
+            await call("POST", "/api/share/revoke", { id: g.id });
+            await loadShare();
+            pageMachines();
+          });
+        });
+        return h("li", {},
+          h("span", { class: "folder-icon" }, icon("machines")),
+          h("div", { class: "grow" },
+            h("div", { class: "title" }, g.name, h("span", { class: "faint small" }, `  ${g.hostName}`)),
+            h("div", { class: "sub" }, `Reads lockfiles under ${g.scope} · ${g.lastSeen ? `last connection ${ago(g.lastSeen)}` : "never connected yet"}`)),
+          revoke);
+      }))
+    : empty("No machine can see this one", sh.enabled ? "On your other machine, open selfguard → Machines and press Connect next to this one." : "Turn sharing on to let your other machines ask.");
+  return card("Machines that can see this one", "Let my other machines see this one", h("div", {},
+    h("div", { class: "machine-head" }, h("div", { class: "grow" }, h("div", { class: "title" }, h("strong", {}, "Sharing"), " ", sh.enabled ? h("span", { class: "badge ok" }, "on") : h("span", { class: "tag" }, "off")), status), toggle),
+    grants));
+}
+
+/** Pair with a machine running selfguard sharing: show the code, wait for the approval there. */
+async function openPairing(target) {
+  const modal = $("modal");
+  let job;
+  try {
+    job = await call("POST", "/api/pair/start", target.replace ? { replace: target.replace } : { peer: target.peer, name: target.name });
+  } catch (e) {
+    toast(e.message);
+    return;
+  }
+  let stopped = false;
+  const close = () => { stopped = true; modal.hidden = true; modal.replaceChildren(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") cancel.click(); };
+  document.addEventListener("keydown", onKey);
+  const cancel = h("button", { class: "btn", type: "button" }, "Cancel");
+  cancel.addEventListener("click", async () => { await call("POST", "/api/pair/cancel", { job: job.id }).catch(() => {}); close(); });
+  const statusLine = h("div", { class: "find-progress" }, h("span", { class: "spinner" }), h("div", {}, `Waiting for approval on ${job.peerName}…`));
+  modal.replaceChildren(h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Pairing" },
+    h("header", {}, h("h2", {}, `Connect to ${job.peerName}`), h("p", {}, `On ${job.peerName}, selfguard shows a request (and a notification). Check that it shows this code, then approve it there.`)),
+    h("div", { class: "body" }, h("div", { class: "pair-code big" }, `${job.code.slice(0, 3)} ${job.code.slice(3)}`), statusLine,
+      h("div", { class: "small muted" }, "No SSH involved: it answers only over your tailnet, only to this machine, and only inside the folder you allow there.")),
+    h("footer", {}, h("div", { class: "small muted" }, "The request expires in 5 minutes."), cancel)));
+  modal.hidden = false;
+  modal.onclick = null;
+  while (!stopped) {
+    await new Promise((r) => setTimeout(r, 1500));
+    let st;
+    try {
+      st = await call("GET", `/api/pair/status?job=${encodeURIComponent(job.id)}`);
+    } catch {
+      continue;
+    }
+    if (st.status === "waiting") continue;
+    close();
+    if (st.status === "failed") {
+      if (st.error !== "cancelled") toast(st.error);
+      return;
+    }
+    toast(`${job.peerName} added as ${st.machine}. Scanning…`);
+    state.peers = null;
+    await refresh();
+    loadPeers();
+    const m = (state.machines || []).find((x) => x.name === st.machine);
+    if (m && m.roots.length) await syncMachine(m.name).catch((e) => toast(e.message));
+    else openFolderPicker(st.machine);
+    return;
+  }
+}
+
+/** The other machine doesn't answer yet: how to turn sharing on there; retries on its own. */
+function openEnableShare(peer) {
+  const modal = $("modal");
+  let stopped = false;
+  const close = () => { stopped = true; modal.hidden = true; modal.replaceChildren(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  const waiting = h("div", { class: "find-progress" }, h("span", { class: "spinner" }), h("div", {}, `Waiting for ${peer.name} to answer…`));
+  const ssh = h("button", { class: "btn", type: "button", onclick: () => { close(); openAddMachine({ host: peer.dnsName }); } }, "Use SSH instead");
+  modal.replaceChildren(h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Turn on sharing" },
+    h("header", {}, h("h2", {}, `Turn on sharing on ${peer.name}`), h("p", {}, "One click over there, no terminal, no SSH.")),
+    h("div", { class: "body" },
+      h("ol", { class: "steps" },
+        h("li", {}, "On ", h("strong", {}, peer.name), ", open selfguard (Spotlight → selfguard, or run selfguard ui)."),
+        h("li", {}, "Go to ", h("strong", {}, "Settings → Let my other machines see this one"), " and press ", h("strong", {}, "Turn on"), "."),
+        h("li", {}, "Come back here: this page notices it and lets you connect.")),
+      h("details", {}, h("summary", { class: "small" }, `selfguard isn't installed on ${peer.name}?`),
+        h("div", { class: "small muted" }, "Install it there (Node 20.10+), then turn sharing on:"),
+        h("code", { class: "keyline" }, "npm i -g selfguard --ignore-scripts && selfguard share on")),
+      waiting,
+      h("details", {}, h("summary", { class: "small" }, "Advanced: SSH or install by hand"),
+        h("div", { class: "small muted" }, "For servers without selfguard: selfguard can use SSH with a key that only runs a read-only script. That needs Remote Login (SSH) on that machine."))),
+    h("footer", {}, ssh, h("button", { class: "btn", type: "button", onclick: close }, "Close"))));
+  modal.hidden = false;
+  modal.onclick = (e) => { if (e.target === modal) close(); };
+  (async () => {
+    while (!stopped) {
+      await new Promise((r) => setTimeout(r, 4000));
+      if (stopped) return;
+      try {
+        const r = await call("GET", "/api/machines/peers");
+        state.peers = r;
+        const now = r.peers.find((x) => x.nodeId === peer.nodeId);
+        if (now && now.action === "connect") {
+          close();
+          openPairing({ peer: now.dnsName, peerName: now.name });
+          return;
+        }
+      } catch {
+        /* keep waiting */
+      }
+    }
+  })();
+}
+
 function pageSettings() {
   const o = state.overview;
   setHead("Settings", [], []);
@@ -1269,6 +1529,18 @@ function pageSettings() {
       sessionStorage.removeItem("selfguard-update-hidden");
       await refresh();
     }));
+    const sh = o.share || { enabled: false, requests: 0 };
+    const shareToggle = h("button", { class: `btn small${sh.enabled ? "" : " primary"}`, type: "button" }, sh.enabled ? "Turn off" : "Turn on");
+    shareToggle.addEventListener("click", () => busy(shareToggle, "…", async () => {
+      await call("POST", "/api/share", { enabled: !sh.enabled });
+      toast(sh.enabled ? "Sharing off" : "Sharing on: open selfguard on your other machine → Machines → Connect");
+      await refresh();
+    }));
+    rows.push(settingRow("Let my other machines see this one",
+      sh.enabled
+        ? "On: your other machines on your tailnet can ask to see this one's repos; you approve each one (Machines). Nothing listens outside Tailscale."
+        : "Off. Turn it on to see this machine's repos from your other Macs without SSH. It answers only on your Tailscale address, only after you approve.",
+      [shareToggle, h("a", { class: "btn small", href: "#/machines" }, "Manage")]));
     rows.push(settingRow("Updates",
       `${upOn ? "Checks npm once a day for a newer selfguard (only the package name is sent) and tells you here and with a notification." : "Off: selfguard doesn't check for new versions."} You have ${u.current || o.version}${u.checkedAt ? `, last checked ${ago(u.checkedAt)}` : ""}.`,
       upOn ? [checkNow, upToggle] : [upToggle]));
@@ -1414,7 +1686,10 @@ async function loadForRoute() {
     jobs.push(loadFolders());
     if (!state.find) jobs.push(call("GET", "/api/everywhere/status").then((j) => { state.find = j; if (j.running) pollFind(); }));
   }
-  if (r.name === "machines") jobs.push(loadMachines());
+  if (r.name === "machines") {
+    jobs.push(loadMachines(), loadShare());
+    if (!state.peers) loadPeers();
+  }
   if (r.name === "repo" && r.arg) jobs.push(loadRepo(r.arg).catch((e) => { toast(e.message); location.hash = "#/repos"; }));
   await Promise.all(jobs);
 }

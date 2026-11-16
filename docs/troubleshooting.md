@@ -109,6 +109,26 @@ Desktop apps don't load your shell profile, so they may not find Node or selfgua
 paths in the client config. See
 [AI and automation](ai-and-automation.md#mcp-server).
 
+## My other Mac doesn't show "Connect"
+
+"On your tailnet" offers **Connect** when the other machine answers with selfguard sharing:
+
+- Turn it on there: selfguard → Settings → **Let my other machines see this one**, or
+  `selfguard share on`. `selfguard share status` should say it is answering on its Tailscale
+  address.
+- Both machines must be logged in to Tailscale with the **same Tailscale user** (pairing with
+  other users is refused unless `selfguard share on --allow-other-users`).
+- The peer must be online in Tailscale. Press **Refresh**: the page probes each machine for
+  about 1.5 s.
+- A firewall on that machine may block incoming connections to node. Allow it, or check that
+  `curl http://<its-tailnet-ip>:47821/hello` answers from this machine.
+
+## A shared machine says "pair again"
+
+The other machine revoked this one, re-paired with it (which replaces the old credential), or
+saw the credential used from a different Tailscale node and revoked it. Press **Pair again** on
+its card, or run `selfguard machines add <peer> --via share`.
+
 ## A machine shows "reader not installed"
 
 The restricted key reached the machine, but the selfguard reader didn't answer:

@@ -6,7 +6,9 @@
  * - dev.selfguard.remote: `selfguard machines check` every 15 minutes, only when you added
  *   other machines (new projects and changed lockfiles there);
  * - dev.selfguard.discover: weekly search of the whole home folder for new places with
- *   active repos ("find my projects"), unless turned off in settings.
+ *   active repos ("find my projects"), unless turned off in settings;
+ * - dev.selfguard.share: `selfguard share serve`, kept alive while "Let my other machines see
+ *   this one" is on (on Linux, a systemd user unit: selfguard-share.service).
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -49,11 +51,13 @@ function assertMac(): void {
 export function agentPlist(
   label: string,
   args: string[],
-  trigger: { interval: number } | { watch: string[] },
+  trigger: { interval: number } | { watch: string[] } | { keepAlive: true },
   log: string,
 ): string {
   const triggerXml =
-    "interval" in trigger
+    "keepAlive" in trigger
+      ? `  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n  <key>ThrottleInterval</key><integer>30</integer>`
+      : "interval" in trigger
       ? `  <key>StartInterval</key><integer>${trigger.interval}</integer>\n  <key>RunAtLoad</key><true/>`
       : `  <key>WatchPaths</key>\n  <array>\n${trigger.watch.map((p) => `    <string>${xml(p)}</string>`).join("\n")}\n  </array>\n  <key>ThrottleInterval</key><integer>15</integer>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -175,6 +179,92 @@ export function updateWatcher(paths: string[], opts: { force?: boolean } = {}): 
   if (current === plist && isLoaded(WATCH_LABEL)) return { watching: list.length, changed: false };
   install(WATCH_LABEL, plist);
   return { watching: list.length, changed: true };
+}
+
+const SHARE_LABEL = "dev.selfguard.share";
+const SYSTEMD_UNIT = "selfguard-share.service";
+const systemdUnitPath = (): string => join(homedir(), ".config", "systemd", "user", SYSTEMD_UNIT);
+
+/** The systemd user unit for Linux (pure: tested directly). */
+export function shareUnit(node: string, cli: string): string {
+  const q = (s: string): string => `"${s.replace(/(["\\$`])/g, "\\$1")}"`;
+  return `[Unit]
+Description=selfguard sharing (lets your other machines read lockfiles over the tailnet)
+After=network-online.target tailscaled.service
+
+[Service]
+ExecStart=${q(node)} ${q(cli)} share serve
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
+`;
+}
+
+/**
+ * Start or stop the sharing service. Independent of `schedule on`: sharing is its own switch.
+ * Returns where it lives, or null when the platform has no supported service manager.
+ */
+export function updateShareAgent(enabled: boolean): { manager: "launchd" | "systemd" | null; changed: boolean } {
+  if (process.env.SELFGUARD_NO_LAUNCHD === "1") return { manager: null, changed: false };
+  if (process.platform === "darwin") {
+    const exists = existsSync(plistPath(SHARE_LABEL));
+    if (!enabled) {
+      if (!exists) return { manager: "launchd", changed: false };
+      unload(SHARE_LABEL);
+      rmSync(plistPath(SHARE_LABEL), { force: true });
+      return { manager: "launchd", changed: true };
+    }
+    const plist = agentPlist(SHARE_LABEL, [process.execPath, cliEntry(), "share", "serve"], { keepAlive: true }, logFile());
+    let current = "";
+    try {
+      current = readFileSync(plistPath(SHARE_LABEL), "utf8");
+    } catch {
+      /* not installed */
+    }
+    if (current === plist && isLoaded(SHARE_LABEL)) return { manager: "launchd", changed: false };
+    install(SHARE_LABEL, plist);
+    return { manager: "launchd", changed: true };
+  }
+  if (process.platform === "linux") {
+    const systemctl = (...args: string[]): void => {
+      execFileSync("systemctl", ["--user", ...args], { stdio: "ignore", timeout: 15_000 });
+    };
+    if (!enabled) {
+      if (!existsSync(systemdUnitPath())) return { manager: "systemd", changed: false };
+      try {
+        systemctl("disable", "--now", SYSTEMD_UNIT);
+      } catch {
+        /* not running */
+      }
+      rmSync(systemdUnitPath(), { force: true });
+      return { manager: "systemd", changed: true };
+    }
+    atomicWrite(systemdUnitPath(), shareUnit(process.execPath, cliEntry()));
+    systemctl("daemon-reload");
+    systemctl("enable", "--now", SYSTEMD_UNIT);
+    systemctl("restart", SYSTEMD_UNIT);
+    return { manager: "systemd", changed: true };
+  }
+  return { manager: null, changed: false };
+}
+
+export function shareAgentStatus(): { manager: "launchd" | "systemd" | null; installed: boolean; running: boolean } {
+  if (process.platform === "darwin") return { manager: "launchd", installed: existsSync(plistPath(SHARE_LABEL)), running: isLoaded(SHARE_LABEL) };
+  if (process.platform === "linux") {
+    let running = false;
+    try {
+      execFileSync("systemctl", ["--user", "is-active", "--quiet", SYSTEMD_UNIT], { stdio: "ignore", timeout: 5000 });
+      running = true;
+    } catch {
+      running = false;
+    }
+    return { manager: "systemd", installed: existsSync(systemdUnitPath()), running };
+  }
+  return { manager: null, installed: false, running: false };
 }
 
 export function scheduleOff(): boolean {

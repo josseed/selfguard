@@ -22,6 +22,7 @@ import { maybeRemind } from "../announce.ts";
 import { needsAttention } from "../alerts.ts";
 import * as api from "../api.ts";
 import { readEvents } from "../events.ts";
+import { loadConfig } from "../config.ts";
 import { atomicWrite, ensureDir, isObject, readJsonFile } from "../fsutil.ts";
 import { cliEntry } from "../hook.ts";
 import { severityRank, type Severity } from "../match.ts";
@@ -63,6 +64,8 @@ export interface Overview {
   schedule: { enabled: boolean; watcher: boolean; watchedPaths: number; remote: boolean } | null;
   /** Newer version on npm / newer code on disk than this running dashboard. */
   update: unknown;
+  /** Sharing on this machine, and pairing requests waiting for approval. */
+  share: { enabled: boolean; requests: number };
   /** Other machines and how their last sync went. */
   machines: Array<{ name: string; host: string; os: string | null; lastSync: string | null; error: string | null; trackedProjects: number; roots: number }>;
   /** macOS launcher app (null elsewhere). */
@@ -115,6 +118,10 @@ export function getOverview(): Overview {
     app,
     roots: api.listRoots().roots.length,
     update: updateStatus(),
+    share: (() => {
+      const cfg = loadConfig();
+      return { enabled: cfg.share.enabled, requests: cfg.share.enabled ? api.listShareRequests().length : 0 };
+    })(),
     machines: api.listMachines().map((m) => ({
       name: m.name,
       host: m.host,
@@ -213,6 +220,58 @@ function refreshRemoteAgent(): void {
   }
 }
 
+// Pairing with another machine: waits (up to 5 minutes) for the approval over there.
+interface PairJob {
+  id: string;
+  code: string;
+  peerName: string;
+  expiresAt: string;
+  status: "waiting" | "done" | "failed";
+  machine: string | null;
+  error: string | null;
+  cancelled: boolean;
+}
+const pairJobs = new Map<string, PairJob>();
+
+function startPairJob(start: api.PairingStart, opts: { replace?: string; name?: string }): Omit<PairJob, "cancelled"> {
+  const job: PairJob = {
+    id: randomBytes(9).toString("base64url"),
+    code: start.session.code,
+    peerName: start.peer.name,
+    expiresAt: start.session.expiresAt,
+    status: "waiting",
+    machine: null,
+    error: null,
+    cancelled: false,
+  };
+  pairJobs.set(job.id, job);
+  if (pairJobs.size > 20) pairJobs.delete(pairJobs.keys().next().value!);
+  api
+    .finishPairing(start, { replace: opts.replace, name: opts.name, isCancelled: () => job.cancelled })
+    .then((m) => {
+      job.status = "done";
+      job.machine = m.name;
+      try {
+        updateRemoteAgent(api.hasMachines());
+      } catch {
+        /* best effort */
+      }
+    })
+    .catch((e: unknown) => {
+      job.status = "failed";
+      job.error = job.cancelled ? "cancelled" : e instanceof Error ? e.message : String(e);
+    });
+  const { cancelled: _c, ...rest } = job;
+  return rest;
+}
+
+function pairStatus(id: string): Omit<PairJob, "cancelled"> {
+  const job = pairJobs.get(id);
+  if (!job) throw new api.ApiError("not_found", "no such pairing");
+  const { cancelled: _c, ...rest } = job;
+  return rest;
+}
+
 // "Find my projects" runs for a while: one job at a time, progress polled by the page.
 const everywhere: {
   running: boolean;
@@ -284,7 +343,9 @@ async function route(method: string, url: URL, req: IncomingMessage, ctx: RouteC
     if (p === "/api/machines") return { machines: api.listMachines() };
     if (p === "/api/update") return updateStatus();
     if (p === "/api/everywhere/status") return everywhereStatus();
-    if (p === "/api/machines/peers") return { peers: api.tailnetPeers() };
+    if (p === "/api/machines/peers") return api.machinePeers();
+    if (p === "/api/pair/status") return pairStatus(url.searchParams.get("job") ?? "");
+    if (p === "/api/share") return { ...(await api.shareStatus()), suggestions: api.shareSuggestions() };
     if (p === "/api/machines/setup") return api.machineSetup(url.searchParams.get("name") ?? "");
     if (p === "/api/machines/fs") return api.browseOnMachine(url.searchParams.get("name") ?? "", url.searchParams.get("path") ?? undefined);
     if (p === "/api/vuln") return api.getVulnerability(url.searchParams.get("id") ?? "");
@@ -312,6 +373,31 @@ async function route(method: string, url: URL, req: IncomingMessage, ctx: RouteC
       return machine ? api.excludeOnMachine(machine, str(body, "path")) : api.forget(trackedPath(body), { exclude: true });
     }
     if (p === "/api/machines/test") return api.testMachine(str(body, "host"));
+    if (p === "/api/pair/start") {
+      const replace = typeof body.replace === "string" ? body.replace : undefined;
+      const name = typeof body.name === "string" && body.name ? body.name : undefined;
+      const start = replace ? await api.migrateToShare(replace) : await api.startPairing(str(body, "peer"), { name });
+      return startPairJob(start, { replace, name });
+    }
+    if (p === "/api/pair/cancel") {
+      const job = pairJobs.get(str(body, "job"));
+      if (job) job.cancelled = true;
+      return { cancelled: Boolean(job) };
+    }
+    if (p === "/api/share") {
+      const patch: { enabled?: boolean; allowOtherUsers?: boolean } = {};
+      if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
+      if (typeof body.allowOtherUsers === "boolean") patch.allowOtherUsers = body.allowOtherUsers;
+      return api.setShare(patch);
+    }
+    if (p === "/api/share/approve") {
+      const roots = Array.isArray(body.roots)
+        ? body.roots.filter((r): r is { path: string; depth: number } => isObject(r) && typeof r.path === "string" && typeof r.depth === "number")
+        : [];
+      return api.approveShareRequest(str(body, "id"), { scope: typeof body.scope === "string" ? body.scope : "~", roots });
+    }
+    if (p === "/api/share/reject") return api.rejectShareRequest(str(body, "id"));
+    if (p === "/api/share/revoke") return api.revokeShareGrant(str(body, "id"));
     if (p === "/api/machines/add") {
       const host = str(body, "host");
       const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : api.suggestName(host);
@@ -417,6 +503,12 @@ async function route(method: string, url: URL, req: IncomingMessage, ctx: RouteC
 }
 
 const STATUS: Record<string, number> = {
+  other_user: 403,
+  not_tailnet: 403,
+  rate_limited: 429,
+  rejected: 409,
+  expired: 410,
+  no_tailnet: 503,
   not_found: 404,
   not_tracked: 404,
   busy: 409,

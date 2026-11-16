@@ -234,9 +234,11 @@ Turns a dismissed repo back on now.
 
 ## Other machines
 
-Watch dev servers from this machine over SSH. By default selfguard uses a dedicated key that
-the machine accepts only for a small read-only *reader*, limited to one folder. Lockfiles are
-scanned here. See [Other machines](security-model.md#other-machines) in the security model.
+Watch the repos of your other machines. Machines that run selfguard connect through
+**selfguard sharing** over Tailscale (paired once, approved over there, no SSH). Servers
+without it use SSH with a dedicated key that only runs a small read-only *reader*. Either way,
+lockfiles are scanned here. See [Other machines](security-model.md#other-machines) in the
+security model.
 
 ### `selfguard machines [list]`
 
@@ -244,7 +246,23 @@ Machines, their folders, how many projects each has and how the last sync went.
 
 ### `selfguard machines peers`
 
-Machines on your tailnet (`tailscale status`), to pick a host from.
+Machines on your tailnet, each with what it can do (about 1.5 s of probing). Online or offline
+and last seen, selfguard sharing on, SSH port open, Tailscale SSH, already added. It also
+prints the recommended next step. `--json` returns all of it.
+
+### `selfguard machines add <peer> --via share`
+
+Pairs with a tailnet machine that has selfguard sharing on. It shows a 6-digit code, then waits
+up to 5 minutes for you to approve it on that machine (its dashboard, or
+`selfguard share approve`). The folders it suggests are added. Without `--via`,
+`machines add` uses sharing when the machine answers and SSH otherwise. SSH-only options
+(`--mode`, `--root`, `--depth`, `--scope`, `--port`, `--manual`) always mean SSH, as before 0.8.
+`--name` must not belong to another machine. To pair an existing machine again, use `migrate`.
+
+### `selfguard machines migrate <name> --via share|ssh`
+
+Switches how an existing machine is reached and keeps its name, history and folders. `share`
+pairs with it. `ssh` installs the restricted reader with your SSH access.
 
 ### `selfguard machines test <host>`
 
@@ -297,6 +315,33 @@ Forgets the machine, its results and its key. In restricted mode it also removes
 (and the reader, if no other selfguard key uses it) from the machine with your SSH access,
 unless `--keep-remote`.
 
+## Sharing
+
+Let your other machines see this one, over Tailscale, without SSH.
+
+### `selfguard share on | off | status [--port N] [--allow-other-users]`
+
+`on` starts the sharing service: a launchd agent on macOS, or a systemd user unit
+(`selfguard-share.service`) on Linux. It listens only on this machine's Tailscale addresses,
+port 47821 by default. Pairing is limited to your own Tailscale user unless
+`--allow-other-users`. `off` stops answering at once. `status` shows addresses, pending
+requests and paired machines.
+
+### `selfguard share requests`, `approve <id> [--scope DIR] [--root DIR]...`, `reject <id>`
+
+Pending pairing requests, with the code to compare with the other screen. `approve` grants
+read access to lockfiles under `--scope` (default `~`) and suggests `--root` folders (default:
+this machine's watched folders).
+
+### `selfguard share list`, `revoke <name>`
+
+Machines that can see this one (last connection, folder), and how to cut one off.
+
+### `selfguard share serve`
+
+The service itself (what the agent runs). It waits for a Tailscale address and follows
+address changes.
+
 ## AI and automation
 
 ### `selfguard mcp`
@@ -331,6 +376,7 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `SELFGUARD_OSV_API` | OSV API base URL. Default `https://api.osv.dev/v1`. For mirrors and tests. |
 | `SELFGUARD_NO_LAUNCHD=1` | Never install or change launchd agents (tests). |
 | `SELFGUARD_SSH` | ssh client to use for other machines. Default `ssh` from `PATH`. |
+| `SELFGUARD_TAILSCALE` | Path of the `tailscale` CLI (default: the usual install locations). |
 | `SELFGUARD_NO_UPDATE_CHECK=1` | Never ask npm for a newer selfguard. |
 | `SELFGUARD_NPM_REGISTRY` | Registry for the update check. Default `https://registry.npmjs.org`. |
 | `NO_COLOR` | Disable colored output ([no-color.org](https://no-color.org)). Color is also off when stdout isn't a terminal. |
@@ -345,6 +391,9 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `~/.selfguard/ui.json` | Port, PID and token of the running dashboard. Removed when it stops. |
 | `~/.selfguard/repos/*.json` | One record per tracked project: dependencies, findings, last scan. |
 | `~/.selfguard/machines/<name>/` | Records and last sync status of another machine. |
+| `~/.selfguard/machines/<name>/share.json` | Credential for a machine paired through sharing (mode `0600`). |
+| `~/.selfguard/share/` | Sharing on this machine: grants (credential hashes), pending requests, access log. |
+| `~/Library/LaunchAgents/dev.selfguard.share.plist` | Sharing service (`share on`); on Linux `~/.config/systemd/user/selfguard-share.service`. |
 | `~/.selfguard/ssh/<name>_ed25519` | Restricted key for that machine (only runs its reader). |
 | `~/.selfguard-reader/reader.sh` (on the machine) | The read-only reader, run by sshd for the restricted key. |
 | `~/.selfguard/cache/vulns/*.json` | Cached advisories, refreshed when OSV reports a change. |

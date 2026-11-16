@@ -4,6 +4,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { connect } from "node:net";
 import { hostname } from "node:os";
 import { join, posix } from "node:path";
 import {
@@ -15,9 +16,12 @@ import {
   loadConfig,
   saveConfig,
   validRemotePath,
+  DEFAULT_SHARE_PORT,
   type Machine,
   type MachineMode,
 } from "./config.ts";
+import { probeShare, requestPairing, ShareError, unpair, waitForPairing, type PairPayload, type PairPoll, type PairSession } from "./share.ts";
+import { tailnet, type TailnetPeer, type TailnetState } from "./tailnet.ts";
 import { atomicWrite, isObject, readJsonFile } from "./fsutil.ts";
 import { machineDir, stateRoot } from "./paths.ts";
 import {
@@ -121,6 +125,7 @@ export function suggestName(host: string): string {
 export function toMachineError(e: unknown): MachineError {
   if (e instanceof MachineError) return e;
   if (e instanceof RemoteError) return new MachineError(e.code, clean(e.message, 300));
+  if (e instanceof ShareError) return new MachineError(e.code, clean(e.message, 300));
   return new MachineError("failed", clean((e as Error).message, 300));
 }
 
@@ -157,8 +162,204 @@ function deleteKey(name: string): void {
 }
 
 /** How to connect: the dedicated key in restricted mode, your own access otherwise. */
-export function targetOf(m: Pick<Machine, "name" | "host" | "port" | "mode">): Target {
+export function targetOf(m: Pick<Machine, "name" | "host" | "port" | "mode" | "transport">): Target {
+  if (m.transport === "share") {
+    return { host: m.host, port: m.port ?? DEFAULT_SHARE_PORT, transport: "share", ...(loadShareCredential(m.name) ? { credential: loadShareCredential(m.name)!.credential } : {}) };
+  }
   return { host: m.host, ...(m.port ? { port: m.port } : {}), ...(m.mode === "restricted" ? { key: keyPath(m.name) } : {}) };
+}
+
+// ---------- share transport (selfguard ↔ selfguard over the tailnet) ----------
+
+interface ShareCredential {
+  credential: string;
+  /** The other machine's Tailscale node ID and name when we paired. */
+  nodeId: string;
+  peerName: string;
+  pairedAt: string;
+}
+
+const credentialFile = (name: string): string => join(machineDir(name), "share.json");
+
+export function loadShareCredential(name: string): ShareCredential | null {
+  const raw = readJsonFile<ShareCredential>(credentialFile(name));
+  return raw && isObject(raw) && typeof raw.credential === "string" ? raw : null;
+}
+
+/** Name for a machine from what Tailscale / pairing says ("Jose's MacBook Pro" → "joses-macbook-pro"). */
+export function machineNameFor(label: string): string {
+  const base = label.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/['’`]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32).replace(/-+$/, "");
+  return MACHINE_NAME_RE.test(base) ? base : "mac";
+}
+
+function uniqueName(base: string, except?: string): string {
+  const taken = new Set(loadConfig().machines.map((m) => m.name).filter((n) => n !== except));
+  if (!taken.has(base)) return base;
+  for (let i = 2; i < 100; i++) {
+    const n = `${base.slice(0, 29)}-${i}`;
+    if (!taken.has(n)) return n;
+  }
+  throw new MachineError("invalid", "too many machines with that name");
+}
+
+/** A new machine can't take the name of an existing one (pair again / migrate replace instead). */
+export function assertNameFree(name: string): void {
+  if (!MACHINE_NAME_RE.test(name)) throw new MachineError("invalid", "name: lowercase letters, digits and dashes (max 32)");
+  if (loadConfig().machines.some((m) => m.name === name)) {
+    throw new MachineError("invalid", `a machine called ${name} already exists (use machines migrate ${name}, or Pair again on its card)`);
+  }
+}
+
+/** Forget the sharing credential of a machine, asking the other side to drop its grant. */
+export async function dropShareCredential(m: Pick<Machine, "name" | "host" | "port">): Promise<boolean | null> {
+  const cred = loadShareCredential(m.name);
+  if (!cred) return null;
+  const revoked = await unpair(m.host, m.port ?? DEFAULT_SHARE_PORT, cred.credential);
+  rmSync(credentialFile(m.name), { force: true });
+  return revoked;
+}
+
+/** Find a tailnet peer by name, DNS name or address. */
+export function findPeer(query: string): TailnetPeer | null {
+  const q = query.trim().toLowerCase().replace(/\.$/, "");
+  return tailnet().peers.find((p) =>
+    p.dnsName.toLowerCase() === q || p.dnsName.toLowerCase().split(".")[0] === q || p.name.toLowerCase() === q || machineNameFor(p.name) === q || p.ips.includes(q),
+  ) ?? null;
+}
+
+/** The address to reach a peer at (IPv4 first). */
+export const peerAddress = (p: Pick<TailnetPeer, "ips">): string | null => p.ips.find((ip) => ip.includes(".")) ?? p.ips[0] ?? null;
+
+/**
+ * Save a machine paired over the tailnet (or switch an existing one to "share"), keeping its
+ * name, history and folders. Folders suggested by the other machine are added when none are set.
+ */
+export function savePairedMachine(
+  peer: { address: string; port: number; nodeId: string; name?: string },
+  payload: PairPayload,
+  opts: { name?: string; replace?: string } = {},
+): MachineInfo {
+  const cfg = loadConfig();
+  const existing = opts.replace ? cfg.machines.find((m) => m.name === opts.replace) : undefined;
+  if (opts.replace && !existing) throw new MachineError("not_found", `unknown machine: ${opts.replace}`);
+  if (!existing && opts.name) assertNameFree(opts.name);
+  // Named as this machine's tailnet shows it (what the user clicked), else as it calls itself.
+  const name = existing?.name ?? (opts.name && MACHINE_NAME_RE.test(opts.name) ? opts.name : uniqueName(machineNameFor(peer.name || payload.name)));
+  const entry: Machine = existing ?? { name, host: peer.address, mode: "restricted", scope: payload.scope, transport: "share", roots: [], exclude: [] };
+  entry.host = peer.address;
+  entry.port = peer.port;
+  entry.transport = "share";
+  entry.scope = payload.scope;
+  if (entry.roots.length === 0) {
+    for (const r of payload.roots) {
+      const path = validRemotePath(r.path);
+      if (path && !entry.roots.some((x) => x.path === path)) entry.roots.push({ path, depth: clampDepth(r.depth) });
+    }
+  }
+  if (!existing) cfg.machines.push(entry);
+  saveConfig(cfg);
+  if (existing) deleteKey(name); // an SSH key for it is no longer needed
+  const cred: ShareCredential = { credential: payload.credential, nodeId: payload.nodeId || peer.nodeId, peerName: payload.name, pairedAt: new Date().toISOString() };
+  atomicWrite(credentialFile(name), JSON.stringify(cred));
+  saveMachineStatus(name, { home: payload.home || null, os: payload.os || null, error: null, errorCode: null });
+  return listMachines().find((m) => m.name === name)!;
+}
+
+export interface PeerInfo extends TailnetPeer {
+  /** Name of the machine already added for it (null: not added). */
+  added: string | null;
+  /** selfguard sharing answers on it (version and whether it accepts pairing). */
+  share: { version: string; name: string; pairing: boolean } | null;
+  /** Its SSH port answers over the tailnet. */
+  sshPort: boolean;
+  /** What to offer: connect (pairing), turn on sharing there, SSH, or nothing (offline / added). */
+  action: "added" | "offline" | "connect" | "enable-share" | "ssh";
+}
+
+export interface PeersResult {
+  tailscale: TailnetState;
+  self: { name: string; dnsName: string } | null;
+  peers: PeerInfo[];
+}
+
+function tcpOpen(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = connect({ host, port, timeout: timeoutMs });
+    const done = (ok: boolean): void => {
+      sock.destroy();
+      resolve(ok);
+    };
+    sock.once("connect", () => done(true));
+    sock.once("timeout", () => done(false));
+    sock.once("error", () => done(false));
+  });
+}
+
+/** Tailnet peers with what they can do, probed in parallel (about 1.5 s at most). */
+export async function machinePeers(opts: { timeoutMs?: number; sharePort?: number } = {}): Promise<PeersResult> {
+  const t = tailnet();
+  const machines = loadConfig().machines;
+  const timeout = opts.timeoutMs ?? 1500;
+  const port = opts.sharePort ?? DEFAULT_SHARE_PORT;
+  const peers = await Promise.all(
+    t.peers.map(async (p): Promise<PeerInfo> => {
+      const added =
+        machines.find((m) => p.ips.includes(m.host) || m.host.toLowerCase() === p.dnsName.toLowerCase() || m.host.replace(/^[^@]*@/, "").toLowerCase() === p.dnsName.split(".")[0]!.toLowerCase())?.name ?? null;
+      const ip = peerAddress(p);
+      const [share, sshPort] = p.online && ip ? await Promise.all([probeShare(ip, port, timeout), tcpOpen(ip, 22, timeout)]) : [null, false];
+      const action: PeerInfo["action"] = added ? "added" : !p.online ? "offline" : share ? "connect" : sshPort || p.tailscaleSsh ? "ssh" : "enable-share";
+      return { ...p, added, share, sshPort, action };
+    }),
+  );
+  return { tailscale: t.state, self: t.self ? { name: t.self.name, dnsName: t.self.dnsName } : null, peers };
+}
+
+export interface PairingStart {
+  session: PairSession;
+  peer: { address: string; port: number; nodeId: string; name: string };
+}
+
+/** Step 1 of adding (or migrating) a machine over the tailnet: ask it to pair. */
+export async function startPairing(query: string, opts: { port?: number; name?: string } = {}): Promise<PairingStart> {
+  if (opts.name) assertNameFree(opts.name); // fail now, not after the approval
+  const peer = findPeer(query);
+  const address = peer ? peerAddress(peer) : /^[0-9a-fA-F.:]+$/.test(query) ? query : null;
+  if (!address) throw new MachineError("not_found", `no tailnet machine called ${query} (see selfguard machines peers)`);
+  const port = opts.port ?? DEFAULT_SHARE_PORT;
+  const me = tailnet().self?.name ?? hostname().split(".")[0] ?? "this machine";
+  try {
+    const session = await requestPairing(address, port, me);
+    return { session, peer: { address, port, nodeId: peer?.nodeId ?? "", name: peer?.name ?? session.peerName } };
+  } catch (e) {
+    throw toMachineError(e);
+  }
+}
+
+/** Step 2: wait for the approval on the other machine, then save it. */
+/**
+ * Pair again with an existing machine (switch it to sharing, or renew a revoked credential),
+ * keeping its name, history and folders.
+ */
+export async function startRepairing(name: string): Promise<PairingStart> {
+  const m = getMachine(name);
+  const peer = findPeer(m.host.replace(/^[^@]*@/, ""));
+  if (!peer) throw new MachineError("not_found", `${name} isn't on your tailnet (see selfguard machines peers)`);
+  return startPairing(peer.dnsName, m.transport === "share" && m.port ? { port: m.port } : {});
+}
+
+export async function finishPairing(
+  start: PairingStart,
+  opts: { name?: string; replace?: string; isCancelled?: () => boolean; intervalMs?: number } = {},
+): Promise<MachineInfo> {
+  let r: PairPoll;
+  try {
+    r = await waitForPairing(start.session, { isCancelled: opts.isCancelled, intervalMs: opts.intervalMs });
+  } catch (e) {
+    throw toMachineError(e);
+  }
+  if (r.status === "rejected") throw new MachineError("rejected", `${start.peer.name} declined the request`);
+  if (r.status !== "approved") throw new MachineError("expired", "the request expired before it was approved (5 minutes)");
+  return savePairedMachine(start.peer, r.payload, { name: opts.name, replace: opts.replace });
 }
 const ownAccess = (m: Pick<Machine, "host" | "port">): Target => ({ host: m.host, ...(m.port ? { port: m.port } : {}) });
 
@@ -177,6 +378,7 @@ export interface MachineSetup {
 /** The reader, the authorized_keys line and the install script for a restricted machine. */
 export function machineSetup(name: string): MachineSetup {
   const m = getMachine(name);
+  if (m.transport === "share") throw new MachineError("invalid", `${name} is connected through selfguard sharing; nothing to install`);
   if (m.mode !== "restricted") throw new MachineError("invalid", `${name} uses your own SSH access; nothing to install`);
   const pub = ensureKey(name);
   const marker = keyMarker(name);
@@ -263,9 +465,14 @@ export async function addMachine(name: string, host: string, opts: AddMachineOpt
   // ssh mode: the connection must work before saving.
   const info = mode === "ssh" ? await testMachine(host, opts.port) : null;
 
+  // Switching a machine from selfguard sharing to SSH ends the sharing access too.
+  const before = loadConfig().machines.find((m) => m.name === name);
+  if (before?.transport === "share") await dropShareCredential(before);
+
   const cfg = loadConfig();
   const existing = cfg.machines.find((m) => m.name === name);
-  const entry: Machine = existing ?? { name, host, mode, scope, roots: [], exclude: [] };
+  const entry: Machine = existing ?? { name, host, mode, scope, transport: "ssh", roots: [], exclude: [] };
+  entry.transport = "ssh";
   entry.host = host;
   entry.mode = mode;
   entry.scope = scope;
@@ -304,7 +511,12 @@ export async function removeMachine(name: string, opts: { revoke?: boolean } = {
   const m = cfg.machines.find((x) => x.name === name);
   let revoked: boolean | null = null;
   let revokeError: string | null = null;
-  if (m?.mode === "restricted" && (opts.revoke ?? true)) {
+  const cred = loadShareCredential(name);
+  if (m?.transport === "share" && cred && (opts.revoke ?? true)) {
+    // Ask the other machine to forget us; the credential is deleted here either way.
+    revoked = await unpair(m.host, m.port ?? DEFAULT_SHARE_PORT, cred.credential);
+    if (!revoked) revokeError = "the machine didn't answer; its grant stays listed there until you revoke it (it can't be used without the credential)";
+  } else if (m?.mode === "restricted" && m.transport !== "share" && (opts.revoke ?? true)) {
     try {
       await runInstall(ownAccess(m), revokeScript(keyMarker(name)));
       revoked = true;
@@ -365,7 +577,7 @@ export function unexcludeOnMachine(name: string, path: string): boolean {
 
 export async function browseOnMachine(name: string, path?: string): Promise<BrowseResult> {
   const m = getMachine(name);
-  const p = path && path.trim() ? validRemotePath(path) : m.mode === "restricted" ? m.scope : "~";
+  const p = path && path.trim() ? validRemotePath(path) : m.mode === "restricted" || m.transport === "share" ? m.scope : "~";
   if (!p) throw new MachineError("invalid", "invalid folder");
   try {
     const r = await browseMachine(targetOf(m), p);
