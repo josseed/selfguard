@@ -1,0 +1,13 @@
+name: setup
+description: a composite action
+inputs:
+  version:
+    description: tool version
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+    - uses: tj-actions/changed-files@v45
+    - uses: ./nested
+    - shell: bash
+      run: echo "${{ inputs.version }}"

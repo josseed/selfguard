@@ -1,0 +1,30 @@
+name: forms
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: quoted double
+        uses: "actions/setup-node@v4.1.0"
+      - uses: 'tj-actions/changed-files@v45.0.7' # pinned tag
+      - uses: tj-actions/changed-files@46.0.1 # plain comment
+      - uses: Azure/setup-kubectl@v3.2
+      - uses: github/codeql-action/init@v3
+      - uses: tj-actions/changed-files@0123456789abcdef0123456789abcdef01234567 # v45.0.7
+      - uses: owner/one@0123456789abcdef0123456789abcdef01234567 # tag=v1.2.3
+      - uses: owner/two@0123456789abcdef0123456789abcdef01234567 # pin@v2
+      - uses: owner/three@0123456789ABCDEF0123456789abcdef01234567
+      - uses: owner/four@0123456789abcdef0123456789abcdef01234567 # 2024-01-01 update
+      - uses: owner/five@main
+      - uses: ./.github/actions/local
+      - uses: docker://alpine:3.19
+      - uses: ${{ matrix.action }}@v1
+      - uses: not-an-action
+      # - uses: commented/out@v1
+      - run: |
+          echo "uses: inside/script@v1"
+          uses: also/inside@v1
+      - "uses": "owner/six@v6" # quoted key and value
+  reuse:
+    uses: octo-org/shared/.github/workflows/ci.yml@v2.0.0
