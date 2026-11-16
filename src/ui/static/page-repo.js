@@ -70,11 +70,12 @@ export function pageRepo() {
           const fix = p.worstSeverity === "malicious"
             ? h("span", { class: "fix-remove" }, "Remove it, rotate credentials")
             : p.upgradeTo ? h("span", { class: "fix-ok" }, `→ ${p.upgradeTo}`) : h("span", { class: "fix-none" }, "No fix yet");
-          return h("tr", { class: p.checkouts.some((c) => c.active) ? "" : "dim" },
+          const elsewhere = many && !p.checkouts.some((c) => c.representative);
+          return h("tr", { class: p.checkouts.some((c) => c.active) && !elsewhere ? "" : "dim" },
             h("td", { class: "top" }, sevBadge(p.worstSeverity)),
             h("td", { class: "top" },
               h("div", { class: "mono" }, `${p.name}@${p.version}`, ecoTag(p), isSerious(p.worstSeverity, p.direct, p.dev) ? h("span", { class: "tag serious gap-left" }, "serious") : null),
-              h("div", { class: "small muted" }, kind),
+              h("div", { class: "small muted" }, kind, elsewhere ? h("span", { class: "tag gap-left", title: `Not on ${rep.branch || "the main checkout"}: it goes away when these checkouts merge or are deleted` }, "only in other checkouts") : null),
               h("details", { class: "adv" },
                 h("summary", {}, plural(p.advisories.length, "advisory", "advisories")),
                 h("ul", {}, ...p.advisories.map((a) =>
@@ -163,7 +164,9 @@ function checkoutRow(k) {
     h("div", { class: "grow" },
       h("div", {},
         h("strong", {}, k.branch || "(no branch)"), " ",
+        k.representative ? h("span", { class: "tag", title: "Its findings are the repo's: fix them here" }, k.role === "default-branch" ? "default branch" : "counts for the repo") : null, " ",
         k.worktree ? h("span", { class: "tag" }, "worktree") : null, " ",
+        k.role === "copy" ? h("span", { class: "tag", title: "A folder without git with the same project: alerts only for malicious packages" }, "copy") : null, " ",
         k.active ? null : h("span", { class: "tag" }, `inactive${k.lastActivity ? ` · ${ago(k.lastActivity)}` : ""}`), " ",
         status),
       h("div", { class: "path mono", title: k.path }, k.machine ? `${k.machine}:${tildify(k.path)}` : tildify(k.path)),

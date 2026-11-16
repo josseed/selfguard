@@ -146,8 +146,26 @@ To group checkouts, selfguard reads a few small files under `.git`. It doesn't r
 - **Monorepo subprojects** keep their own group (`acme/web/frontend` ≠ `acme/web`), shared across
   worktrees.
 
-`status` headlines the main checkout and points out branches that are worse. Notifications about
-the same advisory in several checkouts of one repo are sent once.
+- **Copies without git** (an agent's snapshot of a repo, an unpacked archive, an "evidence"
+  folder) join the project they copy: a folder without git counts as a copy when its manifest
+  has the same name as a tracked project (`package.json` `name`, `pyproject.toml`,
+  `Cargo.toml`, `go.mod` `module`) and at least 60% of the same dependency names. Among
+  folders without git, the shallowest one is the original. Checkouts of other machines are
+  never merged with local ones.
+
+### The checkout that counts
+
+A repo's vulnerabilities are fixed once, on its default branch; worktrees, other clones and
+copies get the fix when they merge or update. So each repo is judged by **one checkout**:
+
+1. the one on the **default branch**: what `origin/HEAD` points to, else `main` or `master`;
+2. without one, the main clone if it is active, else the most recently active checkout.
+
+That checkout's findings are the repo's in `status`, the dashboard's repo list, reminders, the
+Mac app's menu and the `selfguard_attention` MCP tool. It is marked "default branch" on the
+repo's page, where **All checkouts** still lists every checkout's findings and marks those
+"only in other checkouts". The repo counts as active if any of its own checkouts (not copies)
+has recent git activity, even when the default branch checkout itself is idle.
 
 ## Active checkouts
 
@@ -173,18 +191,18 @@ ones that came back.
 
 ## Alerts
 
-- **New findings.** A finding is news when it wasn't in the project's previous scan, wasn't
-  seen on that checkout in the last 180 days (so switching branches back and forth doesn't
-  re-alert), and no other checkout of the same repo already has it (so creating a worktree
-  isn't news). The first scan of a brand-new repo is news.
+- **New findings.** A finding is news when it appears in the checkout that counts for its
+  repo (see above), wasn't in that checkout's previous scan, wasn't seen there in the last 180
+  days (so switching branches back and forth doesn't re-alert), and no other checkout of the
+  same repo already has it. The first scan of a brand-new repo is news. Other worktrees, clones
+  and copies only alert, and only appear in the activity feed, for malicious packages.
 - **Fixes.** When a scan on the **same branch** no longer has a vulnerable package, you get a
   "✓ fixed" notification with what is left. Switching to a branch that happens to be clean
   isn't a fix.
 - **Reminders.** Once a day by default (`settings --remind daily|weekly|off`), between 09:00
   and 21:00, if serious issues are still open in active repos: malicious packages, critical
   vulnerabilities outside dev dependencies, and high ones in direct dependencies. Each repo is
-  judged by its main checkout if it is active, otherwise its most recently active one: feature
-  branches get fixed when they merge.
+  judged by the checkout that counts for it (see above).
 
 How they are delivered:
 

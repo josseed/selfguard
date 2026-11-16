@@ -13,6 +13,11 @@ export interface RepoIdentity {
   label: string;
   /** Branch name, or short commit when detached. */
   branch: string | null;
+  /**
+   * The repo's default branch: what `origin/HEAD` points to, else `main` or `master` when the
+   * repo has one. Null when unknown (remote machines, repos without either).
+   */
+  defaultBranch?: string | null;
   /** True when this checkout is a linked worktree (not the main clone). */
   worktree: boolean;
   /** Worktree whose main repository no longer exists (git can't use it anymore). */
@@ -111,6 +116,27 @@ export function remoteFromConfig(config: string): string | null {
   return first;
 }
 
+/** Default branch from the common git dir: origin/HEAD, else a local main or master. */
+export function defaultBranchOf(commonDir: string): string | null {
+  const originHead = readSmall(join(commonDir, "refs", "remotes", "origin", "HEAD"));
+  const m = originHead ? /^ref:\s*refs\/remotes\/origin\/(.+)$/m.exec(originHead) : null;
+  if (m) return m[1]!.trim();
+  const packed = readSmall(join(commonDir, "packed-refs")) ?? "";
+  for (const name of ["main", "master"]) {
+    if (isFile(join(commonDir, "refs", "heads", name))) return name;
+    if (packed.split(/\r?\n/).some((l) => l.endsWith(` refs/heads/${name}`))) return name;
+  }
+  return null;
+}
+
+function isFile(p: string): boolean {
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function branchFrom(head: string | null): string | null {
   if (!head) return null;
   const ref = /^ref:\s*refs\/heads\/(.+)$/m.exec(head);
@@ -167,6 +193,7 @@ export function repoIdentity(projectRoot: string): RepoIdentity | null {
         key: sub ? `${base}#${sub}` : base,
         label: sub ? `${repoName}/${sub}` : repoName,
         branch: branchFrom(readSmall(join(gitDir, "HEAD"))),
+        defaultBranch: defaultBranchOf(commonDir),
         worktree,
         lastActivity: lastActivityOf(gitDir),
       };

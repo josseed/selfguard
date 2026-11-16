@@ -17,6 +17,20 @@ All notable changes to this project are documented here. The format is based on
 - `GET /api/menubar`: the summary the app shows (state, totals, repos that need attention,
   services, last check and sync, update).
 
+### Changed
+
+- **Each repo is judged by one checkout: the one on its default branch** (`origin/HEAD`, else
+  `main` or `master`; without one, the active main clone). Its findings are the repo's in
+  `status`, the dashboard, reminders, the menu bar and MCP. Other worktrees and clones are
+  still scanned and listed, but they only alert, and only appear in the activity feed, for
+  malicious packages: the fix is made once, on the default branch.
+- **Copies without git are grouped with the project they copy**: a folder without git whose
+  manifest has the same name as a tracked project and at least 60% of the same dependency
+  names (agents' snapshots, unpacked archives, "evidence" folders). They never represent the
+  repo. On real data: repos needing attention went from 298 to 40, and repo status got faster.
+- The repo page marks the checkout that counts ("default branch"), copies, and packages
+  "only in other checkouts".
+
 ### Fixed
 
 - Dashboard: "Copy markdown" works in Safari (and the Mac app). WebKit refuses a clipboard
