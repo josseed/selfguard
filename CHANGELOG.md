@@ -13,7 +13,8 @@ All notable changes to this project are documented here. The format is based on
 - After updating, a dashboard left running from the previous version could serve the new page,
   which calls endpoints the old server doesn't have ("no such endpoint", for example on
   Machines). Each dashboard now serves the page files of its own version, and `selfguard ui`
-  (or selfguard.app) replaces a dashboard of another version at the same address.
+  (or selfguard.app) replaces a dashboard of an older version through its own restart, at the
+  same address and with the same session.
 
 ## [0.8.0] - 2026-11-16
 
