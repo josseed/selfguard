@@ -109,6 +109,16 @@ Desktop apps don't load your shell profile, so they may not find Node or selfgua
 paths in the client config. See
 [AI and automation](ai-and-automation.md#mcp-server).
 
+## The dashboard says "no such endpoint" after updating
+
+A dashboard from the previous version was still running. With 0.8.1 or later, `selfguard ui`
+(or selfguard.app) replaces it automatically. With 0.8.0, stop it once and open it again:
+
+```sh
+kill "$(node -p 'require(require("os").homedir() + "/.selfguard/ui.json").pid')"
+selfguard ui
+```
+
 ## My other Mac doesn't show "Connect"
 
 "On your tailnet" offers **Connect** when the other machine answers with selfguard sharing:

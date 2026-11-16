@@ -178,3 +178,31 @@ test("tailnet endpoints: peers, sharing, pairing need the token and validate inp
     delete process.env.SELFGUARD_TAILSCALE;
   }
 });
+
+test("serves the page files of its own version, even if they change on disk (no mixed versions)", async () => {
+  const { cpSync, appendFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const { createUiServer } = await import("../src/ui/server.ts");
+  const dir = mkdtempSync(join(tmpdir(), "sg-static-"));
+  cpSync(fileURLToPath(new URL("../src/ui/static/", import.meta.url)), dir, { recursive: true });
+  const s = createUiServer(TOKEN, () => {}, { staticDir: dir });
+  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
+  const p = (s.address() as AddressInfo).port;
+  try {
+    const get = (): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const req = request({ host: "127.0.0.1", port: p, path: "/app.js", headers: { host: `127.0.0.1:${p}` } }, (res) => {
+          let b = "";
+          res.on("data", (c) => (b += c));
+          res.on("end", () => resolve(b));
+        });
+        req.on("error", reject);
+        req.end();
+      });
+    const before = await get();
+    appendFileSync(join(dir, "app.js"), "\n// a newer version installed over it\n");
+    assert.equal(await get(), before);
+  } finally {
+    s.close();
+  }
+});

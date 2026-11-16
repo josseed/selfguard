@@ -23,6 +23,7 @@ import { needsAttention } from "../alerts.ts";
 import * as api from "../api.ts";
 import { readEvents } from "../events.ts";
 import { loadConfig } from "../config.ts";
+import { clean } from "../sanitize.ts";
 import { atomicWrite, ensureDir, isObject, readJsonFile } from "../fsutil.ts";
 import { cliEntry } from "../hook.ts";
 import { severityRank, type Severity } from "../match.ts";
@@ -56,6 +57,23 @@ const CSP = [
 ].join("; ");
 
 const staticDir = (): string => fileURLToPath(new URL("./static/", import.meta.url));
+
+/**
+ * The page, script and styles of THIS version, read once when the server starts. Serving them
+ * from disk on every request would mix versions after `npm i -g selfguard@…`: an old server
+ * would hand out the new page, which calls endpoints the old server doesn't have.
+ */
+function loadAssets(dir = staticDir()): Map<string, { body: Buffer; type: string } | null> {
+  const out = new Map<string, { body: Buffer; type: string } | null>();
+  for (const [path, a] of Object.entries(STATIC)) {
+    try {
+      out.set(path, { body: readFileSync(`${dir.endsWith("/") ? dir : `${dir}/`}${a.file}`), type: a.type });
+    } catch {
+      out.set(path, null);
+    }
+  }
+  return out;
+}
 
 export interface Overview {
   version: string;
@@ -328,6 +346,8 @@ function updateStatus(): unknown {
 interface RouteContext {
   /** Restart this dashboard with the code on disk (same port and token). */
   restart?: () => void;
+  /** Where the page files are (tests). */
+  staticDir?: string;
 }
 
 async function route(method: string, url: URL, req: IncomingMessage, ctx: RouteContext = {}): Promise<unknown> {
@@ -525,6 +545,7 @@ const STATUS: Record<string, number> = {
 };
 
 export function createUiServer(token: string, onActivity: () => void = () => {}, ctx: RouteContext = {}): Server {
+  const assets = loadAssets(ctx.staticDir);
   const server: Server = createServer((req, res) => {
     const port = (server.address() as AddressInfo | null)?.port ?? 0;
     res.setHeader("x-content-type-options", "nosniff");
@@ -544,16 +565,13 @@ export function createUiServer(token: string, onActivity: () => void = () => {},
     const method = req.method ?? "GET";
 
     if (!url.pathname.startsWith("/api/")) {
-      const asset = STATIC[url.pathname];
-      if (!asset || (method !== "GET" && method !== "HEAD")) {
+      if (!assets.has(url.pathname) || (method !== "GET" && method !== "HEAD")) {
         send(res, 404, "not found", "text/plain; charset=utf-8");
         return;
       }
-      try {
-        send(res, 200, readFileSync(`${staticDir()}${asset.file}`), asset.type);
-      } catch {
-        send(res, 500, "dashboard files missing", "text/plain; charset=utf-8");
-      }
+      const asset = assets.get(url.pathname);
+      if (asset) send(res, 200, asset.body, asset.type);
+      else send(res, 500, "dashboard files missing", "text/plain; charset=utf-8");
       return;
     }
 
@@ -592,28 +610,54 @@ function urlOf(i: UiInstance): string {
   return `http://127.0.0.1:${i.port}/#t=${i.token}`;
 }
 
-function ping(i: UiInstance): Promise<boolean> {
+/** The version a running dashboard reports (null: not running / not ours). */
+function ping(i: UiInstance): Promise<string | null> {
   return new Promise((resolve) => {
     const req = request(
       { host: "127.0.0.1", port: i.port, path: "/api/ping", headers: { "x-selfguard-token": i.token }, timeout: 1500 },
       (res) => {
-        res.resume();
-        resolve(res.statusCode === 200);
+        let body = "";
+        res.on("data", (c) => {
+          if (body.length < 4096) body += c;
+        });
+        res.on("end", () => {
+          if (res.statusCode !== 200) return resolve(null);
+          try {
+            const j = JSON.parse(body) as { version?: unknown };
+            resolve(typeof j.version === "string" ? j.version : "unknown");
+          } catch {
+            resolve("unknown");
+          }
+        });
       },
     );
-    req.on("error", () => resolve(false));
+    req.on("error", () => resolve(null));
     req.on("timeout", () => {
       req.destroy();
-      resolve(false);
+      resolve(null);
     });
     req.end();
   });
 }
 
-async function runningInstance(): Promise<UiInstance | null> {
+async function runningInstance(): Promise<(UiInstance & { version: string }) | null> {
   const i = readJsonFile<UiInstance>(uiFile());
   if (!i || !isObject(i) || typeof i.port !== "number" || typeof i.token !== "string" || typeof i.pid !== "number") return null;
-  return (await ping(i)) ? i : null;
+  const version = await ping(i);
+  return version ? { ...i, version } : null;
+}
+
+/**
+ * A dashboard left running from before an update: stop it (it answered our token on its
+ * port, so the pid in ui.json is that server) and wait for the port to be free.
+ */
+async function stopStale(i: UiInstance): Promise<void> {
+  try {
+    process.kill(i.pid, "SIGTERM");
+  } catch {
+    /* already gone */
+  }
+  for (let n = 0; n < 40 && (await ping(i)); n++) await new Promise((r) => setTimeout(r, 100));
 }
 
 function openBrowser(url: string): void {
@@ -701,13 +745,21 @@ export async function runUi(opts: { port: number; open: boolean; foreground?: bo
     });
     return;
   }
-  let instance = await runningInstance();
+  let instance: UiInstance | null = await runningInstance();
+  let port = opts.port;
+  if (instance && (instance as UiInstance & { version: string }).version !== VERSION) {
+    // e.g. 0.7.1 still running after `npm i -g selfguard@0.8.0`: replace it, same address.
+    opts.log(`Restarting the dashboard (it was running ${clean((instance as UiInstance & { version: string }).version, 20)}, installed ${VERSION}).`);
+    port = port || instance.port;
+    await stopStale(instance);
+    instance = null;
+  }
   if (!instance) {
     ensureDir(stateRoot());
     rmSync(uiFile(), { force: true });
     const logFd = openSync(logFile(), "a", 0o600);
     fchmodSync(logFd, 0o600);
-    const child = spawn(process.execPath, [cliEntry(), "ui", "--serve", "--no-open", "--port", String(opts.port)], {
+    const child = spawn(process.execPath, [cliEntry(), "ui", "--serve", "--no-open", "--port", String(port)], {
       detached: true,
       stdio: ["ignore", logFd, logFd],
       env: process.env,

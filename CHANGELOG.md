@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-16
+
+### Fixed
+
+- After updating, a dashboard left running from the previous version could serve the new page,
+  which calls endpoints the old server doesn't have ("no such endpoint", for example on
+  Machines). Each dashboard now serves the page files of its own version, and `selfguard ui`
+  (or selfguard.app) replaces a dashboard of another version at the same address.
+
 ## [0.8.0] - 2026-11-16
 
 ### Added
@@ -190,7 +199,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/josseed/selfguard/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/josseed/selfguard/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/josseed/selfguard/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/josseed/selfguard/compare/v0.6.0...v0.7.0
