@@ -15,6 +15,7 @@ import { cmdReport, cmdScan, cmdStatus, cmdVuln, cmdWhere } from "./cli/projects
 import { cmdApp, cmdSchedule, cmdSettings, cmdUi } from "./cli/settings.ts";
 import { cmdShare } from "./cli/share.ts";
 import { cmdCheck, cmdRemind, cmdSync, cmdUpdate } from "./cli/sync.ts";
+import { cmdTools } from "./cli/tools.ts";
 
 const HELP = `selfguard ${VERSION} — keeps an eye on the dependencies of every repo you work on
 
@@ -48,6 +49,8 @@ Projects:
   selfguard where <package>          which projects use <package>, which versions
                                      (--ecosystem npm|PyPI|crates.io|Go to narrow it)
   selfguard vuln <id>                details of an advisory and which projects it affects
+  selfguard tools [dir] [-v]         agent tools (MCP servers) on this machine, and each repo's
+                                     CI workflows and agent configs: advisories and warnings
 
 Folders:
   selfguard roots                    list watched folders and exclusions
@@ -154,6 +157,8 @@ async function main(argv: string[]): Promise<number> {
       return cmdWhere(rest);
     case "vuln":
       return cmdVuln(rest);
+    case "tools":
+      return cmdTools(rest);
     case "forget":
       return cmdForget(rest);
     case "unexclude":

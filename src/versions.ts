@@ -1,6 +1,7 @@
 /**
  * Version handling per ecosystem: SemVer for npm, crates.io and Go (Go versions are stored
- * without their "v", like OSV does), PEP 440 for PyPI.
+ * without their "v", like OSV does), PEP 440 for PyPI. GitHub Actions releases are SemVer
+ * that may be partial ("41" = 41.0.0, "v4.1" = 4.1.0), as tags and OSV ranges write them.
  */
 import type { Ecosystem } from "./lockfile/types.ts";
 import { comparePep440, normalizePyName, parsePep440, type Pep440 } from "./pep440.ts";
@@ -13,8 +14,16 @@ export function parseVersion(eco: Ecosystem, version: string): Parsed | null {
     const v = parsePep440(version);
     return v ? { kind: "pep440", v } : null;
   }
-  const v = parse(version);
+  const v = parse(eco === "GitHub Actions" ? completeSemver(version) : version);
   return v ? { kind: "semver", v } : null;
+}
+
+/** "41" -> "41.0.0", "v4.1" -> "v4.1.0" (pre-release/build suffixes kept); anything else as is. */
+export function completeSemver(version: string): string {
+  if (typeof version !== "string") return version;
+  const m = /^(v?\d+)(\.\d+)?([-+].*)?$/.exec(version.trim());
+  if (!m) return version;
+  return `${m[1]}${m[2] ?? ".0"}.0${m[3] ?? ""}`;
 }
 
 export function compareParsedVersions(a: Parsed, b: Parsed): number {

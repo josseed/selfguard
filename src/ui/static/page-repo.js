@@ -3,6 +3,7 @@ import { $, advisoryUrl, ago, ecoTag, h, icon, isSerious, plural, sevBadge, stat
 import { busy, call } from "./api.js";
 import { card, empty, representative, setHead } from "./layout.js";
 import { refresh } from "./app.js";
+import { repoSourcesCard } from "./sources.js";
 
 export function pageRepo() {
   const r = state.repo;
@@ -84,6 +85,7 @@ export function pageRepo() {
   $("page").replaceChildren(h("div", { class: "stack" },
     kpis,
     card("Vulnerable packages", direct ? "Bump direct dependencies in the manifest (package.json, pyproject.toml, Cargo.toml or go.mod); for transitive ones, upgrade the package that pulls them in or refresh the lockfile." : null, table, null, scopeToggle),
+    repoSourcesCard(d.key),
     card(`Checkouts (${d.checkouts.length})`, "Worktrees and clones of this repo", checkouts,
       d.checkouts.length > listed.length ? h("button", { class: "btn small", type: "button", onclick: () => { state.ui.allCheckouts = true; pageRepo(); } }, `Show all ${d.checkouts.length}`) : null)));
 }

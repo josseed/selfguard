@@ -74,6 +74,8 @@ export async function route(method: string, url: URL, req: IncomingMessage, ctx:
     if (p === "/api/machines/fs") return api.browseOnMachine(url.searchParams.get("name") ?? "", url.searchParams.get("path") ?? undefined);
     if (p === "/api/vuln") return api.getVulnerability(url.searchParams.get("id") ?? "");
     if (p === "/api/packages") return { packages: api.getPackagesOverview() };
+    if (p === "/api/sources") return api.getSources();
+    if (p === "/api/repo/sources") return { sources: api.getRepoSources(url.searchParams.get("key") ?? "") };
     if (p === "/api/folders") return api.getFolders();
     if (p === "/api/fs") return api.listDirectories(url.searchParams.get("path") ?? undefined);
   }

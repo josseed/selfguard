@@ -55,7 +55,12 @@ export interface OsvVuln {
 
 export interface PackageQuery {
   name: string;
-  version: string;
+  /**
+   * Absent: a name-only query (OSV returns every advisory of the package, to be evaluated
+   * locally). Used when the version is unknown, and for GitHub Actions, which OSV doesn't match
+   * by version server-side.
+   */
+  version?: string;
   /** Default npm. */
   ecosystem?: Ecosystem;
 }
@@ -126,7 +131,7 @@ export async function queryBatch(pkgs: PackageQuery[]): Promise<VulnRef[][]> {
     for (let page = 0; pending.length > 0 && page < 20; page++) {
       const queries = pending.map(({ i, token }) => ({
         package: { ecosystem: pkgs[i]!.ecosystem ?? "npm", name: queryName(pkgs[i]!) },
-        version: pkgs[i]!.version,
+        ...(pkgs[i]!.version !== undefined ? { version: pkgs[i]!.version } : {}),
         ...(token ? { page_token: token } : {}),
       }));
       const res = await request("POST", "/querybatch", { queries });

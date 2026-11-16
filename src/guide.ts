@@ -52,6 +52,7 @@ project code, package managers or language toolchains.
 | Alert settings | (CLI only) | selfguard settings [--remind daily|weekly|off] [--active-days N] --json |
 | Is package X used anywhere? | selfguard_where | selfguard where <pkg> --json |
 | Explain an advisory | selfguard_vulnerability | selfguard vuln <id> --json |
+| Agent tools (MCP servers), CI workflows | selfguard_sources | selfguard tools [dir] --json |
 | Watched folders | selfguard_roots_list / _add / _remove | selfguard roots [add|remove] --json |
 | Find new projects | selfguard_discover | selfguard discover [--dry-run] --json |
 | Find projects anywhere in the home folder | selfguard_discover (everywhere: true) | selfguard discover --everywhere --json |

@@ -4,11 +4,12 @@ import { sha256 } from "./fsutil.ts";
 import type { Project } from "./lockfile/detect.ts";
 import { isSupported, manifestFor, parseLockfile, parseManifest } from "./lockfile/index.ts";
 import { buildFindings } from "./findings.ts";
-import { ecosystemOf, packageKey } from "./lockfile/types.ts";
-import { getVulns, queryBatch, type OsvVuln, type PackageQuery } from "./osv.ts";
+import { ecosystemOf } from "./lockfile/types.ts";
+import type { PackageQuery } from "./osv.ts";
 import { repoIdentity, type RepoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import { findingKey, loadRepo, type Finding, type RepoRecord } from "./store.ts";
+import { lookup, type Lookup } from "./scan/lookup.ts";
 
 export const MAX_LOCKFILE_BYTES = 100 * 1024 * 1024;
 
@@ -54,7 +55,7 @@ export function lockChanged(rec: RepoRecord, project: Project): boolean {
   return lockState(project.lockfile)?.hash !== rec.lockHash;
 }
 
-interface Inventory {
+export interface Inventory {
   record: RepoRecord;
   previous: RepoRecord | null;
 }
@@ -153,8 +154,12 @@ export interface ScanOutcome {
 const SEEN_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 const SEEN_MAX = 5000;
 
-/** Remember every finding this checkout has had recently, on any branch. */
-function updateSeen(previous: RepoRecord | null, findings: Finding[], now: string): Record<string, string> {
+/** Remember every finding this checkout (or source) has had recently, on any branch. */
+export function updateSeen(
+  previous: { findings: Finding[]; seen?: Record<string, string>; scannedAt: string | null } | null,
+  findings: Finding[],
+  now: string,
+): Record<string, string> {
   const seen: Record<string, string> = Object.create(null);
   const cutoff = Date.parse(now) - SEEN_TTL_MS;
   for (const [k, at] of Object.entries(previous?.seen ?? {})) {
@@ -168,34 +173,20 @@ function updateSeen(previous: RepoRecord | null, findings: Finding[], now: strin
   return Object.fromEntries(entries.slice(0, SEEN_MAX));
 }
 
-/**
- * Scan one or many projects with a single deduplicated OSV query.
- * Records are returned, not saved: the caller decides.
- */
-export async function scanProjects(projects: ScanInput[]): Promise<ScanOutcome[]> {
+/** Read the projects' lockfiles and list what to ask OSV (to batch with other sources). */
+export function prepareProjects(projects: ScanInput[]): { inventories: Inventory[]; queries: PackageQuery[] } {
   const inventories = projects.map(inventory);
-
-  const unique = new Map<string, PackageQuery>();
+  const queries: PackageQuery[] = [];
   for (const { record } of inventories) {
     if (record.error) continue;
-    for (const d of record.deps) unique.set(packageKey(d), { name: d.name, version: d.version, ecosystem: ecosystemOf(d) });
+    for (const d of record.deps) queries.push({ name: d.name, version: d.version, ecosystem: ecosystemOf(d) });
   }
-  const queries = [...unique.values()];
+  return { inventories, queries };
+}
 
-  let refsPerDep = new Map<string, string[]>();
-  let vulns = new Map<string, OsvVuln>();
-  let networkError: string | undefined;
-  if (queries.length > 0) {
-    try {
-      const refs = await queryBatch(queries);
-      refsPerDep = new Map(queries.map((q, i) => [packageKey(q), refs[i]!.map((r) => r.id)]));
-      vulns = await getVulns(refs.flat());
-    } catch (err) {
-      networkError = `could not reach OSV: ${clean((err as Error).message, 200)}`;
-    }
-  }
-
-  const now = new Date().toISOString();
+/** Turn the OSV answers into findings and new/resolved changes for each project. */
+export function finishProjects(inventories: Inventory[], found: Lookup, now = new Date().toISOString()): ScanOutcome[] {
+  const networkError = found.error;
   return inventories.map(({ record, previous }) => {
     if (networkError && !record.error) {
       // Keep the last known findings rather than pretending everything is fine.
@@ -206,7 +197,7 @@ export async function scanProjects(projects: ScanInput[]): Promise<ScanOutcome[]
       return { record, newFindings: [], resolvedFindings: [], firstScan: previous === null };
     }
     if (!record.error) {
-      record.findings = buildFindings(record.deps, refsPerDep, vulns, previous, now);
+      record.findings = buildFindings(record.deps, found.refs, found.vulns, previous, now);
       record.scannedAt = now;
     }
     const before = new Set((previous?.findings ?? []).map(findingKey));
@@ -220,4 +211,13 @@ export async function scanProjects(projects: ScanInput[]): Promise<ScanOutcome[]
     record.seen = updateSeen(previous, record.findings, now);
     return { record, newFindings, resolvedFindings, firstScan: previous === null };
   });
+}
+
+/**
+ * Scan one or many projects with a single deduplicated OSV query.
+ * Records are returned, not saved: the caller decides.
+ */
+export async function scanProjects(projects: ScanInput[]): Promise<ScanOutcome[]> {
+  const { inventories, queries } = prepareProjects(projects);
+  return finishProjects(inventories, await lookup(queries));
 }

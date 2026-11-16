@@ -161,6 +161,16 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: "selfguard_sources",
+    title: "CI workflows and agent tools",
+    description:
+      "Last results for sources beside lockfiles: `machine` lists this machine's agent tools (MCP servers from agent configs), `repos` each git repo's CI workflows (GitHub Actions) and project agent configs. Each has `references` (file and line), `findings` with a `certainty` (confirmed | may-be-affected for mutable tags like @v4 | version-unknown for branches, bare SHAs and unpinned packages) and `warnings` (risky practices, not vulnerabilities). `kinds` is empty when this version checks none yet. Local state only, no network." +
+      UNTRUSTED,
+    inputSchema: obj({ path: { type: "string", description: "Only the sources of the git repo around this folder." } }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    run: (a) => api.getSources(typeof a.path === "string" && a.path.trim() ? { path: a.path } : {}),
+  },
+  {
     name: "selfguard_vulnerability",
     title: "Advisory details",
     description:

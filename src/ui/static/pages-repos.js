@@ -2,6 +2,7 @@
 import { $, ago, ecoTag, h, icon, pkgId, plural, sevBadge, SEVERITIES, state, tildify, toast } from "./core.js";
 import { card, empty, fixText, folderBuckets, repoGroups, seriousPackages, setHead, syncButton } from "./layout.js";
 import { feedList } from "./pages-packages.js";
+import { agentToolsCard } from "./sources.js";
 
 // ---------- pages ----------
 
@@ -68,7 +69,8 @@ export function pageOverview() {
       h("div", { class: "stack" },
         card("Recent activity", null, events.length ? feedList(events) : empty("No activity yet", "New findings, fixes and reminders show up here."),
           events.length ? h("a", { href: "#/activity" }, "All activity →") : null),
-        card("Status", null, status)))));
+        card("Status", null, status))),
+    agentToolsCard()));
 }
 
 export function statRow(label, value) {
