@@ -80,7 +80,10 @@ scripts/build-app.sh
 SELFGUARD_HOME=$(mktemp -d) SELFGUARD_NO_NOTIFY=1 macos/build/selfguard.app/Contents/MacOS/selfguard --dashboard
 ```
 
-The app adds no logic of its own: it reads `/api/menubar` and shows the dashboard. To update
+The app adds no logic of its own: it reads `~/.selfguard/menubar.json` (`selfguard menubar`)
+and shows the dashboard. Local builds are ad-hoc signed with the same hardened runtime and
+entitlements as releases; signing for distribution is in
+[docs/releasing-mac-app.md](docs/releasing-mac-app.md). To update
 the bundled Node, change `macos/node.lock` with the checksums from that release's
 `SHASUMS256.txt` (verify its signature first).
 

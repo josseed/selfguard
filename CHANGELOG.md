@@ -17,6 +17,10 @@ All notable changes to this project are documented here. The format is based on
   dashboard server only runs while the window is used. The app bundles a pinned,
   checksum-verified Node.js, so it needs nothing installed. See
   [docs/design/mac-app.md](docs/design/mac-app.md).
+- **Signed, notarized Mac app in releases** (once the Apple secrets are set, see
+  [docs/releasing-mac-app.md](docs/releasing-mac-app.md)): Apple Silicon and Intel DMGs with
+  their SHA-256, built in the approval-gated `macos-release` environment. Every binary runs
+  with the hardened runtime; the bundled Node.js keeps only the `allow-jit` entitlement.
 - `selfguard menubar` and `~/.selfguard/menubar.json` (also `GET /api/menubar`): the summary
   the app shows, rewritten after every scan with news, `sync`, `dismiss` and `forget`.
 

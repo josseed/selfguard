@@ -5,8 +5,9 @@
 #   scripts/build-app.sh            this Mac's architecture
 #   ARCH=x64 scripts/build-app.sh   Intel build on Apple Silicon (arm64 | x64)
 #
-# Signing: ad-hoc by default (runs on this Mac only). Release signing and notarization are
-# done in CI.
+# Signing: always with the hardened runtime and macos/node.entitlements, so local builds behave
+# like releases. Ad-hoc by default (runs on this Mac only); SIGN_IDENTITY="Developer ID
+# Application: …" signs for distribution (then scripts/notarize-app.sh).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -75,9 +76,16 @@ chmod 755 "$ENGINE/bin/selfguard" "$ENGINE/node"
 sed -e "s/@VERSION@/$VERSION/g" "$MAC/Info.plist.in" > "$APP/Contents/Info.plist"
 plutil -lint -s "$APP/Contents/Info.plist"
 
-# 4. Ad-hoc signature, inside-out (release builds are signed in CI).
-codesign --force --sign - "$ENGINE/node"
-codesign --force --sign - "$APP"
-codesign --verify --strict "$APP"
+# 4. Signature, inside-out: the Node binary (only allow-jit), then the bundle.
+IDENTITY="${SIGN_IDENTITY:--}"
+SIGN=(codesign --force --options runtime --sign "$IDENTITY")
+[[ "$IDENTITY" != "-" ]] && SIGN+=(--timestamp)
+"${SIGN[@]}" --entitlements "$MAC/node.entitlements" "$ENGINE/node"
+"${SIGN[@]}" "$APP"
+codesign --verify --strict --deep "$APP"
+# The signed engine must still run (it can't on another architecture without Rosetta).
+if [[ "$SWIFT_ARCH" == "$(uname -m)" ]]; then
+  "$ENGINE/bin/selfguard" --version >/dev/null || { echo "the signed engine doesn't run" >&2; exit 1; }
+fi
 
-echo "Built $APP ($VERSION, $ARCH, Node $NODE_VERSION)"
+echo "Built $APP ($VERSION, $ARCH, Node $NODE_VERSION, signed: ${SIGN_IDENTITY:-ad-hoc})"

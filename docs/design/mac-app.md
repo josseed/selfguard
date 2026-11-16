@@ -2,7 +2,9 @@
 
 Status (2026-11-16): phase 1 done, and from phase 2 the summary file, "new since you looked",
 the login item, the Dock icon while the window is open and Check/Sync result notifications.
-Pending: native notifications for findings, adopting the services, the CLI link, phases 3–5.
+Phase 3 (signing and notarization in CI) is ready and waits for the Apple secrets
+(docs/releasing-mac-app.md). Pending: native notifications for findings, adopting the services,
+the CLI link, phases 4–5.
 
 ## Goal
 
