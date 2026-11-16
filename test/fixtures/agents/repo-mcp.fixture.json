@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "team-docs": { "command": "npx", "args": ["-y", "team-docs-mcp"] },
+    "git-spec": { "command": "npx", "args": ["-y", "github:acme/private-mcp"] }
+  }
+}

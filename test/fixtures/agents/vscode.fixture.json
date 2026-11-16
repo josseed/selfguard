@@ -1,0 +1,9 @@
+{
+  // VS Code: "servers", plus "inputs" for prompts.
+  "inputs": [{ "type": "promptString", "id": "token", "password": true }],
+  "servers": {
+    "yarn-one": { "type": "stdio", "command": "yarn", "args": ["dlx", "-q", "mcp-yarn-tool@2.0.0"] },
+    "npm-exec": { "type": "stdio", "command": "npm", "args": ["exec", "--yes", "--", "mcp-npm-exec@^3.1.0"] },
+    "remote": { "type": "http", "url": "https://api.example.com/mcp" }
+  }
+}
