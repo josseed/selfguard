@@ -375,8 +375,9 @@ async function route(method: string, url: URL, req: IncomingMessage, ctx: RouteC
     if (p === "/api/machines/test") return api.testMachine(str(body, "host"));
     if (p === "/api/pair/start") {
       const replace = typeof body.replace === "string" ? body.replace : undefined;
-      const start = replace ? await api.migrateToShare(replace) : await api.startPairing(str(body, "peer"));
-      return startPairJob(start, { replace, name: typeof body.name === "string" ? body.name : undefined });
+      const name = typeof body.name === "string" && body.name ? body.name : undefined;
+      const start = replace ? await api.migrateToShare(replace) : await api.startPairing(str(body, "peer"), { name });
+      return startPairJob(start, { replace, name });
     }
     if (p === "/api/pair/cancel") {
       const job = pairJobs.get(str(body, "job"));

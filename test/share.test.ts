@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
@@ -186,4 +186,80 @@ test("the sealed credential only opens with the requester's key", () => {
   const other = share.newEphemeralKey();
   assert.throws(() => share.unseal(sealed, other.privateRaw, other.publicRaw, b.publicRaw));
   assert.equal(share.pairingCode(a.publicRaw, b.publicRaw).length, 6);
+});
+
+test("only our own address as Host, and JSON only (no DNS rebinding from a browser)", async () => {
+  const { request } = await import("node:http");
+  const raw = (path: string, headers: Record<string, string>, body = ""): Promise<number> =>
+    new Promise((resolve, reject) => {
+      const req = request({ host: "127.0.0.1", port, path, method: body ? "POST" : "GET", headers }, (res) => {
+        res.resume();
+        resolve(res.statusCode!);
+      });
+      req.on("error", reject);
+      req.end(body || undefined);
+    });
+  assert.equal(await raw("/hello", { host: "evil.example" }), 421);
+  assert.equal(await raw("/hello", { host: `evil.example:${port}` }), 421);
+  assert.equal(await raw("/hello", { host: `127.0.0.1:${port}` }), 200);
+  const key = share.newEphemeralKey().publicRaw.toString("base64url");
+  const body = JSON.stringify({ name: "page", publicKey: key });
+  assert.equal(await raw("/pair/request", { host: `127.0.0.1:${port}`, "content-type": "text/plain" }, body), 415);
+  assert.equal(await raw("/pair/request", { host: `rebound.example:${port}`, "content-type": "application/json" }, body), 421);
+});
+
+test("git facts never come from outside the granted folder", async () => {
+  // ~/code is a repo whose remote URL carries a token; the grant is only ~/code/app.
+  mkdirSync(join(code, ".git"), { recursive: true });
+  writeFileSync(join(code, ".git", "HEAD"), "ref: refs/heads/main\n");
+  writeFileSync(join(code, ".git", "config"), '[remote "origin"]\n\turl = https://me:SECRET-TOKEN@github.com/me/code.git\n');
+  mkdirSync(join(code, "app"), { recursive: true });
+  writeFileSync(join(code, "app", "package-lock.json"), "{}");
+  // and a worktree inside it whose git dir lives outside
+  mkdirSync(join(code, "app", "wt"), { recursive: true });
+  writeFileSync(join(code, "app", "wt", "package-lock.json"), "{}");
+  writeFileSync(join(code, "app", "wt", ".git"), `gitdir: ${join(code, ".git")}\n`);
+  const cred = await pair("~/code/app");
+  const t = target(cred);
+  const raw = (await remote.runRemote(t, "SGREQ1 list\n3\t~/code/app\n", { maxBytes: 1 << 20, timeoutMs: 10_000 })).toString();
+  assert.ok(!raw.includes("SECRET-TOKEN"), "parent repo config not read");
+  assert.ok(!/^G\t/m.test(raw), "no git facts from outside the scope");
+  const list = await remote.listMachine(t, [{ path: "~/code/app", depth: 3 }]);
+  assert.deepEqual(list.projects.map((p) => [p.root.slice(code.length + 1), p.git]), [["app", null], ["app/wt", null]]);
+  rmSync(join(code, ".git"), { recursive: true });
+});
+
+test("a whois hiccup never revokes a grant nor ends a pairing", async () => {
+  const cred = await pair();
+  net.whois("127.0.0.1", "error");
+  try {
+    const e = await remote.listMachine(target(cred), [{ path: "~/code", depth: 1 }]).catch((x) => x);
+    assert.equal(e.code, "unreachable", "retry later, not 'pair again'");
+    assert.match(e.message, /couldn't check/);
+  } finally {
+    net.whois("127.0.0.1", A);
+  }
+  assert.equal(share.listGrants().length, 1, "grant kept");
+  assert.ok((await remote.testHost(target(cred))).scope, "works again once Tailscale answers");
+
+  // Approved while the requester's polls can't be identified: it keeps waiting, then gets it.
+  const s = await share.requestPairing("127.0.0.1", port, "mac-a");
+  net.whois("127.0.0.1", "error");
+  const waiting = share.waitForPairing(s, { intervalMs: 30 });
+  await share.approveShareRequest(s.requestId, { scope: "~/code" });
+  await new Promise((r) => setTimeout(r, 150));
+  net.whois("127.0.0.1", A);
+  assert.equal((await waiting).status, "approved");
+});
+
+test("an address that can't be bound doesn't take the others down", async () => {
+  // 192.0.2.1 (TEST-NET-1) isn't an address of this machine: binding it fails.
+  const s = await share.startShareServer({ hosts: ["127.0.0.1", "192.0.2.1"], port: 0 });
+  try {
+    assert.deepEqual(s.addresses.map((a) => a.host), ["127.0.0.1"]);
+    assert.deepEqual(s.failed.map((f) => f.host), ["192.0.2.1"]);
+  } finally {
+    await s.close();
+  }
+  await assert.rejects(share.startShareServer({ hosts: ["192.0.2.1"], port: 0 }), /couldn't listen/);
 });

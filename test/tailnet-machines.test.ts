@@ -140,3 +140,29 @@ test("pairing again replaces the old credential; removing revokes the grant over
   assert.equal(r.revoked, true);
   assert.equal(share.listGrants().length, 0);
 });
+
+test("a taken name is refused before asking; pairing again replaces the machine", async () => {
+  await api.addMachine("devbox", "devbox", { mode: "ssh", roots: [{ path: "~/code", depth: 3 }] });
+  await assert.rejects(machines.startPairing("mac-b", { port, name: "devbox" }), /already exists/);
+  assert.equal(share.listShareRequests().length, 0, "nothing was asked");
+  const m = await pairWithB({ name: "shared-b" });
+  assert.equal(m.name, "shared-b");
+  // Pair again (e.g. after a revoke): same entry, new credential.
+  await share.revokeGrant("mac-a");
+  const start = await machines.startRepairing("shared-b");
+  const done = machines.finishPairing(start, { replace: "shared-b", intervalMs: 20 });
+  const req = share.listShareRequests().find((r) => r.code === start.session.code)!;
+  await share.approveShareRequest(req.id, { scope: "~/code" });
+  await done;
+  assert.equal(config.loadConfig().machines.filter((x) => x.name === "shared-b").length, 1);
+  assert.equal((await api.checkMachines({ only: ["shared-b"] })).machines[0]!.ok, true);
+});
+
+test("moving a machine from sharing to SSH ends the sharing access", async () => {
+  assert.equal(share.listGrants().length, 1);
+  const r = await api.addMachine("shared-b", "devbox", { mode: "ssh" });
+  assert.equal(r.installed, true);
+  assert.equal(r.machine.transport, "ssh");
+  assert.equal(share.listGrants().length, 0, "grant revoked over there");
+  assert.equal(machines.loadShareCredential("shared-b"), null, "credential deleted here");
+});

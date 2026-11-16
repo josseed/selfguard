@@ -1,7 +1,8 @@
 #!/bin/sh
 # Stand-in for the tailscale CLI in tests. Answers from files in $SG_FAKE_TAILSCALE_DIR:
 #   status.json        for `tailscale status --json`
-#   whois-<ip>.json    for `tailscale whois --json <ip>` (missing: not a tailnet address)
+#   whois-<ip>.json    for `tailscale whois --json <ip>`; missing: "no match for IP" (not a
+#                      tailnet address); containing ERROR: a failure (like tailscaled restarting)
 d=${SG_FAKE_TAILSCALE_DIR:?}
 case "$1" in
   status) cat "$d/status.json" ;;
@@ -9,7 +10,9 @@ case "$1" in
     shift
     [ "$1" = "--json" ] && shift
     f="$d/whois-$1.json"
-    if [ -f "$f" ]; then cat "$f"; else echo "no match for IP $1" >&2; exit 1; fi
+    if [ ! -f "$f" ]; then echo "no match for IP $1" >&2; exit 1; fi
+    if grep -q '^ERROR' "$f"; then echo "context deadline exceeded" >&2; exit 1; fi
+    cat "$f"
     ;;
   *) echo "fake-tailscale: unsupported $*" >&2; exit 2 ;;
 esac

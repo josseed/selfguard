@@ -42,7 +42,7 @@ import { stateRoot } from "./paths.ts";
 import { answerReader } from "./reader.ts";
 import { READER_PROTOCOL } from "./remote.ts";
 import { clean } from "./sanitize.ts";
-import { plainIp, tailnet, whois, type Whois } from "./tailnet.ts";
+import { plainIp, tailnet, urlHost, whoisDetailed, type WhoisResult } from "./tailnet.ts";
 import { VERSION } from "./version.ts";
 
 export const PAIR_TTL_MS = 5 * 60 * 1000;
@@ -384,6 +384,8 @@ function readBody(req: IncomingMessage, max: number): Promise<Buffer> {
 }
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+  // JSON only: a browser can't send this cross-site without a CORS preflight we never answer.
+  if (!/^application\/json(\s*;|$)/i.test(req.headers["content-type"] ?? "")) throw new ShareError("unsupported_type", "content-type must be application/json", 415);
   const body = await readBody(req, 16 * 1024);
   try {
     const j = JSON.parse(body.toString("utf8"));
@@ -406,26 +408,43 @@ export interface ShareServerOptions {
 
 export interface RunningShare {
   addresses: Array<{ host: string; port: number }>;
+  /** Addresses that couldn't be bound (e.g. the IPv6 one on a host without IPv6). */
+  failed: Array<{ host: string; error: string }>;
   close(): Promise<void>;
 }
 
-/** Start answering on the tailnet. Throws if there is no Tailscale address to bind to. */
+/** Who this machine is on the tailnet, read once per server start (not per request). */
+interface SelfIdentity {
+  name: string;
+  login: string | null;
+}
+
+/**
+ * Start answering on the tailnet. Each address is bound on its own: one that can't be bound
+ * doesn't take the others down. Throws only if none could be bound.
+ */
 export async function startShareServer(opts: ShareServerOptions = {}): Promise<RunningShare> {
   const cfg = loadConfig();
-  const hosts = opts.hosts ?? tailnet().self?.ips ?? [];
+  const t = opts.hosts ? null : tailnet();
+  const hosts = opts.hosts ?? t?.self?.ips ?? [];
   if (hosts.length === 0) throw new ShareError("no_tailnet", "no Tailscale address on this machine: is Tailscale installed, running and logged in?", 503);
   for (const h of hosts) {
     if (h === "0.0.0.0" || h === "::" || h === "") throw new ShareError("invalid", "refusing to listen on all interfaces");
   }
+  const selfInfo = (t ?? tailnet()).self;
+  const self: SelfIdentity = { name: selfInfo?.name ?? selfName(), login: selfInfo?.login ?? null };
   const port = opts.port ?? cfg.share.port;
-  const handler = makeHandler(opts.whoisTtlMs ?? 60_000, opts.pairRequestsPer10Min ?? 5);
+  // Host headers we answer to: only our own addresses (defeats DNS rebinding from a browser).
+  const allowedHosts = new Set<string>();
+  const handler = makeHandler(opts.whoisTtlMs ?? 60_000, opts.pairRequestsPer10Min ?? 5, self, allowedHosts);
   const servers: Server[] = [];
   const addresses: RunningShare["addresses"] = [];
-  try {
-    for (const host of hosts) {
-      const server = createServer((req, res) => void handler(req, res));
-      server.headersTimeout = 10_000;
-      server.requestTimeout = 120_000;
+  const failed: RunningShare["failed"] = [];
+  for (const host of hosts) {
+    const server = createServer((req, res) => void handler(req, res));
+    server.headersTimeout = 10_000;
+    server.requestTimeout = 120_000;
+    try {
       await new Promise<void>((resolve, reject) => {
         server.once("error", reject);
         server.listen(port, host, () => {
@@ -433,32 +452,45 @@ export async function startShareServer(opts: ShareServerOptions = {}): Promise<R
           resolve();
         });
       });
-      servers.push(server);
-      const a = server.address();
-      addresses.push({ host, port: typeof a === "object" && a ? a.port : port });
+    } catch (e) {
+      failed.push({ host, error: clean((e as Error).message, 200) });
+      continue;
     }
-  } catch (e) {
-    for (const s of servers) s.close();
-    throw e;
+    servers.push(server);
+    const a = server.address();
+    const bound = typeof a === "object" && a ? a.port : port;
+    addresses.push({ host, port: bound });
+    allowedHosts.add(`${urlHost(host)}:${bound}`);
+  }
+  if (servers.length === 0) {
+    throw new ShareError("no_tailnet", `couldn't listen on the Tailscale addresses: ${failed.map((f) => `${f.host} (${f.error})`).join(", ")}`, 503);
   }
   return {
     addresses,
+    failed,
     close: () => Promise.all(servers.map((s) => new Promise<void>((r) => s.close(() => r())))).then(() => {}),
   };
 }
 
-function makeHandler(whoisTtlMs: number, pairPer10Min: number): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+function makeHandler(
+  whoisTtlMs: number,
+  pairPer10Min: number,
+  self: SelfIdentity,
+  allowedHosts: ReadonlySet<string>,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   const helloLimit = new RateLimiter(120, 60_000);
   const pairLimit = new RateLimiter(pairPer10Min, 10 * 60_000);
   const statusLimit = new RateLimiter(240, 60_000);
   const readLimit = new RateLimiter(240, 60_000);
   const badAuth = new RateLimiter(10, 10 * 60_000);
-  const whoisCache = new Map<string, { at: number; who: Whois | null }>();
-  const who = async (ip: string): Promise<Whois | null> => {
+  // Only real answers are cached; a failed lookup is asked again next time.
+  const whoisCache = new Map<string, { at: number; who: WhoisResult }>();
+  const who = async (ip: string): Promise<WhoisResult> => {
     const hit = whoisCache.get(ip);
     if (hit && Date.now() - hit.at < whoisTtlMs) return hit.who;
-    const w = await whois(ip);
-    whoisCache.set(ip, { at: Date.now(), who: w });
+    const w = await whoisDetailed(ip);
+    if (w.ok || w.reason === "unknown") whoisCache.set(ip, { at: Date.now(), who: w });
+    if (whoisCache.size > 1000) whoisCache.clear();
     return w;
   };
   const send = (res: ServerResponse, status: number, body: unknown, type = "application/json"): void => {
@@ -469,17 +501,21 @@ function makeHandler(whoisTtlMs: number, pairPer10Min: number): (req: IncomingMe
     res.end(type === "application/json" ? JSON.stringify(body) : (body as Buffer));
   };
   const fail = (res: ServerResponse, status: number, code: string, message: string): void => send(res, status, { error: { code, message } });
+  const unavailable = (res: ServerResponse): void => fail(res, 503, "unavailable", "couldn't check the caller with Tailscale right now; try again");
 
   return async (req, res) => {
     const ip = plainIp(req.socket.remoteAddress);
     const path = (req.url ?? "/").split("?")[0];
     try {
+      // A page in a browser that re-points its own domain at this address (DNS rebinding)
+      // sends its own Host: only our literal address is accepted.
+      if (!allowedHosts.has(req.headers.host ?? "")) return fail(res, 421, "wrong_host", "wrong host");
       const cfg = loadConfig();
       if (!cfg.share.enabled) return fail(res, 503, "off", "sharing is off on this machine");
 
       if (req.method === "GET" && path === "/hello") {
         if (!helloLimit.allow(ip)) return fail(res, 429, "rate_limited", "too many requests");
-        return send(res, 200, { app: "selfguard", version: VERSION, protocol: READER_PROTOCOL, name: selfName(), pairing: true });
+        return send(res, 200, { app: "selfguard", version: VERSION, protocol: READER_PROTOCOL, name: self.name, pairing: true });
       }
       if (req.method !== "POST") return fail(res, 404, "not_found", "no such endpoint");
 
@@ -487,10 +523,10 @@ function makeHandler(whoisTtlMs: number, pairPer10Min: number): (req: IncomingMe
         if (!pairLimit.allow(ip)) return fail(res, 429, "rate_limited", "too many pairing requests; wait a few minutes");
         const body = await readJson(req);
         if (!validPublicKey(body.publicKey)) return fail(res, 400, "invalid", "bad public key");
-        const caller = await who(ip);
-        if (!caller) return fail(res, 403, "not_tailnet", "only machines of this tailnet can pair");
-        const self = tailnet().self;
-        if (!cfg.share.allowOtherUsers && (!caller.login || caller.login !== self?.login)) {
+        const w = await who(ip);
+        if (!w.ok) return w.reason === "unknown" ? fail(res, 403, "not_tailnet", "only machines of this tailnet can pair") : unavailable(res);
+        const caller = w.who;
+        if (!cfg.share.allowOtherUsers && (!caller.login || caller.login !== self.login)) {
           logAccess({ op: "pair-refused", ip, node: caller.nodeId, reason: "other user" });
           return fail(res, 403, "other_user", "this machine only pairs with machines of its own Tailscale user");
         }
@@ -519,13 +555,16 @@ function makeHandler(whoisTtlMs: number, pairPer10Min: number): (req: IncomingMe
         });
         logAccess({ op: "pair-request", ip, node: caller.nodeId, name: request.name });
         void notify(`${request.name} wants to see your repos`, `Code ${request.code}. Approve it in selfguard: Machines, or selfguard share approve ${request.id}`, "selfguard sharing").catch(() => {});
-        return send(res, 200, { requestId: request.id, publicKey: request.pubB, code: request.code, expiresAt: request.expiresAt, name: selfName() });
+        return send(res, 200, { requestId: request.id, publicKey: request.pubB, code: request.code, expiresAt: request.expiresAt, name: self.name });
       }
 
       if (path === "/pair/status") {
         if (!statusLimit.allow(ip)) return fail(res, 429, "rate_limited", "too many requests");
         const body = await readJson(req);
-        const caller = await who(ip);
+        const w = await who(ip);
+        // Can't tell who is asking right now: let it retry (never report it as expired).
+        if (!w.ok && w.reason === "error") return unavailable(res);
+        const caller = w.ok ? w.who : null;
         const id = typeof body.requestId === "string" ? body.requestId : "";
         const result = await withShareLock(() => {
           const pending = loadPending();
@@ -549,12 +588,17 @@ function makeHandler(whoisTtlMs: number, pairPer10Min: number): (req: IncomingMe
           logAccess({ op: "denied", ip, reason: "bad credential" });
           return fail(res, 401, "auth", "not paired with this machine");
         }
-        const caller = await who(ip);
-        if (!caller || caller.nodeId !== grant.nodeId) {
-          // The credential is being used from another machine: it leaked. Revoke it.
-          await revokeGrant(grant.id);
-          logAccess({ op: "revoked", ip, grant: grant.name, reason: "node mismatch", node: caller?.nodeId ?? null });
-          return fail(res, 403, "auth", "credential used from another machine; revoked");
+        const w = await who(ip);
+        if (!w.ok && w.reason === "error") return unavailable(res); // a hiccup never revokes
+        if (!w.ok || w.who.nodeId !== grant.nodeId) {
+          if (w.ok) {
+            // Confirmed: the credential is used from another machine. It leaked: revoke it.
+            await revokeGrant(grant.id);
+            logAccess({ op: "revoked", ip, grant: grant.name, reason: "node mismatch", node: w.who.nodeId });
+            return fail(res, 403, "auth", "credential used from another machine; revoked");
+          }
+          logAccess({ op: "denied", ip, grant: grant.name, reason: "not a tailnet peer" });
+          return fail(res, 403, "auth", "not a machine of this tailnet");
         }
         if (path === "/grant/remove") {
           await revokeGrant(grant.id);
@@ -563,7 +607,7 @@ function makeHandler(whoisTtlMs: number, pairPer10Min: number): (req: IncomingMe
         }
         const body = await readBody(req, MAX_BODY);
         const op = body.subarray(0, 32).toString("utf8").split("\n")[0] ?? "";
-        const answer = answerReader(body, { scope: grant.scope });
+        const answer = await answerReader(body, { scope: grant.scope });
         logAccess({ op: op.replace(/^SGREQ1 /, ""), ip, grant: grant.name, bytes: answer.length });
         if (!grant.lastSeen || Date.now() - Date.parse(grant.lastSeen) > 60_000 || grant.lastIp !== ip) {
           await withShareLock(() => {
@@ -582,7 +626,6 @@ function makeHandler(whoisTtlMs: number, pairPer10Min: number): (req: IncomingMe
 
 // ---------- the client side (machine A) ----------
 
-const urlHost = (ip: string): string => (ip.includes(":") ? `[${ip}]` : ip);
 
 async function getJson(url: string, init: RequestInit & { timeoutMs: number }): Promise<{ status: number; body: Record<string, unknown> }> {
   const res = await fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(init.timeoutMs) });
@@ -675,6 +718,11 @@ export async function pollPairing(s: PairSession): Promise<PairPoll> {
     body: JSON.stringify({ requestId: s.requestId }),
     timeoutMs: 10_000,
   });
+  if (r.status !== 200) {
+    // e.g. 503 "unavailable": the other side couldn't check us with Tailscale this time.
+    const err = isObject(r.body.error) ? r.body.error : {};
+    throw new ShareError(typeof err.code === "string" ? err.code : "failed", "pairing status unavailable", 502);
+  }
   const status = r.body.status;
   if (status === "pending" || status === "rejected" || status === "expired") return { status };
   if (status !== "approved" || typeof r.body.sealed !== "string") throw new ShareError("protocol", "unexpected pairing status");

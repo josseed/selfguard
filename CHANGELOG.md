@@ -33,6 +33,11 @@ All notable changes to this project are documented here. The format is based on
   `selfguard machines peers` shows capabilities.
 - MCP: `selfguard_machines_peers`. The agent guide documents the share transport.
 
+### Security
+
+- The restricted SSH reader now also confines git facts to its granted folder: a parent repo's
+  remote URL (which may embed a token) is no longer reported for a narrower grant.
+
 ## [0.7.1] - 2026-11-15
 
 ### Added

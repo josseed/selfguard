@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +18,8 @@ export interface FakeNode {
 /** A fake tailnet for test/bin/fake-tailscale: this machine, its peers and whois answers. */
 export function fakeTailnet(self: FakeNode, peers: FakeNode[] = [], dir = mkdtempSync(join(tmpdir(), "sg-tailnet-"))): {
   dir: string;
-  whois(ip: string, node: FakeNode | null): void;
+  /** node: who is there; null: not a tailnet address; "error": whois fails (tailscaled hiccup). */
+  whois(ip: string, node: FakeNode | null | "error"): void;
   write(): void;
 } {
   mkdirSync(dir, { recursive: true });
@@ -49,8 +50,12 @@ export function fakeTailnet(self: FakeNode, peers: FakeNode[] = [], dir = mkdtem
     write,
     whois(ip, n) {
       const file = join(dir, `whois-${ip}.json`);
-      if (!n) {
-        writeFileSync(file, "");
+      if (n === null) {
+        rmSync(file, { force: true });
+        return;
+      }
+      if (n === "error") {
+        writeFileSync(file, "ERROR\n");
         return;
       }
       writeFileSync(file, JSON.stringify({ Node: { StableID: n.id, Name: `${n.name}.tail1234.ts.net.`, Hostinfo: { Hostname: n.name } }, UserProfile: { LoginName: n.login ?? "me@example.com" } }));

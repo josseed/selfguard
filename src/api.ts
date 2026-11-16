@@ -52,7 +52,7 @@ import {
   type ShareRequestInfo,
 } from "./share.ts";
 import { tailnet, type TailnetState } from "./tailnet.ts";
-import { startPairing, type PairingStart } from "./machines.ts";
+import { startRepairing, type PairingStart } from "./machines.ts";
 import { appendEvents } from "./events.ts";
 import { discoverEverywhere, groupPlaces, PROTECTED, type EverywhereProgress, type Place } from "./everywhere.ts";
 import { notify } from "./notify.ts";
@@ -1304,8 +1304,6 @@ export function shareSuggestions(): Array<{ path: string; depth: number }> {
  * your SSH access.
  */
 export async function migrateToShare(name: string): Promise<PairingStart> {
-  const m = loadConfig().machines.find((x) => x.name === name);
-  if (!m) throw new ApiError("not_found", `unknown machine: ${name}`);
-  if (m.transport === "share") throw new ApiError("invalid", `${name} already uses selfguard sharing`);
-  return startPairing(m.host.replace(/^[^@]*@/, ""));
+  if (!loadConfig().machines.some((x) => x.name === name)) throw new ApiError("not_found", `unknown machine: ${name}`);
+  return startRepairing(name);
 }

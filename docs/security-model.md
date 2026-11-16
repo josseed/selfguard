@@ -82,12 +82,19 @@ starts a small HTTP service (a launchd agent, or a systemd user unit on Linux):
 - **Tailnet only.** It listens only on B's own Tailscale addresses (from `tailscale status`),
   never on `0.0.0.0`, the LAN or localhost. Without a Tailscale address it doesn't listen at
   all. Unlike enabling Remote Login, it opens no port outside the tailnet and needs no SSH.
+  Each address is bound on its own, so one that can't be bound (an IPv6 address on a host
+  without IPv6) doesn't take the others down.
+- **Not reachable from web pages.** It answers only requests whose `Host` is its own address
+  and port, and the pairing endpoints accept only `application/json`. A page in a browser,
+  even one that re-points its own domain at this address (DNS rebinding), can't talk to it.
 - **Read-only, same reader.** It answers the same requests as the SSH reader (list, fetch,
   browse, ping; `reader.ts` produces byte-identical answers) with the same limits: lockfile and
   `package.json` names only, no symlinked files, 50 MB per file, at most 1,000 files and 64
   folders per request, nothing outside the granted folder (paths resolved with `realpath`, so
-  symlinks and `..` can't escape). It has no endpoint that writes files or runs anything from a
-  project.
+  symlinks and `..` can't escape). Git facts (branch, remote URL, activity) also come only from
+  a `.git` and a common git dir inside the granted folder. A narrower grant never reveals a
+  parent repo's remote URL, which may embed a token. It has no endpoint that writes files or runs
+  anything from a project.
 - **Pairing, approved over there.** Machine A sends `POST /pair/request` with its name and an
   ephemeral X25519 public key. B identifies the caller with `tailscale whois`: it must be a
   machine of the tailnet and, by default, of **the same Tailscale user**
@@ -100,8 +107,11 @@ starts a small HTTP service (a launchd agent, or a systemd user unit on Linux):
   `~/.selfguard/machines/<name>/share.json` (mode `0600`).
 - **Bound to the machine.** Every request needs the credential (compared in constant time)
   **and** has to come from the Tailscale node it was issued to, checked with `whois`. A
-  credential used from another node is revoked on the spot. Pending or rejected requests can't
-  read anything.
+  credential confirmed to be used from another node is revoked on the spot. When `whois` can't
+  answer (tailscaled restarting, a timeout), the request is refused for now and retried later,
+  never treated as a mismatch. Only confirmed answers are cached. Pending or rejected requests
+  can't read anything. Moving a machine from sharing to SSH, or removing it, drops its grant
+  over there and deletes the credential here.
 - **Limits and logs.** Pairing requests are rate limited (5 per address every 10 minutes),
   failed credentials too. Every access is logged in `~/.selfguard/share/access.log` (capped).
   B's dashboard lists "Machines that can see this one" with their last connection and

@@ -202,6 +202,23 @@ function uniqueName(base: string, except?: string): string {
   throw new MachineError("invalid", "too many machines with that name");
 }
 
+/** A new machine can't take the name of an existing one (pair again / migrate replace instead). */
+export function assertNameFree(name: string): void {
+  if (!MACHINE_NAME_RE.test(name)) throw new MachineError("invalid", "name: lowercase letters, digits and dashes (max 32)");
+  if (loadConfig().machines.some((m) => m.name === name)) {
+    throw new MachineError("invalid", `a machine called ${name} already exists (use machines migrate ${name}, or Pair again on its card)`);
+  }
+}
+
+/** Forget the sharing credential of a machine, asking the other side to drop its grant. */
+export async function dropShareCredential(m: Pick<Machine, "name" | "host" | "port">): Promise<boolean | null> {
+  const cred = loadShareCredential(m.name);
+  if (!cred) return null;
+  const revoked = await unpair(m.host, m.port ?? DEFAULT_SHARE_PORT, cred.credential);
+  rmSync(credentialFile(m.name), { force: true });
+  return revoked;
+}
+
 /** Find a tailnet peer by name, DNS name or address. */
 export function findPeer(query: string): TailnetPeer | null {
   const q = query.trim().toLowerCase().replace(/\.$/, "");
@@ -224,6 +241,8 @@ export function savePairedMachine(
 ): MachineInfo {
   const cfg = loadConfig();
   const existing = opts.replace ? cfg.machines.find((m) => m.name === opts.replace) : undefined;
+  if (opts.replace && !existing) throw new MachineError("not_found", `unknown machine: ${opts.replace}`);
+  if (!existing && opts.name) assertNameFree(opts.name);
   // Named as this machine's tailnet shows it (what the user clicked), else as it calls itself.
   const name = existing?.name ?? (opts.name && MACHINE_NAME_RE.test(opts.name) ? opts.name : uniqueName(machineNameFor(peer.name || payload.name)));
   const entry: Machine = existing ?? { name, host: peer.address, mode: "restricted", scope: payload.scope, transport: "share", roots: [], exclude: [] };
@@ -301,7 +320,8 @@ export interface PairingStart {
 }
 
 /** Step 1 of adding (or migrating) a machine over the tailnet: ask it to pair. */
-export async function startPairing(query: string, opts: { port?: number } = {}): Promise<PairingStart> {
+export async function startPairing(query: string, opts: { port?: number; name?: string } = {}): Promise<PairingStart> {
+  if (opts.name) assertNameFree(opts.name); // fail now, not after the approval
   const peer = findPeer(query);
   const address = peer ? peerAddress(peer) : /^[0-9a-fA-F.:]+$/.test(query) ? query : null;
   if (!address) throw new MachineError("not_found", `no tailnet machine called ${query} (see selfguard machines peers)`);
@@ -316,6 +336,17 @@ export async function startPairing(query: string, opts: { port?: number } = {}):
 }
 
 /** Step 2: wait for the approval on the other machine, then save it. */
+/**
+ * Pair again with an existing machine (switch it to sharing, or renew a revoked credential),
+ * keeping its name, history and folders.
+ */
+export async function startRepairing(name: string): Promise<PairingStart> {
+  const m = getMachine(name);
+  const peer = findPeer(m.host.replace(/^[^@]*@/, ""));
+  if (!peer) throw new MachineError("not_found", `${name} isn't on your tailnet (see selfguard machines peers)`);
+  return startPairing(peer.dnsName, m.transport === "share" && m.port ? { port: m.port } : {});
+}
+
 export async function finishPairing(
   start: PairingStart,
   opts: { name?: string; replace?: string; isCancelled?: () => boolean; intervalMs?: number } = {},
@@ -433,6 +464,10 @@ export async function addMachine(name: string, host: string, opts: AddMachineOpt
   });
   // ssh mode: the connection must work before saving.
   const info = mode === "ssh" ? await testMachine(host, opts.port) : null;
+
+  // Switching a machine from selfguard sharing to SSH ends the sharing access too.
+  const before = loadConfig().machines.find((m) => m.name === name);
+  if (before?.transport === "share") await dropShareCredential(before);
 
   const cfg = loadConfig();
   const existing = cfg.machines.find((m) => m.name === name);

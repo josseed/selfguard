@@ -17,7 +17,7 @@ import { confirm, isInteractive, withSpinner } from "./tui.ts";
 import { runUi } from "./ui/server.ts";
 import { cachedUpdate, checkForUpdate, installedVersion, notifyUpdateOnce } from "./update.ts";
 import { DEFAULT_SHARE_PORT, loadConfig } from "./config.ts";
-import { machineNameFor } from "./machines.ts";
+import { machineNameFor, peerAddress } from "./machines.ts";
 import { probeShare, startShareServer } from "./share.ts";
 import { tailnet } from "./tailnet.ts";
 import { notify } from "./notify.ts";
@@ -538,6 +538,7 @@ async function serveShare(): Promise<number> {
         try {
           running = await startShareServer({ hosts: ips, port: cfg.share.port });
           log(`listening on ${running.addresses.map((a) => `${a.host}:${a.port}`).join(", ")}`);
+          for (const f of running.failed) log(`skipped ${f.host}: ${f.error}`);
         } catch (e) {
           log(`can't listen: ${clean((e as Error).message, 200)}`);
           current = "";
@@ -676,8 +677,6 @@ function printRoots(r: api.RootsResult): void {
   }
 }
 
-const machineNameForCli = (label: string): string => machineNameFor(label);
-
 /** Show the code, wait for the approval on the other machine, then report. */
 async function finishPairingCli(start: api.PairingStart, opts: { name?: string; replace?: string; json: boolean }): Promise<number> {
   const c = paint(out);
@@ -777,7 +776,7 @@ async function cmdMachines(args: string[]): Promise<number> {
         const caps = [p.share ? `selfguard ${p.share.version} sharing` : null, p.sshPort ? "ssh :22" : null, p.tailscaleSsh ? "Tailscale SSH" : null].filter(Boolean).join(", ");
         const seen = !p.online && p.lastSeen ? ` · last seen ${p.lastSeen.slice(0, 10)}` : "";
         out.write(`${dot} ${c.bold(clean(p.name))} ${c.dim(`${p.dnsName} · ${p.os}${seen}`)}${p.added ? c.dim(` · added as ${p.added}`) : ""}\n`);
-        if (p.online) out.write(c.dim(`    ${caps || "nothing answering"} → ${what[p.action].replace("<name>", machineNameForCli(p.name))}\n`));
+        if (p.online) out.write(c.dim(`    ${caps || "nothing answering"} → ${what[p.action].replace("<name>", machineNameFor(p.name))}\n`));
       }
       return 0;
     }
@@ -805,16 +804,19 @@ async function cmdMachines(args: string[]): Promise<number> {
     case "add": {
       if (!a1) usage("usage: selfguard machines add <peer|host> [--via share|ssh] [--name N] [--root DIR]... [--depth N] [--scope DIR] [--port N] [--manual] [--mode restricted|ssh]");
       if (values.via !== undefined && values.via !== "share" && values.via !== "ssh") usage("--via must be share or ssh");
-      // Without --via: selfguard sharing if that machine answers, else SSH.
-      let via = values.via;
+      // SSH-only options mean SSH, as before 0.8. Otherwise, without --via: selfguard sharing
+      // if that machine answers, else SSH.
+      const sshFlags = ["mode", "root", "depth", "scope", "port", "manual"].filter((k) => values[k as keyof typeof values] !== undefined);
+      if (values.via === "share" && sshFlags.length) usage(`--${sshFlags[0]} is for SSH machines; with --via share the other machine chooses its folders when it approves`);
+      let via = values.via ?? (sshFlags.length ? "ssh" : undefined);
       if (!via) {
         const peer = api.findPeer(a1);
-        const ip = peer?.ips.find((x) => x.includes(".")) ?? peer?.ips[0];
+        const ip = peer ? peerAddress(peer) : null;
         via = ip && (await probeShare(ip, DEFAULT_SHARE_PORT, 1500)) ? "share" : "ssh";
         if (!values.json && via === "share") out.write(c.dim(`${clean(peer?.name ?? a1)} has selfguard sharing on: pairing without SSH.\n`));
       }
       if (via === "share") {
-        const start = await api.startPairing(a1);
+        const start = await api.startPairing(a1, { name: values.name });
         return finishPairingCli(start, { name: values.name, json: values.json ?? false });
       }
       const name = values.name ?? api.suggestName(a1);

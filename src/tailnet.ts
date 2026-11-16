@@ -119,31 +119,53 @@ export interface Whois {
   name: string;
 }
 
-/** Who is behind a tailnet IP (null: not a tailnet address we know). Async, no shell. */
-export function whois(ip: string): Promise<Whois | null> {
+/**
+ * Who is behind a tailnet IP. Tells apart "not a machine of this tailnet" (`unknown`) from
+ * "couldn't ask right now" (`error`: tailscaled restarting, timeout, bad output), so callers
+ * never treat a hiccup as an answer.
+ */
+export type WhoisResult = { ok: true; who: Whois } | { ok: false; reason: "unknown" | "error" };
+
+export function whoisDetailed(ip: string): Promise<WhoisResult> {
   const bin = tailscaleBin();
-  if (!bin || !/^[0-9a-fA-F.:]+$/.test(ip)) return Promise.resolve(null);
+  if (!bin) return Promise.resolve({ ok: false, reason: "error" });
+  if (!/^[0-9a-fA-F.:]+$/.test(ip)) return Promise.resolve({ ok: false, reason: "unknown" });
   return new Promise((resolve) => {
-    execFile(bin, ["whois", "--json", ip], { encoding: "utf8", timeout: 5000, maxBuffer: 2 * 1024 * 1024 }, (err, stdout) => {
-      if (err) return resolve(null);
+    execFile(bin, ["whois", "--json", ip], { encoding: "utf8", timeout: 5000, maxBuffer: 2 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        // `tailscale whois` says "no match for IP" for addresses that aren't tailnet peers.
+        return resolve({ ok: false, reason: /no match|not found|unknown peer/i.test(`${stderr}`) ? "unknown" : "error" });
+      }
       try {
         const j = JSON.parse(stdout) as Json;
         const node = (j.Node ?? {}) as Json;
         const user = (j.UserProfile ?? {}) as Json;
         const nodeId = str(node.StableID);
-        if (!nodeId) return resolve(null);
+        if (!nodeId) return resolve({ ok: false, reason: "error" });
         const host = (node.Hostinfo ?? {}) as Json;
         resolve({
-          nodeId,
-          login: typeof user.LoginName === "string" ? user.LoginName : null,
-          name: clean(str(host.Hostname) || str(node.ComputedName) || dns(node.Name).split(".")[0] || nodeId, 64),
+          ok: true,
+          who: {
+            nodeId,
+            login: typeof user.LoginName === "string" ? user.LoginName : null,
+            name: clean(str(host.Hostname) || str(node.ComputedName) || dns(node.Name).split(".")[0] || nodeId, 64),
+          },
         });
       } catch {
-        resolve(null);
+        resolve({ ok: false, reason: "error" });
       }
     });
   });
 }
+
+/** Who is behind a tailnet IP (null: unknown or couldn't ask). */
+export async function whois(ip: string): Promise<Whois | null> {
+  const r = await whoisDetailed(ip);
+  return r.ok ? r.who : null;
+}
+
+/** "100.1.2.3" or "[fd7a::1]" for URLs and Host headers. */
+export const urlHost = (ip: string): string => (ip.includes(":") ? `[${ip}]` : ip);
 
 /** "::ffff:100.1.2.3" → "100.1.2.3". */
 export const plainIp = (addr: string | undefined): string => (addr ?? "").replace(/^::ffff:/, "");

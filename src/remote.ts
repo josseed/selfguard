@@ -19,12 +19,12 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { posix } from "node:path";
 import { gunzipSync } from "node:zlib";
-import { SSH_HOST_RE, type Root } from "./config.ts";
+import { DEFAULT_SHARE_PORT, SSH_HOST_RE, type Root } from "./config.ts";
 import { LOCKFILES } from "./lockfile/detect.ts";
 import type { LockfileType } from "./lockfile/types.ts";
 import type { GitFacts } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
-import { tailnet, type TailnetPeer } from "./tailnet.ts";
+import { tailnet, urlHost, type TailnetPeer } from "./tailnet.ts";
 
 export class RemoteError extends Error {
   readonly code: "unreachable" | "auth" | "failed" | "too_large" | "protocol" | "not_installed" | "outdated";
@@ -152,10 +152,9 @@ export function runRemote(t: Target, input: string, opts: { maxBytes: number; ti
 async function shareRead(t: Target, input: string, opts: { maxBytes: number; timeoutMs: number }): Promise<Buffer> {
   if (!t.credential) throw new RemoteError("not_installed", "not paired with this machine yet");
   if (!/^[0-9a-fA-F.:]+$/.test(t.host)) throw new RemoteError("protocol", "invalid tailnet address");
-  const host = t.host.includes(":") ? `[${t.host}]` : t.host;
   let res: Response;
   try {
-    res = await fetch(`http://${host}:${t.port ?? 47821}/read`, {
+    res = await fetch(`http://${urlHost(t.host)}:${t.port ?? DEFAULT_SHARE_PORT}/read`, {
       method: "POST",
       headers: { authorization: `Bearer ${t.credential}`, "content-type": "text/plain; charset=utf-8" },
       body: input,
@@ -167,7 +166,13 @@ async function shareRead(t: Target, input: string, opts: { maxBytes: number; tim
     throw new RemoteError("unreachable", timeout ? `timed out after ${Math.round(opts.timeoutMs / 1000)}s` : "the machine didn't answer (offline, or sharing turned off there)");
   }
   if (res.status === 401 || res.status === 403) throw new RemoteError("auth", "the machine no longer accepts this one (access revoked): pair again");
-  if (res.status === 503) throw new RemoteError("unreachable", "sharing is turned off on that machine");
+  if (res.status === 503) {
+    const code = await res.json().then((j) => (j as { error?: { code?: unknown } } | null)?.error?.code, () => null);
+    throw new RemoteError(
+      "unreachable",
+      code === "off" ? "sharing is turned off on that machine" : "that machine couldn't check this one with Tailscale right now; it will be retried",
+    );
+  }
   if (res.status !== 200) throw new RemoteError("failed", `the machine answered ${res.status}`);
   const chunks: Buffer[] = [];
   let size = 0;
@@ -213,6 +218,8 @@ sg_expand() {
   esac
 }
 sg_header() { printf 'SG1\t%s\t%s\t%s\t%s\n' "$HOME" "$(uname -s 2>/dev/null)" "$1" "$2"; }
+# Inside the granted folder (restricted reader only; SG_SCOPE is its physical path).
+sg_inside() { case $1 in "$SG_SCOPE"|"$SG_SCOPE"/*) return 0 ;; esac; return 1; }
 
 # Git facts for a project: walks up to the folder holding .git and reads HEAD, commondir,
 # the worktree pointer and the [section]/url lines of the config. Never runs git.
@@ -226,10 +233,16 @@ sg_git() {
       case $p in /*) g=$p ;; "") break ;; *) g="$d/$p" ;; esac
       wt=1; break
     fi
-    if [ "$d" = "$HOME" ] || [ "$d" = / ] || [ -z "$d" ]; then break; fi
+    # Never above the granted folder (nor the home).
+    if [ "$d" = "@{SG_SCOPE:-}" ] || [ "$d" = "$HOME" ] || [ "$d" = / ] || [ -z "$d" ]; then break; fi
     d=@{d%/*}; [ -n "$d" ] || d=/
   done
   [ -n "$g" ] || return 0
+  # Restricted reader: the git dir must be inside the granted folder too.
+  if [ -n "@{SG_SCOPE:-}" ]; then
+    gr=$(cd -- "$g" 2>/dev/null && pwd -P) || return 0
+    sg_inside "$gr" || return 0
+  fi
   if [ -d "$g" ]; then ok=1; else ok=0; fi
   head=; [ -f "$g/HEAD" ] && { IFS= read -r head < "$g/HEAD" || true; }
   cd_=$g
@@ -238,6 +251,9 @@ sg_git() {
     case $c in /*) cd_=$c ;; "") ;; *) cd_="$g/$c" ;; esac
   fi
   cdr=$(cd -- "$cd_" 2>/dev/null && pwd -P)
+  if [ -n "@{SG_SCOPE:-}" ]; then
+    [ -n "$cdr" ] && sg_inside "$cdr" || return 0
+  fi
   a=0
   for m in $(sg_mtimes "$g/HEAD" "$g/index" "$g/logs/HEAD"); do
     [ "$m" -gt "$a" ] 2>/dev/null && a=$m

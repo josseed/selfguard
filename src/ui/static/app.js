@@ -1097,7 +1097,7 @@ function pageMachines() {
       ? h("button", { class: "btn small primary", type: "button", title: "It runs selfguard with sharing on: connect without SSH, keeping its history", onclick: () => openPairing({ replace: m.name, peerName: peer.name }) }, "Switch to sharing")
       : null;
     const repairBtn = shared && m.status.errorCode === "auth" && peer?.share
-      ? h("button", { class: "btn small primary", type: "button", onclick: () => openPairing({ peer: peer.dnsName, peerName: peer.name, name: m.name }) }, "Pair again")
+      ? h("button", { class: "btn small primary", type: "button", onclick: () => openPairing({ replace: m.name, peerName: peer.name }) }, "Pair again")
       : null;
     const status = m.status.roots || [];
     const roots = m.roots.length

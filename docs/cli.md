@@ -255,7 +255,9 @@ prints the recommended next step. `--json` returns all of it.
 Pairs with a tailnet machine that has selfguard sharing on. It shows a 6-digit code, then waits
 up to 5 minutes for you to approve it on that machine (its dashboard, or
 `selfguard share approve`). The folders it suggests are added. Without `--via`,
-`machines add` uses sharing when the machine answers and SSH otherwise.
+`machines add` uses sharing when the machine answers and SSH otherwise. SSH-only options
+(`--mode`, `--root`, `--depth`, `--scope`, `--port`, `--manual`) always mean SSH, as before 0.8.
+`--name` must not belong to another machine. To pair an existing machine again, use `migrate`.
 
 ### `selfguard machines migrate <name> --via share|ssh`
 
