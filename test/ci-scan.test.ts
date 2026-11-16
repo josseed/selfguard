@@ -53,12 +53,19 @@ test("files(): workflows and action files, bounded, no dependency folders or sym
 
   const t = sources.repoTarget(root);
   assert.deepEqual(ci.GITHUB_ACTIONS.files(t), [wf, wf2, local, sub]);
-  // The watcher also watches the folders of composite actions.
-  assert.deepEqual(ci.GITHUB_ACTIONS.watch!(t), [join(root, ".github", "workflows"), dirname(local), dirname(sub)]);
+  // The watcher also watches the folders of the composite actions found (no walk of its own).
+  const found = ci.GITHUB_ACTIONS.files(t);
+  assert.deepEqual(ci.GITHUB_ACTIONS.watch!(t, found), [join(root, ".github", "workflows"), dirname(local), dirname(sub)]);
+  assert.deepEqual(ci.GITHUB_ACTIONS.watch!(t, []), [join(root, ".github", "workflows")]);
+  // Check's markers: where a new workflow or action appears, never the git root itself.
+  assert.deepEqual(ci.GITHUB_ACTIONS.markers!(t, found), [
+    join(root, ".github", "workflows"), join(root, ".github"), join(root, ".github", "actions"), dirname(local), dirname(sub), join(root, "tools"),
+  ]);
+  assert.deepEqual(ci.GITHUB_ACTIONS.probe!(t), [wf, wf2]);
   assert.deepEqual(ci.GITHUB_ACTIONS.files(sources.machineTarget()), []);
-  assert.deepEqual(ci.GITHUB_ACTIONS.watch!(sources.machineTarget()), []);
+  assert.deepEqual(ci.GITHUB_ACTIONS.watch!(sources.machineTarget(), []), []);
   const bare = repo();
-  assert.deepEqual([ci.GITHUB_ACTIONS.files(sources.repoTarget(bare)), ci.GITHUB_ACTIONS.watch!(sources.repoTarget(bare))], [[], []]);
+  assert.deepEqual([ci.GITHUB_ACTIONS.files(sources.repoTarget(bare)), ci.GITHUB_ACTIONS.watch!(sources.repoTarget(bare), [])], [[], []]);
 });
 
 test("scanSources: tags matched locally, lines may be affected, bare SHAs unknown, malicious always", async () => {

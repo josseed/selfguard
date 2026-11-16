@@ -85,6 +85,14 @@ export interface SourceFileState {
   size: number;
   mtimeMs: number;
   hash: string;
+  /** Ids of the extractors that read it, so `check` can re-read it without calling files(). */
+  by?: string[];
+}
+
+/** A path whose mtime (null: missing) tells `check` that files() may find other files. */
+export interface SourceMarker {
+  path: string;
+  mtimeMs: number | null;
 }
 
 export interface SourceRecord {
@@ -96,6 +104,11 @@ export interface SourceRecord {
   registeredAt: string;
   scannedAt: string | null;
   files: SourceFileState[];
+  /**
+   * The extractors' markers when the files were listed. `check` stats them (and the files)
+   * instead of calling files(); absent when an extractor of the kind has no markers().
+   */
+  markers?: SourceMarker[];
   refs: SourceRef[];
   findings: SourceFinding[];
   warnings: SourceWarning[];
@@ -117,7 +130,8 @@ export interface ExtractResult {
 /**
  * Reads one kind of source. Implementations must only read files as data (never execute or
  * load anything), keep secrets out of refs and warnings (no env, headers, tokens, URLs with
- * credentials, other arguments) and stay fast (they run on every check).
+ * credentials, other arguments) and stay fast. With markers(), `check` calls files() only
+ * when a marker changed; without it, on every check.
  */
 export interface SourceExtractor {
   /** Unique id, e.g. "github-actions" or "mcp-servers". */
@@ -128,8 +142,22 @@ export interface SourceExtractor {
    * for a scope the extractor doesn't handle (e.g. "machine" for CI).
    */
   files(target: SourceTarget): string[];
-  /** Extra paths for the background watcher (e.g. the `.github/workflows` folder). Default: files(). */
-  watch?(target: SourceTarget): string[];
+  /**
+   * Extra paths for the background watcher (e.g. the `.github/workflows` folder). `files` are
+   * those of the last scan (none before the first one): don't walk. Default: files().
+   */
+  watch?(target: SourceTarget, files: string[]): string[];
+  /**
+   * Paths whose mtime or existence changes when files() would find another file: the folders
+   * new files appear in, candidate files that don't exist yet. `files` are those files() found.
+   * Must be cheap (no walk): `check` stats them instead of calling files().
+   */
+  markers?(target: SourceTarget, files: string[]): string[];
+  /**
+   * For a target without a record yet: a few cheap paths (no walk). `check` calls files() only
+   * when one of them is an existing file; otherwise discovery waits for sync or scan.
+   */
+  probe?(target: SourceTarget): string[];
   /** Extract references from one file's text. Must not throw on malformed input. */
   extract(file: string, text: string, target: SourceTarget): ExtractResult;
 }

@@ -2,16 +2,17 @@
  * Which GitHub Actions files a repo has: `.github/workflows/*.yml|yaml` at the git root, and
  * `action.yml|yaml` of (composite) actions anywhere in the repo. The walk is bounded,
  * breadth-first, skips dependency folders and hidden folders other than `.github`, and never
- * follows symlinks (directory entries are lstat-typed).
+ * follows symlinks (directory entries are lstat-typed). Only files() walks (sync, scan): `check`
+ * stats the markers instead, and the watcher uses the files of the last scan.
  */
 import { readdirSync, type Dirent } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { SKIP_DIRS } from "../../discover.ts";
 import type { SourceTarget } from "../types.ts";
 
 /** Levels below the git root (`.github/actions/<name>/action.yml` is level 3). */
 const MAX_DEPTH = 6;
-/** Folders read per walk: files() runs on every check, keep it cheap. */
+/** Folders read per walk (sync and scan only: check stats the markers). */
 const MAX_DIRS = 2000;
 const MAX_ACTION_FILES = 100;
 /** Generated or tool folders that never hold a repo's own actions. */
@@ -71,8 +72,10 @@ export function ciFiles(target: SourceTarget): string[] {
   return [...new Set([...workflowFiles(target.root), ...actionFiles(target.root)])];
 }
 
-/** The watcher's paths: `.github/workflows` and each folder holding a composite action file. */
-export function ciWatch(target: SourceTarget): string[] {
+const isActionFile = (f: string): boolean => ACTION_FILES.includes(basename(f));
+
+/** The watcher's paths: `.github/workflows` and each folder holding a known composite action file. */
+export function ciWatch(target: SourceTarget, files: string[] = []): string[] {
   if (target.scope !== "repo") return [];
   const dirs: string[] = [];
   const dir = workflowsDir(target.root);
@@ -82,6 +85,26 @@ export function ciWatch(target: SourceTarget): string[] {
   } catch {
     /* no workflows folder */
   }
-  for (const f of actionFiles(target.root)) dirs.push(dirname(f));
+  for (const f of files) if (isActionFile(f)) dirs.push(dirname(f));
   return [...new Set(dirs)];
 }
+
+/**
+ * Folders where a new workflow or composite action appears (their mtime changes): the
+ * workflows folder, `.github`, `.github/actions`, and each known action's folder and parent.
+ * Never the git root itself, whose mtime changes with any new top-level file.
+ */
+export function ciMarkers(target: SourceTarget, files: string[]): string[] {
+  if (target.scope !== "repo") return [];
+  const { root } = target;
+  const inside = (d: string): boolean => d !== root && d.startsWith(`${root}${sep}`);
+  const out = [workflowsDir(root), join(root, ".github"), join(root, ".github", "actions")];
+  for (const f of files) {
+    if (!isActionFile(f)) continue;
+    for (const d of [dirname(f), dirname(dirname(f))]) if (inside(d)) out.push(d);
+  }
+  return [...new Set(out)];
+}
+
+/** Without a record: the workflow files (one folder read), so check finds a repo's first workflow. */
+export const ciProbe = (target: SourceTarget): string[] => (target.scope === "repo" ? workflowFiles(target.root) : []);

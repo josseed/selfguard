@@ -6,7 +6,7 @@ import type { ExtractResult, SourceExtractor } from "../types.ts";
 import { prTargetCheckout, scriptInjection, unpinnedActions } from "./checks.ts";
 import { splitLines } from "./lines.ts";
 import { scanUses } from "./uses.ts";
-import { ciFiles, ciWatch } from "./workflows.ts";
+import { ciFiles, ciMarkers, ciProbe, ciWatch } from "./workflows.ts";
 
 export function extractActions(text: string): ExtractResult {
   const lines = splitLines(typeof text === "string" ? text : "");
@@ -20,5 +20,7 @@ export const GITHUB_ACTIONS: SourceExtractor = {
   kind: "ci",
   files: ciFiles,
   watch: ciWatch,
+  markers: ciMarkers,
+  probe: ciProbe,
   extract: (_file, text) => extractActions(text),
 };

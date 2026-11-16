@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { sha256 } from "../fsutil.ts";
 import { activeKinds, sourceExtractors } from "./registry.ts";
 import { loadSource } from "./store.ts";
-import type { SourceExtractor, SourceFileState, SourceKind, SourceRecord, SourceTarget } from "./types.ts";
+import type { SourceExtractor, SourceFileState, SourceKind, SourceMarker, SourceRecord, SourceTarget } from "./types.ts";
 
 export const MAX_SOURCE_FILES = 200;
 /** Agent configs such as ~/.claude.json grow with history: allow a few MB. */
@@ -39,7 +39,7 @@ export function gitRootOf(dir: string): string | null {
   return null;
 }
 
-function isFile(path: string): boolean {
+export function isFile(path: string): boolean {
   try {
     const st = statSync(path);
     return st.isFile() && st.size <= MAX_SOURCE_BYTES;
@@ -48,7 +48,7 @@ function isFile(path: string): boolean {
   }
 }
 
-function safeList(fn: () => string[]): string[] {
+export function safeList(fn: () => string[]): string[] {
   try {
     const list = fn();
     return Array.isArray(list) ? list.filter((p): p is string => typeof p === "string" && isAbsolute(p)) : [];
@@ -70,14 +70,40 @@ export function filesFor(kind: SourceKind, target: SourceTarget): Map<string, So
   return out;
 }
 
-/** Paths for the background watcher: each extractor's watch() (default: its existing files). */
+/**
+ * Paths for the background watcher: each extractor's watch(), given the files of the last scan
+ * (default: its existing files).
+ */
 export function watchPathsFor(target: SourceTarget): string[] {
   const out = new Set<string>();
   for (const ex of sourceExtractors()) {
-    const list = ex.watch ? safeList(() => ex.watch!(target)) : safeList(() => ex.files(target)).filter(isFile);
+    const known = (loadSource(ex.kind, target.scope, target.root)?.files ?? []).map((f) => f.path);
+    const list = ex.watch ? safeList(() => ex.watch!(target, known)) : safeList(() => ex.files(target)).filter(isFile);
     for (const p of list) out.add(p);
   }
   return [...out];
+}
+
+const MAX_MARKERS = 500;
+
+export function mtimeOf(path: string): number | null {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The markers of a kind for these files, with their mtimes now. Undefined when an extractor
+ * of the kind has no markers(): `check` then calls files() every time.
+ */
+export function markerStates(kind: SourceKind, target: SourceTarget, files: string[]): SourceMarker[] | undefined {
+  const extractors = sourceExtractors(kind);
+  if (extractors.some((ex) => typeof ex.markers !== "function")) return undefined;
+  const paths = new Set<string>();
+  for (const ex of extractors) for (const p of safeList(() => ex.markers!(target, files))) paths.add(p);
+  return [...paths].slice(0, MAX_MARKERS).map((path) => ({ path, mtimeMs: mtimeOf(path) }));
 }
 
 export function fileState(path: string): { state: SourceFileState; text: string } | null {
