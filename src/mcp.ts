@@ -10,7 +10,7 @@ import { needsAttention } from "./alerts.ts";
 import * as api from "./api.ts";
 import { groupByPackage } from "./report.ts";
 import { GUIDE } from "./guide.ts";
-import { SUPPORTED_ECOSYSTEMS } from "./lockfile/types.ts";
+import { parseEcosystem } from "./lockfile/types.ts";
 import { VERSION } from "./version.ts";
 
 const KNOWN_PROTOCOLS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -165,7 +165,9 @@ export const TOOLS: Tool[] = [
     ),
     annotations: { readOnlyHint: true, openWorldHint: false },
     run: (a) => {
-      const eco = typeof a.ecosystem === "string" ? SUPPORTED_ECOSYSTEMS.find((e) => e === a.ecosystem) : undefined;
+      if (a.ecosystem === undefined || a.ecosystem === null || a.ecosystem === "") return api.whereUsed(str(a, "package"));
+      const eco = typeof a.ecosystem === "string" ? parseEcosystem(a.ecosystem) : null;
+      if (!eco) throw new api.ApiError("invalid", `"ecosystem" must be one of npm, PyPI, crates.io, Go`);
       return api.whereUsed(str(a, "package"), eco);
     },
   },

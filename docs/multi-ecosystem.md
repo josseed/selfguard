@@ -68,11 +68,18 @@ or language toolchain is run, and none needs to be installed: Node.js is the onl
 ## Discovery, hook and other machines
 
 - **Discovery** recognizes the new lockfiles and skips Python environments (`venv`,
-  `site-packages`, `__pypackages__`), Cargo's `target` and Go's module cache (`…/pkg/mod`).
+  `site-packages`, `__pypackages__`), Cargo's `target`, Go's module cache (`…/pkg/mod`, wherever
+  `GOPATH` is) and `testdata` folders.
 - **The shell hook** reacts to `pyproject.toml`, `Cargo.toml` and the new lockfiles while walking
   up, so a crate inside a Cargo workspace resolves to the workspace's `Cargo.lock`. Above a
-  `package.json`, `Cargo.toml` or `pyproject.toml`, only a lockfile of the same ecosystem
-  counts: a JavaScript folder inside a Go module isn't that module.
+  `package.json`, `Cargo.toml` or `pyproject.toml`, only a folder with a lockfile of the same
+  ecosystem counts: a JavaScript folder inside a Go module isn't that module. A folder found that
+  way is the same project as when entered directly. In a Python or Rust folder without a
+  lockfile, the hook watches the folder and registers the project once `uv lock`, `poetry lock`
+  or `cargo generate-lockfile` creates one.
+- **Severity:** RustSec and PYSEC advisories often have no severity label; selfguard uses their
+  CVSS v3 vector or the GHSA copy of the same advisory. RustSec informational notices aren't
+  findings.
 - **Watchers and `check`** re-scan when the lockfile (or `go.mod`) changes.
 - **Other machines** list and fetch the new lockfiles, and `pyproject.toml` for Poetry projects.
   SSH readers installed by an earlier selfguard keep working with JavaScript only; reinstall

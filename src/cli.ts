@@ -7,7 +7,7 @@ import { appStatus, installApp, uninstallApp } from "./app.ts";
 import { GUIDE } from "./guide.ts";
 import { hookEnter, ZSH_HOOK } from "./hook.ts";
 import { findProject } from "./lockfile/detect.ts";
-import { SUPPORTED_ECOSYSTEMS } from "./lockfile/types.ts";
+import { parseEcosystem } from "./lockfile/types.ts";
 import { runMcpServer } from "./mcp.ts";
 import { groupByPackage, paint, renderFindings, severityLabel, tildify } from "./report.ts";
 import { clean } from "./sanitize.ts";
@@ -950,8 +950,8 @@ function cmdWhere(args: string[]): number {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { ...JSON_OPT, ecosystem: { type: "string" } } });
   const name = positionals[0];
   if (!name) usage("usage: selfguard where <package> [--ecosystem npm|PyPI|crates.io|Go]");
-  const eco = values.ecosystem === undefined ? undefined : SUPPORTED_ECOSYSTEMS.find((e) => e.toLowerCase() === values.ecosystem!.toLowerCase());
-  if (values.ecosystem !== undefined && !eco) usage(`unknown ecosystem: ${values.ecosystem} (npm, PyPI, crates.io or Go)`);
+  const eco = values.ecosystem === undefined ? undefined : parseEcosystem(values.ecosystem);
+  if (eco === null) usage(`unknown ecosystem: ${values.ecosystem} (npm, PyPI, crates.io or Go)`);
   const r = api.whereUsed(name, eco);
   if (values.json) {
     emit(r);

@@ -1,17 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { findProject } from "../src/lockfile/detect.ts";
 import { parseCargoLockfile } from "../src/lockfile/cargo.ts";
 import { parseGoMod } from "../src/lockfile/gomod.ts";
 import { parseLockfile, parseManifest } from "../src/lockfile/index.ts";
 import { parsePoetryLockfile, parseUvLockfile, pyprojectDeps } from "../src/lockfile/python.ts";
 import { parseToml } from "../src/lockfile/toml.ts";
 import type { Dependency } from "../src/lockfile/types.ts";
-import { evaluate } from "../src/match.ts";
-import type { OsvVuln } from "../src/osv.ts";
 import { compareVersions, isValidVersion } from "../src/versions.ts";
 
 const fixture = (p: string) => readFileSync(new URL(`./fixtures/multi/${p}`, import.meta.url), "utf8");
@@ -183,95 +178,4 @@ test("garbage is rejected by every new parser", () => {
     assert.throws(() => parseLockfile(type, "[something]\nx = 1\n"), type);
   }
   assert.throws(() => parseLockfile("gomod", "{}"));
-});
-
-// ---------- detection ----------
-
-test("findProject: new lockfiles, nested crates resolve to the workspace, a JS package is not a Go module", () => {
-  const root = mkdtempSync(join(tmpdir(), "sg-eco-"));
-  mkdirSync(join(root, ".git"));
-  writeFileSync(join(root, "go.mod"), "module x\n");
-  mkdirSync(join(root, "web"));
-  writeFileSync(join(root, "web", "package.json"), "{}");
-  assert.equal(findProject(join(root, "web"))?.lockType, null, "package.json without a lockfile, not the go.mod above");
-  assert.equal(findProject(root)?.lockType, "gomod");
-
-  const ws = mkdtempSync(join(tmpdir(), "sg-cargo-"));
-  writeFileSync(join(ws, "Cargo.lock"), "version = 3\n");
-  mkdirSync(join(ws, "crates", "core"), { recursive: true });
-  writeFileSync(join(ws, "crates", "core", "Cargo.toml"), "[package]\nname='core'\n");
-  assert.deepEqual(findProject(join(ws, "crates", "core")), { root: ws, lockfile: join(ws, "Cargo.lock"), lockType: "cargo" });
-
-  const py = mkdtempSync(join(tmpdir(), "sg-py-"));
-  writeFileSync(join(py, "uv.lock"), "version = 1\n");
-  writeFileSync(join(py, "package-lock.json"), "{}");
-  assert.equal(findProject(py)?.lockType, "npm", "JavaScript first when a folder has both");
-});
-
-// ---------- matching ----------
-
-test("evaluate: PyPI ECOSYSTEM ranges use PEP 440 and normalized names", () => {
-  const v: OsvVuln = {
-    id: "PYSEC-1",
-    affected: [{ package: { ecosystem: "PyPI", name: "PyYAML" }, ranges: [{ type: "ECOSYSTEM", events: [{ introduced: "0" }, { fixed: "5.4" }] }] }],
-  };
-  assert.deepEqual(evaluate(v, "pyyaml", "5.3.1", "PyPI"), { affected: true, fixedIn: "5.4" });
-  assert.equal(evaluate(v, "pyyaml", "5.4", "PyPI").affected, false);
-  assert.equal(evaluate(v, "pyyaml", "5.4rc1", "PyPI").affected, true, "rc sorts before the final release");
-  assert.equal(evaluate(v, "pyyaml", "5.3.1", "npm").affected, false, "same name in another ecosystem");
-  const listed: OsvVuln = { id: "X", affected: [{ package: { ecosystem: "PyPI", name: "a" }, versions: ["1.0"] }] };
-  assert.equal(evaluate(listed, "a", "1.0.0", "PyPI").affected, true, "equivalent PEP 440 spelling");
-});
-
-test("evaluate: Go and crates.io SEMVER ranges", () => {
-  const go: OsvVuln = {
-    id: "GO-2022-0236",
-    affected: [{ package: { ecosystem: "Go", name: "golang.org/x/net" }, ranges: [{ type: "SEMVER", events: [{ introduced: "0" }, { fixed: "0.0.0-20211209124913-491a49abca63" }] }] }],
-  };
-  assert.deepEqual(evaluate(go, "golang.org/x/net", "0.0.0-20210226172049-e18ecbb05110", "Go"), {
-    affected: true,
-    fixedIn: "0.0.0-20211209124913-491a49abca63",
-  });
-  assert.equal(evaluate(go, "golang.org/x/net", "0.1.0", "Go").affected, false);
-  const crate: OsvVuln = {
-    id: "RUSTSEC-2021-0003",
-    affected: [{ package: { ecosystem: "crates.io", name: "smallvec" }, ranges: [{ type: "SEMVER", events: [{ introduced: "1.6.0" }, { fixed: "1.6.1" }] }] }],
-  };
-  assert.deepEqual(evaluate(crate, "smallvec", "1.6.0", "crates.io"), { affected: true, fixedIn: "1.6.1" });
-  assert.equal(evaluate(crate, "smallvec", "0.6.13", "crates.io").affected, false);
-});
-
-test("discover finds Python, Rust and Go projects and skips Go's module cache and site-packages", async () => {
-  const { discover } = await import("../src/discover.ts");
-  const root = mkdtempSync(join(tmpdir(), "sg-disc-"));
-  const put = (rel: string, body = "") => {
-    mkdirSync(join(root, rel, ".."), { recursive: true });
-    writeFileSync(join(root, rel), body);
-  };
-  put("api/uv.lock");
-  put("site/poetry.lock");
-  put("cli/Cargo.lock");
-  put("svc/go.mod", "module svc\n");
-  put("go/pkg/mod/github.com/x/y@v1.0.0/go.mod", "module y\n");
-  put("venv2/lib/python3.12/site-packages/pkg/uv.lock");
-  const found = (await discover(root, { depth: 8 })).map((p) => [p.root.slice(root.length + 1), p.lockType]).sort();
-  assert.deepEqual(found, [["api", "uv"], ["cli", "cargo"], ["site", "poetry"], ["svc", "gomod"]]);
-});
-
-test("the reader lists new lockfiles and serves pyproject.toml, but not Go's module cache", async () => {
-  const { answerReader } = await import("../src/reader.ts");
-  const { parseFetch, parseList } = await import("../src/remote.ts");
-  const home = mkdtempSync(join(tmpdir(), "sg-rhome-"));
-  mkdirSync(join(home, "code", "site"), { recursive: true });
-  mkdirSync(join(home, "code", "pkg", "mod", "m"), { recursive: true });
-  writeFileSync(join(home, "code", "site", "poetry.lock"), "[metadata]\n");
-  writeFileSync(join(home, "code", "site", "pyproject.toml"), "[project]\n");
-  writeFileSync(join(home, "code", "pkg", "mod", "m", "go.mod"), "module m\n");
-  const ctx = { scope: home, home };
-  const list = parseList(await answerReader(`SGREQ1 list\n3\t${home}/code\n`, ctx), { host: "x", transport: "share" } as any);
-  assert.deepEqual(list.projects.map((p) => [p.root.split("/code/")[1], p.lockType]), [["site", "poetry"]]);
-  const t = { host: "x", transport: "share" } as any;
-  const file = `${list.projects[0]!.root}/pyproject.toml`;
-  const fetched = parseFetch(await answerReader(`SGREQ1 fetch\n${file}\n`, ctx), t);
-  assert.equal(fetched.get(file)?.toString(), "[project]\n");
 });

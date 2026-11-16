@@ -18,12 +18,18 @@ All notable changes to this project are documented here. The format is based on
   stored without their leading `v`, as OSV lists them. Packages carry an `ecosystem` field in
   JSON, MCP and API output (absent in records stored by earlier versions, meaning npm).
 - `selfguard where <package> --ecosystem npm|PyPI|crates.io|Go`, and an `ecosystem` argument for
-  the `selfguard_where` MCP tool.
+  the `selfguard_where` MCP tool (case-insensitive; unknown values are an error).
+- Advisories without a severity label (PYSEC, GO, RUSTSEC) take it from their CVSS v3 vector or
+  from an alias that has one. Copies of an advisory under several ids are collapsed even when
+  only one of them lists the other, keeping the copy with a known severity.
+- RustSec informational notices (unmaintained, unsound) are not reported as vulnerabilities.
 
 ### Changed
 
 - A folder with lockfiles of several ecosystems is one project, checked through the first of:
-  JavaScript, uv, Poetry, Cargo, Go. A `package.json` (or `Cargo.toml`, `pyproject.toml`) below a
+  JavaScript, uv, Poetry, Cargo, Go, whichever subfolder you enter it from.
+- Discovery skips `testdata` folders (fixtures, ignored by the go tool) and Go module caches
+  wherever `GOPATH` is. A `package.json` (or `Cargo.toml`, `pyproject.toml`) below a
   lockfile of another ecosystem no longer resolves to it.
 - SSH readers installed by earlier versions keep working but only list JavaScript lockfiles:
   reinstall them (`selfguard machines install <name>`) to include Python, Rust and Go.

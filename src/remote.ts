@@ -62,7 +62,7 @@ export function shq(s: string): string {
 }
 
 export const FETCHABLE: ReadonlySet<string> = new Set([...LOCKFILES.map(([f]) => f).filter((f) => f !== "bun.lockb"), "package.json", "pyproject.toml"]);
-export const SKIP: readonly string[] = ["node_modules", "bower_components", "jspm_packages", "vendor", "Pods", "venv", "__pycache__", "site-packages", "__pypackages__", "target"];
+export const SKIP: readonly string[] = ["node_modules", "bower_components", "jspm_packages", "vendor", "Pods", "venv", "__pycache__", "site-packages", "__pypackages__", "target", "testdata"];
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_LIST_BYTES = 16 * 1024 * 1024;
 const MAX_FETCH_BYTES = 200 * 1024 * 1024;

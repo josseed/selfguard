@@ -3,6 +3,10 @@ export type Ecosystem = "npm" | "PyPI" | "crates.io" | "Go";
 
 export const SUPPORTED_ECOSYSTEMS: readonly Ecosystem[] = ["npm", "PyPI", "crates.io", "Go"];
 
+/** "pypi", "Crates.io", "go"… -> the OSV name; null if it isn't one we support. */
+export const parseEcosystem = (s: string): Ecosystem | null =>
+  SUPPORTED_ECOSYSTEMS.find((e) => e.toLowerCase() === s.trim().toLowerCase()) ?? null;
+
 export interface Dependency {
   name: string;
   version: string;

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { atomicWrite, isObject, readJsonFile } from "./fsutil.ts";
 import type { Ecosystem } from "./lockfile/types.ts";
 import { vulnCacheDir } from "./paths.ts";
+import { normalizeName } from "./versions.ts";
 import { VERSION } from "./version.ts";
 
 const API = process.env.SELFGUARD_OSV_API ?? "https://api.osv.dev/v1";
@@ -27,8 +28,14 @@ export interface OsvRange {
   events: OsvEvent[];
 }
 
+export interface OsvSeverity {
+  type: string;
+  score: string;
+}
+
 export interface OsvAffected {
   package?: { ecosystem?: string; name?: string };
+  severity?: OsvSeverity[];
   ranges?: OsvRange[];
   versions?: string[];
   database_specific?: Record<string, unknown>;
@@ -40,6 +47,7 @@ export interface OsvVuln {
   summary?: string;
   details?: string;
   aliases?: string[];
+  severity?: OsvSeverity[];
   affected?: OsvAffected[];
   database_specific?: Record<string, unknown>;
   withdrawn?: string;
@@ -53,8 +61,7 @@ export interface PackageQuery {
 }
 
 /** Name as OSV indexes it (PyPI names PEP 503-normalized). */
-const queryName = (q: PackageQuery): string =>
-  q.ecosystem === "PyPI" ? q.name.toLowerCase().replace(/[-_.]+/g, "-") : q.name;
+const queryName = (q: PackageQuery): string => normalizeName(q.ecosystem ?? "npm", q.name);
 
 /** A vulnerability id reported for a query, with its last-modified timestamp. */
 export interface VulnRef {

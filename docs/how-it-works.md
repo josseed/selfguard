@@ -130,7 +130,10 @@ so a network problem never looks like "all clear".
 
 `malicious` > `critical` > `high` > `moderate` > `low` > `unknown`.
 Anything with an `MAL-` ID is `malicious`. Other severities come from the advisory's
-database-specific rating (GitHub's `LOW`/`MODERATE`/`HIGH`/`CRITICAL`).
+database-specific rating (GitHub's `LOW`/`MODERATE`/`HIGH`/`CRITICAL`), or else from its CVSS v3
+base score (9+ critical, 7+ high, 4+ moderate). When an advisory has copies under several ids,
+the finding takes the worst severity any copy states. RustSec informational notices
+(unmaintained or unsound crates) are not reported.
 
 ## Grouping repositories
 

@@ -295,7 +295,7 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
       group.active = group.checkouts.some((k) => k.active);
       const counted = group.active ? active : all;
       group.worstSeverity = worstSeverity(counted);
-      group.vulnerablePackages = new Set(counted.map((f) => `${f.name}@${f.version}`)).size;
+      group.vulnerablePackages = new Set(counted.map(packageKey)).size;
       // active first, main checkout first, then riskiest
       group.checkouts.sort(
         (a, b) =>

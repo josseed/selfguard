@@ -14,6 +14,7 @@ import { LOCKFILES, type Project } from "./lockfile/detect.ts";
 export const SKIP_DIRS: ReadonlySet<string> = new Set([
   "node_modules", "bower_components", "jspm_packages", // JS deps
   "vendor", "Pods", "venv", "__pycache__", "site-packages", "__pypackages__", "target", // other ecosystems' deps/build caches
+  "testdata", // Go fixtures (ignored by the go tool), often pinned to vulnerable versions on purpose
 ]);
 
 /** Go's module cache ($GOPATH/pkg/mod) holds thousands of go.mod files of downloaded modules. */

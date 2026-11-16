@@ -33,6 +33,7 @@ import { groupByPackage } from "../report.ts";
 import { appStatus, installApp, uninstallApp } from "../app.ts";
 import { scheduleOff, scheduleOn, scheduleStatus, updateDiscoverAgent, updateRemoteAgent, updateWatcher } from "../schedule.ts";
 import { loadRepo } from "../store.ts";
+import { packageKey } from "../lockfile/types.ts";
 import { compare as compareVersions, isValid as isValidVersion } from "../semver.ts";
 import { cachedUpdate, checkForUpdate, installedVersion } from "../update.ts";
 import { VERSION } from "../version.ts";
@@ -110,7 +111,7 @@ export function getOverview(): Overview {
   const worst = new Map<string, Severity>();
   for (const r of attention) {
     for (const g of groupByPackage(r.findings)) {
-      const k = `${g.ecosystem}:${g.name}@${g.version}`;
+      const k = packageKey(g);
       const prev = worst.get(k);
       if (!prev || severityRank(g.worst) < severityRank(prev)) worst.set(k, g.worst);
     }

@@ -52,9 +52,10 @@ function lockfileIn(dir: string, only?: ReadonlySet<LockfileType>): [string, Loc
 /**
  * Walk up from `start` looking for a project. The nearest lockfile wins (so a
  * workspace package resolves to the monorepo root); otherwise the nearest
- * package.json. Above a manifest, only a lockfile of the same ecosystem counts
- * (a JS package inside a Go module is not that module). Never crosses a git root
- * or the home directory.
+ * package.json. Above a manifest, only a folder with a lockfile of the same
+ * ecosystem counts (a JS package inside a Go module is not that module); that
+ * folder then resolves to its own first lockfile, as when scanned directly.
+ * Never crosses a git root or the home directory.
  */
 export function findProject(start: string, home = homedir()): Project | null {
   let dir = resolve(start);
@@ -62,8 +63,12 @@ export function findProject(start: string, home = homedir()): Project | null {
   let only: ReadonlySet<LockfileType> | undefined;
   for (;;) {
     if (dir === home || dir === dirname(dir)) break;
-    const lock = lockfileIn(dir, only);
-    if (lock) return { root: dir, lockfile: lock[0], lockType: lock[1] };
+    if (lockfileIn(dir, only)) {
+      // A folder is always the same project, whichever subfolder we came from: its own
+      // first lockfile (JavaScript first), so the hook, scans and checks agree on it.
+      const lock = lockfileIn(dir)!;
+      return { root: dir, lockfile: lock[0], lockType: lock[1] };
+    }
     if (!only) {
       const owner = OWNERS.find(([m]) => existsSync(join(dir, m)));
       if (owner) only = owner[1];

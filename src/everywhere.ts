@@ -21,6 +21,7 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { activityOf } from "./activity.ts";
+import { isModuleCache } from "./discover.ts";
 import { isExcluded, MAX_DEPTH, type Root } from "./config.ts";
 import { LOCKFILES, type Project } from "./lockfile/detect.ts";
 import { repoIdentity } from "./repoid.ts";
@@ -28,7 +29,7 @@ import { repoIdentity } from "./repoid.ts";
 /** Never project code, anywhere: dependencies, build output, caches. */
 export const PRUNE_NAMES: ReadonlySet<string> = new Set([
   "node_modules", "bower_components", "jspm_packages", "vendor", "Pods", "Carthage",
-  "venv", "env", "__pycache__", "site-packages", "target", "dist", "build", "out", "coverage",
+  "venv", "env", "__pycache__", "site-packages", "__pypackages__", "testdata", "target", "dist", "build", "out", "coverage",
   "DerivedData", "logs",
 ]);
 
@@ -275,7 +276,7 @@ export async function discoverEverywhere(opts: EverywhereOptions = {}): Promise<
       if (!e.isDirectory() || e.isSymbolicLink()) continue;
       const name = e.name;
       if (name.startsWith(".")) continue; // dotfolders: .git, caches, trash, tool data
-      if (PRUNE_NAMES.has(name)) continue;
+      if (PRUNE_NAMES.has(name) || isModuleCache(f.dir, name)) continue;
       if (ignore && (ignore.has(name) || (f.dir === repo && ignore.has(`/${name}`)))) continue;
       const child = join(f.dir, name);
       if (f.dir === home) {

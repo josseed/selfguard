@@ -3,7 +3,7 @@
  * without their "v", like OSV does), PEP 440 for PyPI.
  */
 import type { Ecosystem } from "./lockfile/types.ts";
-import { comparePep440, parsePep440, type Pep440 } from "./pep440.ts";
+import { comparePep440, normalizePyName, parsePep440, type Pep440 } from "./pep440.ts";
 import { compareParsed, parse, type SemVer } from "./semver.ts";
 
 export type Parsed = { kind: "semver"; v: SemVer } | { kind: "pep440"; v: Pep440 };
@@ -42,5 +42,5 @@ export function compareVersions(eco: Ecosystem, a: string, b: string): number {
 
 /** Package names as OSV and the registry compare them. */
 export function normalizeName(eco: Ecosystem, name: string): string {
-  return eco === "PyPI" ? name.toLowerCase().replace(/[-_.]+/g, "-") : name;
+  return eco === "PyPI" ? normalizePyName(name) : name;
 }

@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { sha256 } from "./fsutil.ts";
 import type { Project } from "./lockfile/detect.ts";
 import { isSupported, manifestFor, parseLockfile, parseManifest } from "./lockfile/index.ts";
-import { ecosystemOf, packageKey, type Dependency } from "./lockfile/types.ts";
-import { evaluate, severityOf, severityRank } from "./match.ts";
+import { buildFindings } from "./findings.ts";
+import { ecosystemOf, packageKey } from "./lockfile/types.ts";
 import { getVulns, queryBatch, type OsvVuln, type PackageQuery } from "./osv.ts";
 import { repoIdentity, type RepoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
@@ -139,47 +139,6 @@ function inventory(project: ScanInput): Inventory {
     record.scannedAt = now;
   }
   return { record, previous };
-}
-
-function buildFindings(
-  deps: Dependency[],
-  refsPerDep: Map<string, string[]>,
-  vulns: Map<string, OsvVuln>,
-  previous: RepoRecord | null,
-  now: string,
-): Finding[] {
-  const prevSeen = new Map((previous?.findings ?? []).map((f) => [findingKey(f), f.firstSeen]));
-  const findings: Finding[] = [];
-  for (const dep of deps) {
-    const ids = refsPerDep.get(packageKey(dep)) ?? [];
-    const reported = new Set<string>();
-    for (const id of ids) {
-      const vuln = vulns.get(id);
-      if (vuln?.withdrawn) continue;
-      // Collapse duplicates published under several ids (e.g. GHSA + CVE alias).
-      if (vuln?.aliases?.some((a) => reported.has(a)) || reported.has(id)) continue;
-      reported.add(id);
-      const ev = vuln ? evaluate(vuln, dep.name, dep.version, ecosystemOf(dep)) : { affected: true };
-      const f: Finding = {
-        id,
-        aliases: (vuln?.aliases ?? []).map((a) => clean(a, 64)).slice(0, 10),
-        severity: vuln ? severityOf(vuln) : id.startsWith("MAL-") ? "malicious" : "unknown",
-        summary: clean(vuln?.summary ?? vuln?.details ?? "", 200),
-        name: dep.name,
-        version: dep.version,
-        direct: dep.direct,
-        dev: dep.dev,
-        firstSeen: "",
-      };
-      if (ev.fixedIn) f.fixedIn = ev.fixedIn;
-      if (dep.ecosystem && dep.ecosystem !== "npm") f.ecosystem = dep.ecosystem;
-      f.firstSeen = prevSeen.get(findingKey(f)) ?? now;
-      findings.push(f);
-    }
-  }
-  return findings.sort(
-    (a, b) => severityRank(a.severity) - severityRank(b.severity) || Number(b.direct) - Number(a.direct) || a.name.localeCompare(b.name),
-  );
 }
 
 export interface ScanOutcome {

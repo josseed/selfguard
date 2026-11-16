@@ -740,7 +740,7 @@ function feedList(events) {
         : e.kind === "resolved" ? `${plural(e.total, "vulnerable package")} fixed in ${e.repo}`
         : e.kind === "watching" ? `Now watching ${e.repo} (${plural(e.total, "project")} found)`
         : `Reminder: ${e.repo}`;
-      const pkgs = (e.packages || []).slice(0, 4).map((p) => `${p.name}@${p.version}`).join(", ");
+      const pkgs = (e.packages || []).slice(0, 4).map((p) => `${p.name}@${p.version}${p.ecosystem && p.ecosystem !== "npm" ? ` (${p.ecosystem})` : ""}`).join(", ");
       const more = e.total > 4 && e.packages?.length ? ` +${e.total - 4}` : "";
       const clickable = e.repoKey && e.repoKey !== "reminder";
       const target = e.kind === "watching" ? "#/folders" : `#/repo/${encodeURIComponent(e.repoKey)}`;

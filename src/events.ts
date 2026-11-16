@@ -2,6 +2,7 @@
  * Append-only activity log (~/.selfguard/events.jsonl): what appeared, what got fixed and
  * which reminders were sent. Feeds the dashboard's activity feed. Local only.
  */
+import type { Ecosystem } from "./lockfile/types.ts";
 import { appendFileSync, readFileSync, statSync } from "node:fs";
 import { atomicWrite, ensureDir, isObject } from "./fsutil.ts";
 import type { Severity } from "./match.ts";
@@ -14,6 +15,8 @@ export type EventKind = "new" | "resolved" | "reminder" | "watching";
 export interface EventPackage {
   name: string;
   version: string;
+  /** Absent means npm. */
+  ecosystem?: Ecosystem;
   severity: Severity;
 }
 
@@ -43,7 +46,9 @@ export function eventPackages(findings: Finding[]): { total: number; packages: E
   const groups = groupByPackage(findings);
   return {
     total: groups.length,
-    packages: groups.slice(0, MAX_PACKAGES).map((g) => ({ name: g.name, version: g.version, severity: g.worst })),
+    packages: groups.slice(0, MAX_PACKAGES).map((g) =>
+      g.ecosystem === "npm" ? { name: g.name, version: g.version, severity: g.worst } : { name: g.name, version: g.version, ecosystem: g.ecosystem, severity: g.worst },
+    ),
   };
 }
 

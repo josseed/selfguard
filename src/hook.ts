@@ -5,7 +5,7 @@
  * background process so your prompt never waits on it.
  */
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
+import { existsSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isExcluded, loadConfig } from "./config.ts";
@@ -88,7 +88,13 @@ export function spawnBackgroundScan(dir: string): void {
 export function hookEnter(dir: string, onPrompt = false): void {
   try {
     const project = findProject(dir);
-    if (!project || isExcluded(project.root, loadConfig().exclude)) return;
+    if (!project) {
+      // A Python or Rust project without its lockfile yet: watch the folder itself (its mtime
+      // changes when `uv lock` or `cargo generate-lockfile` creates one), so it is picked up.
+      if (["pyproject.toml", "Cargo.toml"].some((f) => existsSync(join(dir, f))) && !isExcluded(dir, loadConfig().exclude)) process.stdout.write(dir);
+      return;
+    }
+    if (isExcluded(project.root, loadConfig().exclude)) return;
     process.stdout.write(project.lockfile ?? join(project.root, "package-lock.json"));
 
     const c = paint(process.stderr);

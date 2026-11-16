@@ -4,6 +4,7 @@
  * and to classify severity.
  */
 import type { Ecosystem } from "./lockfile/types.ts";
+import { cvss3Score } from "./cvss.ts";
 import type { OsvEvent, OsvVuln } from "./osv.ts";
 import { compareParsedVersions, lowest, normalizeName, parseVersion, type Parsed } from "./versions.ts";
 
@@ -15,6 +16,7 @@ export function severityRank(s: Severity): number {
   return SEVERITY_ORDER.indexOf(s);
 }
 
+/** Severity from the advisory's label (GitHub's), else from a CVSS v3 vector it carries. */
 export function severityOf(vuln: OsvVuln): Severity {
   if (vuln.id.startsWith("MAL-") || vuln.aliases?.some((a) => a.startsWith("MAL-"))) return "malicious";
   const raw = vuln.database_specific?.severity;
@@ -28,9 +30,21 @@ export function severityOf(vuln: OsvVuln): Severity {
       return "moderate";
     case "LOW":
       return "low";
-    default:
-      return "unknown";
   }
+  const vectors = [...(vuln.severity ?? []), ...(vuln.affected ?? []).flatMap((a) => a.severity ?? [])];
+  let best: number | null = null;
+  for (const v of vectors) {
+    const score = v?.type === "CVSS_V3" ? cvss3Score(v.score) : null;
+    if (score !== null && (best === null || score > best)) best = score;
+  }
+  if (best === null || best === 0) return "unknown";
+  return best >= 9 ? "critical" : best >= 7 ? "high" : best >= 4 ? "moderate" : "low";
+}
+
+/** RustSec notices (unmaintained, unsound, yanked…) are warnings, not vulnerabilities. */
+export function isInformational(vuln: OsvVuln): boolean {
+  const flag = (d: Record<string, unknown> | undefined): boolean => typeof d?.informational === "string" && d.informational !== "";
+  return flag(vuln.database_specific) || (vuln.affected ?? []).some((a) => flag(a.database_specific));
 }
 
 function eventVersion(eco: Ecosystem, e: OsvEvent): Parsed | null {
