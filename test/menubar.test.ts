@@ -52,13 +52,15 @@ test("GET /api/menubar needs the token and returns the summary", async () => {
   assert.equal(r.status, 200);
   const m = JSON.parse(r.body);
   assert.equal(typeof m.version, "string");
-  assert.equal(m.state, "clean");
+  // Services come from this machine's launchd: off on a CI runner, maybe on here.
+  const expected = m.services && (!m.services.sync || !m.services.watcher) ? "degraded" : "clean";
+  assert.equal(m.state, expected);
   assert.deepEqual(m.repos, []);
   assert.equal(m.moreRepos, 0);
   assert.deepEqual(Object.keys(m.update).sort(), ["available", "latest"]);
   assert.deepEqual(m.events, []);
   const file = JSON.parse(readFileSync(join(process.env.SELFGUARD_HOME!, "menubar.json"), "utf8"));
-  assert.equal(file.state, "clean", "the endpoint also refreshes the file the app reads");
+  assert.equal(file.state, expected, "the endpoint also refreshes the file the app reads");
 });
 
 test("the summary lists the repos' news (not first scans) and the repos that need attention", async () => {
