@@ -95,12 +95,13 @@ test("with an extractor: one batch for lockfile and sources; check re-scans chan
   assert.deepEqual(after.findings.map((f) => [f.id, f.version, f.certainty]), [["GHSA-mrrh-fwg8-r2c3", "main", "version-unknown"]]);
 });
 
-test("selfguard tools --json: a stable document, empty while no extractor ships", () => {
+test("selfguard tools --json: a stable document, empty before any scan", () => {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "sg-cli-")));
   const env = { ...process.env, HOME: home, SELFGUARD_HOME: join(home, ".sg"), SELFGUARD_NO_NOTIFY: "1", NO_COLOR: "1" };
   const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
   const json = JSON.parse(execFileSync(process.execPath, [cli, "tools", "--json"], { env, encoding: "utf8" }));
-  assert.deepEqual(json, { kinds: [], machine: [], repos: [] });
+  assert.ok(json.kinds.includes("agents"));
+  assert.deepEqual({ machine: json.machine, repos: json.repos }, { machine: [], repos: [] });
   const text = execFileSync(process.execPath, [cli, "tools"], { env, encoding: "utf8" });
-  assert.match(text, /aren't checked by this version yet/);
+  assert.match(text, /Agent tools on this machine\n\s+none found/);
 });

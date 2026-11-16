@@ -1,0 +1,9 @@
+// Cursor accepts comments and trailing commas.
+{
+  "mcpServers": {
+    /* pinned with bunx */
+    "context7": { "command": "bunx", "args": ["@upstash/context7-mcp@1.0.14"], },
+    "puppeteer": { "command": "pnpm", "args": ["dlx", "@modelcontextprotocol/server-puppeteer@latest"] },
+    "remote": { "url": "https://mcp.example.com/sse" }, // "url": "not, this one",
+  },
+}

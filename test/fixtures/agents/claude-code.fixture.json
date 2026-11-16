@@ -1,0 +1,21 @@
+{
+  "numStartups": 42,
+  "oauthAccount": { "emailAddress": "someone@example.com" },
+  "mcpServers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@0.5.0", "/Users/someone/Documents"]
+    },
+    "linear": { "type": "http", "url": "https://mcp.linear.app/mcp" }
+  },
+  "projects": {
+    "HOME/code/app": {
+      "allowedTools": [],
+      "mcpServers": {
+        "fetch": { "command": "uvx", "args": ["mcp-server-fetch==2025.4.7"] }
+      }
+    },
+    "/srv/other": { "mcpServers": {} }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "memory": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"] },
+    "github": { "command": "docker", "args": ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"] },
+    "local": { "command": "node", "args": ["/Users/someone/dev/server/index.js"] },
+    "py": { "command": "python", "args": ["/Users/someone/dev/server.py"] }
+  },
+  "globalShortcut": ""
+}

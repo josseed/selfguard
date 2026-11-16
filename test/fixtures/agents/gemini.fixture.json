@@ -1,0 +1,8 @@
+{
+  "theme": "Default",
+  "mcpServers": {
+    "uv-at": { "command": "uvx", "args": ["mcp-gem@1.2.3"] },
+    "pkg-eq": { "command": "npx", "args": ["--package=mcp-gem-npm@0.0.9", "mcp-gem-npm"] },
+    "remote": { "httpUrl": "https://gemini.example.com/mcp" }
+  }
+}
