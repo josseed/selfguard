@@ -115,7 +115,8 @@ A dashboard from the previous version was still running. With 0.8.1 or later, `s
 (or selfguard.app) replaces it automatically. With 0.8.0, stop it once and open it again:
 
 ```sh
-kill "$(node -p 'require(require("os").homedir() + "/.selfguard/ui.json").pid')"
+f="${SELFGUARD_HOME:-$HOME/.selfguard}/ui.json"
+[ -f "$f" ] && kill "$(node -p "require('$f').pid")"
 selfguard ui
 ```
 

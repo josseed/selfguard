@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { request, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -204,5 +204,20 @@ test("serves the page files of its own version, even if they change on disk (no 
     assert.equal(await get(), before);
   } finally {
     s.close();
+    rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("only a verified, older dashboard is replaced by selfguard ui", async () => {
+  const { parsePing, shouldReplace } = await import("../src/ui/server.ts");
+  assert.equal(parsePing(200, '{"ok":true,"version":"0.7.1"}'), "0.7.1");
+  // Another server on the port, or anything that isn't a selfguard dashboard: not ours.
+  assert.equal(parsePing(200, "<html>dev server</html>"), null);
+  assert.equal(parsePing(200, '{"version":"0.7.1"}'), null);
+  assert.equal(parsePing(200, '{"ok":true,"version":"; rm -rf /"}'), null);
+  assert.equal(parsePing(401, '{"ok":true,"version":"0.7.1"}'), null);
+  assert.equal(shouldReplace("0.7.1", "0.8.1"), true);
+  assert.equal(shouldReplace("0.8.1", "0.8.1"), false);
+  assert.equal(shouldReplace("0.9.0", "0.8.1"), false, "never downgrade a newer dashboard");
+  assert.equal(shouldReplace("unknown", "0.8.1"), false);
 });
