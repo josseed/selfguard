@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-16
+
 ### Fixed
 
 - Adding a machine over SSH when SSH is off there (for example, a Mac with Remote Login off)
@@ -211,7 +213,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/josseed/selfguard/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/josseed/selfguard/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/josseed/selfguard/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/josseed/selfguard/compare/v0.7.0...v0.7.1
