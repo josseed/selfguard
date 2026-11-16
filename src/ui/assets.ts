@@ -24,6 +24,7 @@ export const STATIC: Record<string, { file: string; type: string }> = {
   "/page-machines.js": { file: "page-machines.js", type: JS },
   "/tailnet.js": { file: "tailnet.js", type: JS },
   "/page-settings.js": { file: "page-settings.js", type: JS },
+  "/sources.js": { file: "sources.js", type: JS },
   "/app.css": { file: "app.css", type: CSS },
   "/components.css": { file: "components.css", type: CSS },
   "/pages.css": { file: "pages.css", type: CSS },

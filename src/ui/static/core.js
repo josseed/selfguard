@@ -14,6 +14,8 @@ export const state = {
   find: null, // "find my projects" job: { running, progress, result, error }
   findChoice: null,
   repo: null, // { key, data }
+  sources: null, // CI workflows and agent tools: { kinds, machine, repos }
+  repoSources: null, // { key, list } for the repo page
   route: { name: "overview", arg: null },
   ui: {
     repoFilter: "attention",

@@ -27,22 +27,42 @@ symlinks, and skips cloud drives, because listing them can trigger downloads. Re
 `~/.selfguard`. On macOS, the weekly background pass doesn't enter Desktop, Documents or
 Downloads unless you already watch a folder there, so it never shows a privacy prompt on its own.
 
+## CI workflows and agent configs
+
+selfguard also reads, as data, each tracked repo's `.github/workflows/*.yml` and composite
+`action.yml` files, and the MCP server definitions of AI agents: `~/.claude.json`, Claude
+Desktop's, Cursor's, VS Code's, Windsurf's, Codex's and Gemini CLI's config files, and their
+per-repo counterparts (`.mcp.json`, `.cursor/mcp.json`, …). These configs often hold secrets.
+From each server only the agent, server name, launcher, package name, version or pin, file
+and line are kept; environment variables, headers, URLs, tokens and other arguments are never
+stored, logged, printed, returned to an AI or sent anywhere. Remote MCP servers are recorded by
+host only. Nothing is executed, and GitHub is never queried to resolve commit SHAs. See
+[CI workflows and agent tools](ci-and-agent-tools.md).
+
 ## What leaves your machine
 
-Calls to the OSV.dev API at `https://api.osv.dev/v1`, plus the daily update check described
-below:
+Calls to the OSV.dev API at `https://api.osv.dev/v1` and to OSV's public data bucket, plus the
+daily update check described below:
 
 - `POST /querybatch` with `{ "package": { "ecosystem": …, "name": … }, "version": … }` for
   each unique dependency. The ecosystem is `npm`, `PyPI`, `crates.io` or `Go`; Go module paths
-  (`github.com/org/module`) are public module names, sent like any package name;
-- `GET /vulns/{id}` for advisory details not already cached.
+  (`github.com/org/module`) are public names, sent like any package name. MCP servers without
+  an exact version are sent without `version`;
+- `GET /vulns/{id}` for advisory details not already cached;
+- when a repo has GitHub Actions workflows, at most every 6 hours,
+  `GET https://osv-vulnerabilities.storage.googleapis.com/GitHub%20Actions/modified_id.csv`:
+  the public list of every GitHub Actions advisory (id and last change), followed by
+  `GET /vulns/{id}` for the ones that are new or changed. The same request for every user:
+  **no action name is sent**. Actions are matched locally against that index. The list is
+  size-capped (1 MB, 10,000 lines) and its ids validated.
 
 Requests carry the `User-Agent: selfguard/<version>` header. No file paths, project or repo
 names, git remotes, source code or identifiers are sent. Redirects are refused, responses are
 size-capped, and requests time out.
 
 OSV can infer which open-source packages and versions you use, but not who you are or what you
-build. If even that is too much, point `SELFGUARD_OSV_API` at a mirror you control.
+build. If even that is too much, point `SELFGUARD_OSV_API` (and `SELFGUARD_OSV_BUCKET` for the
+GitHub Actions list) at a mirror you control.
 
 **Update check.** At most once a day, selfguard sends `GET https://registry.npmjs.org/selfguard/latest`
 to learn whether a newer selfguard exists. The request has the same safeguards (no redirects,

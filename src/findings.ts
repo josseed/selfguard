@@ -8,7 +8,7 @@ import type { OsvVuln } from "./osv.ts";
 import { clean } from "./sanitize.ts";
 import { findingKey, type Finding, type RepoRecord } from "./store.ts";
 
-interface Member {
+export interface Member {
   id: string;
   vuln: OsvVuln | undefined;
   severity: Severity;
@@ -45,7 +45,7 @@ export function aliasGroups(ids: string[], vulns: Map<string, OsvVuln>): Member[
 }
 
 /** The member to report: malicious first, then one with a known severity, then a GHSA. */
-function representative(group: Member[]): Member {
+export function representative(group: Member[]): Member {
   const score = (m: Member): number =>
     (m.severity === "malicious" ? 0 : m.severity === "unknown" ? 20 : 10) + (m.id.startsWith("GHSA-") ? 0 : 1) + (m.vuln ? 0 : 5);
   return [...group].sort((a, b) => score(a) - score(b))[0]!;

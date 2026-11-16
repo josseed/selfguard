@@ -8,6 +8,8 @@ import { buildAlert, buildReminder, buildResolvedAlert, deliver, needsAttention,
 import { loadConfig, type RemindEvery } from "./config.ts";
 import { appendEvents, eventPackages, type SelfguardEvent } from "./events.ts";
 import type { ScanOutcome } from "./scan.ts";
+import type { SourceOutcome } from "./sources/scan.ts";
+import { sourceNews } from "./sources/news.ts";
 import { loadState, updateState } from "./state.ts";
 import { liveDismissals, trackedActivity } from "./dismiss.ts";
 import { checkoutId, findingKey, identityOf, listAllRepos, repoKeyOf, type RepoRecord } from "./store.ts";
@@ -69,12 +71,16 @@ function toNews(outcomes: ScanOutcome[], activeDays: number, dismissed: Map<stri
   });
 }
 
-/** Log and notify what changed. Returns true if something was notified. */
-export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean } = {}): Promise<boolean> {
+/**
+ * Log and notify what changed. Returns true if something was notified. `sources`: outcomes of
+ * CI workflows and agent configs scanned in the same run, alerted together (same dialog for
+ * malicious ones).
+ */
+export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean; sources?: SourceOutcome[] } = {}): Promise<boolean> {
   const cfg = loadConfig();
   // Dismissed repos count as inactive (malicious only) until git activity brings them back.
   const dismissed = cfg.dismissed.length ? liveDismissals(cfg.dismissed, trackedActivity(cfg)) : new Map<string, string>();
-  const news = toNews(outcomes, cfg.activeDays, dismissed);
+  const news = [...toNews(outcomes, cfg.activeDays, dismissed), ...sourceNews(opts.sources ?? [], cfg.activeDays, dismissed)];
   const at = new Date().toISOString();
   const events: SelfguardEvent[] = [];
   for (const n of news) {

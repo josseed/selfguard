@@ -6,6 +6,7 @@ import { ApiError } from "../errors.ts";
 import { findProject } from "../lockfile/detect.ts";
 import type { LockfileType } from "../lockfile/types.ts";
 import { scanProjects } from "../scan.ts";
+import { forgetSourcesOf } from "../sources/run.ts";
 import { loadState, updateState } from "../state.ts";
 import { forgetRepo, listRepos, loadRepo, saveRepo } from "../store.ts";
 
@@ -88,6 +89,8 @@ export function forget(path: string, opts: { exclude?: boolean } = {}): { path: 
       }
     }
   }
+  // Their repo's CI workflows and agent configs too, unless another tracked project lives there.
+  forgetSourcesOf([root, ...alsoForgotten], listRepos().map((r) => r.path));
   return { path: root, wasTracked, excluded: exclude, alsoForgotten };
 }
 

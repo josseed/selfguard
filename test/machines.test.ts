@@ -36,6 +36,7 @@ before(async () => {
   await new Promise<void>((r) => osv.listen(0, "127.0.0.1", r));
   process.env.SELFGUARD_OSV_API = `http://127.0.0.1:${(osv.address() as AddressInfo).port}/v1`;
   process.env.SELFGUARD_HOME = mkdtempSync(join(tmpdir(), "sg-machines-"));
+  process.env.HOME = mkdtempSync(join(tmpdir(), "sg-machines-user-")); // agent configs: never the real home
   process.env.SELFGUARD_SSH = fileURLToPath(new URL("./bin/fake-ssh", import.meta.url));
   process.env.SG_FAKE_SSH_LOG = sshLog;
   process.env.SELFGUARD_NO_NOTIFY = "1";

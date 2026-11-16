@@ -1,0 +1,36 @@
+name: triage
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.event.issue.title }}"
+      - name: block
+        run: |
+          echo "safe ${{ github.event.issue.number }}"
+          echo "${{ github.event.comment.body }}"
+
+          echo "${{github.head_ref}}"
+      - name: folded
+        run: >-
+          git commit -m "${{ github.event.commits[0].message }}"
+      - name: safe through env
+        env:
+          TITLE: ${{ github.event.issue.title }}
+        run: |
+          echo "$TITLE"
+          echo "${{ github.event.pull_request.number }} ${{ github.sha }}"
+      - name: not a run script
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log(context.payload.issue.title)
+          title: ${{ github.event.pull_request.title }}
+      - name: after
+        shell: bash
+        run: echo ok
+        env:
+          BODY: ${{ github.event.issue.body }}

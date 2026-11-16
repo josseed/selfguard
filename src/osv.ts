@@ -14,7 +14,7 @@ const BATCH_SIZE = 1000; // documented max queries per querybatch request
 const TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 const DETAIL_CONCURRENCY = 8;
-const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+export const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 export interface OsvEvent {
   introduced?: string;
@@ -55,7 +55,12 @@ export interface OsvVuln {
 
 export interface PackageQuery {
   name: string;
-  version: string;
+  /**
+   * Absent: a name-only query (OSV returns every advisory of the package, to be evaluated
+   * locally). Used when the version is unknown. GitHub Actions are never sent: they are matched
+   * in a local index (scan/gha-index.ts).
+   */
+  version?: string;
   /** Default npm. */
   ecosystem?: Ecosystem;
 }
@@ -126,7 +131,7 @@ export async function queryBatch(pkgs: PackageQuery[]): Promise<VulnRef[][]> {
     for (let page = 0; pending.length > 0 && page < 20; page++) {
       const queries = pending.map(({ i, token }) => ({
         package: { ecosystem: pkgs[i]!.ecosystem ?? "npm", name: queryName(pkgs[i]!) },
-        version: pkgs[i]!.version,
+        ...(pkgs[i]!.version !== undefined ? { version: pkgs[i]!.version } : {}),
         ...(token ? { page_token: token } : {}),
       }));
       const res = await request("POST", "/querybatch", { queries });

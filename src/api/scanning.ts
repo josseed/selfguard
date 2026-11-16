@@ -10,7 +10,9 @@ import { getMachine, syncMachine, syncMachines, type MachineSyncResult } from ".
 import type { Severity } from "../match.ts";
 import { groupByPackage } from "../report.ts";
 import { repoIdentity } from "../repoid.ts";
-import { lockChanged, scanProjects, type ScanOutcome } from "../scan.ts";
+import { lockChanged, type ScanOutcome } from "../scan.ts";
+import { scanTogether, type SourceOutcome } from "../sources.ts";
+import { pruneSources, saveSourceOutcomes, sourcesWith, sourceWatchPaths } from "../sources/run.ts";
 import { updateState } from "../state.ts";
 import { forgetRepo, listRepos, loadRepo, repoKeyOf, saveRepo } from "../store.ts";
 import { dismissalsFor, resolveProject, toReport } from "./common.ts";
@@ -28,9 +30,11 @@ export async function scanPath(path: string, opts: { notify?: boolean } = {}): P
   const release = tryLock(`scan:${project.root}`);
   if (!release) throw new ApiError("busy", "another scan of this project is running, try again in a moment");
   try {
-    const [o] = await scanProjects([project]);
+    // The repo's CI workflows and agent configs go in the same OSV batch.
+    const { outcomes: [o], sources } = await scanTogether([project], sourcesWith([project.root]));
     saveRepo(o!.record);
-    await announce([o!], { notify: opts.notify ?? false });
+    saveSourceOutcomes(sources);
+    await announce([o!], { notify: opts.notify ?? false, sources });
     return { project: toReport(o!.record), firstScan: o!.firstScan, newAdvisories: o!.newFindings.length };
   } finally {
     release();
@@ -112,13 +116,16 @@ export async function sync(opts: { notify?: boolean } = {}): Promise<SyncResult>
     const discovered = (await discoverAll(cfg.roots, { exclude: cfg.exclude })).filter((p) => !seen.has(p.root));
     projects.push(...discovered);
 
-    const local = await scanProjects(projects);
+    const tracked = projects.map((p) => p.root);
+    const { outcomes: local, sources } = await scanTogether(projects, sourcesWith(tracked, { machine: true }));
     for (const o of local) saveRepo(o.record);
+    saveSourceOutcomes(sources);
+    pruneSources(tracked);
     // Other machines: same checks, one SSH session at a time; a machine that doesn't answer
     // keeps its last results and shows the error.
     const remote = await syncMachines({ full: true });
     const outcomes = [...local, ...remote.flatMap((r) => r.outcomes)];
-    await announceMachines(local, remote, opts.notify ?? false);
+    await announceMachines(local, remote, opts.notify ?? false, sources);
     updateState({ lastSync: new Date().toISOString() });
     pruneDismissed(loadConfig());
     return {
@@ -136,11 +143,11 @@ export async function sync(opts: { notify?: boolean } = {}): Promise<SyncResult>
 }
 
 /** A machine's first sync is logged (Activity) but not notified: it is the baseline. */
-async function announceMachines(local: ScanOutcome[], remote: MachineSyncResult[], notify: boolean): Promise<void> {
+async function announceMachines(local: ScanOutcome[], remote: MachineSyncResult[], notify: boolean, sources: SourceOutcome[] = []): Promise<void> {
   const baseline = remote.filter((r) => r.initial).flatMap((r) => r.outcomes);
   const live = [...local, ...remote.filter((r) => !r.initial).flatMap((r) => r.outcomes)];
   if (baseline.length) await announce(baseline, { notify: false });
-  await announce(live, { notify });
+  await announce(live, { notify, sources });
 }
 
 export interface MachinesCheckResult {
@@ -211,17 +218,23 @@ export async function check(opts: { notify?: boolean } = {}): Promise<CheckResul
   try {
     const cfg = loadConfig();
     const changed: Project[] = [];
+    const tracked: string[] = [];
     for (const r of listRepos()) {
       if (!existsSync(r.path) || isExcluded(r.path, cfg.exclude)) continue;
+      tracked.push(r.path);
       const p = findProject(r.path);
       if (p && p.root === r.path && p.lockfile && lockChanged(r, p)) changed.push(p);
     }
     updateState({ lastCheck: new Date().toISOString() });
     pruneDismissed(cfg);
-    if (changed.length === 0) return { rescanned: [], errors: [] };
-    const outcomes = await scanProjects(changed);
+    const changedSources = sourcesWith(tracked, { machine: true, onlyChanged: true });
+    if (changed.length === 0 && changedSources.length === 0) return { rescanned: [], errors: [] };
+    // A changed agent config (~/.claude.json changes all the time) is re-read, but OSV is only
+    // asked when its references changed or its last scan is a day old.
+    const { outcomes, sources } = await scanTogether(changed, changedSources, { reuseRecent: true });
     for (const o of outcomes) saveRepo(o.record);
-    await announce(outcomes, { notify: opts.notify ?? false });
+    saveSourceOutcomes(sources);
+    await announce(outcomes, { notify: opts.notify ?? false, sources });
     return {
       rescanned: outcomes.map((o) => o.record.path),
       errors: outcomes.filter((o) => o.record.error).map((o) => ({ path: o.record.path, error: o.record.error! })),
@@ -239,12 +252,18 @@ export function watchTargets(): string[] {
     .filter((r) => existsSync(r.path) && !isExcluded(r.path, cfg.exclude))
     .map((rec) => ({ rec, repo: repoIdentity(rec.path) }));
   const dismissed = dismissalsFor(cfg, local);
-  for (const { rec: r, repo } of local) {
-    const act = activityOf(repo, cfg.activeDays, Date.now(), dismissed.get(repoKeyOf(r, repo)) ?? null);
-    if (!act.active) continue;
+  const active: Array<{ rec: (typeof local)[number]["rec"]; at: number }> = [];
+  for (const { rec, repo } of local) {
+    const act = activityOf(repo, cfg.activeDays, Date.now(), dismissed.get(repoKeyOf(rec, repo)) ?? null);
+    if (act.active) active.push({ rec, at: act.lastActivity ? Date.parse(act.lastActivity) : 0 });
+  }
+  // CI workflows and agent configs (none without extractors): machine-wide ones first.
+  const sources = sourceWatchPaths(active.map(({ rec }) => rec.path));
+  for (const { rec: r, at } of active) {
     const paths = [r.path];
     if (r.lockfile && existsSync(r.lockfile)) paths.push(r.lockfile);
-    items.push({ paths, at: act.lastActivity ? Date.parse(act.lastActivity) : 0 });
+    paths.push(...(sources.byProject.get(r.path) ?? []));
+    items.push({ paths, at });
   }
-  return items.sort((a, b) => b.at - a.at).flatMap((i) => i.paths);
+  return [...new Set([...sources.machine, ...items.sort((a, b) => b.at - a.at).flatMap((i) => i.paths)])];
 }

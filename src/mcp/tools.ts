@@ -147,8 +147,8 @@ export const TOOLS: Tool[] = [
       "Find which tracked projects depend on a package (any version, direct or transitive, in npm, PyPI, crates.io or Go projects), and whether that version is vulnerable. Use for incident response (e.g. 'is the compromised package X anywhere?'). No network.",
     inputSchema: obj(
       {
-        package: { type: "string", description: "Exact package name: npm (lodash, @scope/name), PyPI (requests), crates.io (serde) or Go module path (golang.org/x/net)." },
-        ecosystem: { type: "string", enum: ["npm", "PyPI", "crates.io", "Go"], description: "Only this ecosystem (default: all)." },
+        package: { type: "string", description: "Exact package name: npm (lodash, @scope/name), PyPI (requests), crates.io (serde), Go module path (golang.org/x/net) or GitHub action (tj-actions/changed-files). Also searches CI workflows and agent configs." },
+        ecosystem: { type: "string", enum: ["npm", "PyPI", "crates.io", "Go", "GitHub Actions"], description: "Only this ecosystem (default: all)." },
       },
       ["package"],
     ),
@@ -159,6 +159,16 @@ export const TOOLS: Tool[] = [
       if (!eco) throw new api.ApiError("invalid", `"ecosystem" must be one of npm, PyPI, crates.io, Go`);
       return api.whereUsed(str(a, "package"), eco);
     },
+  },
+  {
+    name: "selfguard_sources",
+    title: "CI workflows and agent tools",
+    description:
+      "Last results for sources beside lockfiles: `machine` lists this machine's agent tools (MCP servers from agent configs), `repos` each git repo's CI workflows (GitHub Actions) and project agent configs. Each has `references` (file and line), `findings` with a `certainty` (confirmed | may-be-affected for mutable tags like @v4 | version-unknown for branches, bare SHAs and unpinned packages) and `warnings` (risky practices, not vulnerabilities). `kinds` is empty when this version checks none yet. Local state only, no network." +
+      UNTRUSTED,
+    inputSchema: obj({ path: { type: "string", description: "Only the sources of the git repo around this folder." } }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    run: (a) => api.getSources(typeof a.path === "string" && a.path.trim() ? { path: a.path } : {}),
   },
   {
     name: "selfguard_vulnerability",

@@ -4,6 +4,9 @@ import { evaluate, severityOf, severityRank, type Severity } from "../match.ts";
 import { getVulns, type OsvVuln } from "../osv.ts";
 import { groupByPackage } from "../report.ts";
 import { clean } from "../sanitize.ts";
+import { refVersion } from "../sources/findings.ts";
+import { listSources } from "../sources/store.ts";
+import type { SourceKind } from "../sources/types.ts";
 import { listAllRepos } from "../store.ts";
 import { compareVersions, isValidVersion, normalizeName } from "../versions.ts";
 import { advisoryUrl, machineNames } from "./common.ts";
@@ -15,6 +18,8 @@ export interface WhereResult {
     path: string;
     machine: string | null;
     versions: Array<{ version: string; ecosystem: Ecosystem; direct: boolean; dev: boolean; vulnerable: boolean }>;
+    /** Set when found in a CI workflow ("ci") or an agent config ("agents") rather than a lockfile. */
+    source?: SourceKind;
   }>;
 }
 
@@ -25,6 +30,7 @@ export function whereUsed(name: string, ecosystem?: Ecosystem): WhereResult {
   const matches = (d: { name: string; ecosystem?: Ecosystem }): boolean => {
     const eco = ecosystemOf(d);
     if (ecosystem && eco !== ecosystem) return false;
+    if (eco === "GitHub Actions") return d.name.toLowerCase() === name.toLowerCase(); // GitHub ignores case
     return eco === "PyPI" ? normalizeName("PyPI", d.name) === pyName : d.name === name;
   };
   for (const r of listAllRepos(machineNames())) {
@@ -38,6 +44,18 @@ export function whereUsed(name: string, ecosystem?: Ecosystem): WhereResult {
         vulnerable: r.findings.some((f) => packageKey(f) === packageKey(d)),
       }));
     if (versions.length) usedIn.push({ path: r.path, machine: r.machine ?? null, versions });
+  }
+  // Workflows and agent configs: references written there (version as pinned when not exact).
+  for (const r of listSources()) {
+    const refs = r.refs.filter(matches);
+    if (!refs.length) continue;
+    const versions = [...new Map(refs.map((ref) => {
+      // Findings carry refVersion(ref) as their version: match on name and that version.
+      const version = refVersion(ref);
+      const vulnerable = r.findings.some((f) => f.name === ref.name && ecosystemOf(f) === ecosystemOf(ref) && f.version === version);
+      return [`${ecosystemOf(ref)}:${version}`, { version, ecosystem: ecosystemOf(ref), direct: true, dev: false, vulnerable }];
+    })).values()];
+    usedIn.push({ path: r.path, machine: null, versions, source: r.kind });
   }
   return { package: name, usedIn };
 }

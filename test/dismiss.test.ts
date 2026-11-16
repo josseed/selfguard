@@ -71,6 +71,7 @@ before(async () => {
   process.env.SELFGUARD_OSV_API = `http://127.0.0.1:${(osv.address() as AddressInfo).port}/v1`;
   home = mkdtempSync(join(tmpdir(), "sg-dismiss-"));
   process.env.SELFGUARD_HOME = home;
+  process.env.HOME = mkdtempSync(join(tmpdir(), "sg-dismiss-user-")); // agent configs: never the real home
   process.env.SELFGUARD_NO_NOTIFY = "1";
   process.env.SELFGUARD_NO_LAUNCHD = "1";
   api = await import("../src/api.ts");

@@ -6,6 +6,13 @@ import type { Severity } from "./match.ts";
 import { machineDir, machineReposDir, reposDir } from "./paths.ts";
 import { repoIdentity, type RepoIdentity } from "./repoid.ts";
 
+/**
+ * How sure a finding is. "confirmed": the exact version is affected. "may-be-affected": only
+ * the release line is known (a mutable tag like @v4) and some release of it is affected.
+ * "version-unknown": the version can't be known offline (branch, bare SHA, unpinned package).
+ */
+export type Certainty = "confirmed" | "may-be-affected" | "version-unknown";
+
 export interface Finding {
   id: string;
   aliases: string[];
@@ -20,6 +27,8 @@ export interface Finding {
   ecosystem?: Ecosystem;
   /** When we first saw this finding for this repo (ISO). */
   firstSeen: string;
+  /** Absent means "confirmed" (always the case for lockfile findings). */
+  certainty?: Certainty;
 }
 
 export interface RepoRecord {

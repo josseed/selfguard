@@ -1,7 +1,10 @@
-/** OSV ecosystem names (https://ossf.github.io/osv-schema/#affectedpackage-field). */
-export type Ecosystem = "npm" | "PyPI" | "crates.io" | "Go";
+/**
+ * OSV ecosystem names (https://ossf.github.io/osv-schema/#affectedpackage-field). "GitHub Actions"
+ * only comes from CI workflows (src/sources), never from a lockfile.
+ */
+export type Ecosystem = "npm" | "PyPI" | "crates.io" | "Go" | "GitHub Actions";
 
-export const SUPPORTED_ECOSYSTEMS: readonly Ecosystem[] = ["npm", "PyPI", "crates.io", "Go"];
+export const SUPPORTED_ECOSYSTEMS: readonly Ecosystem[] = ["npm", "PyPI", "crates.io", "Go", "GitHub Actions"];
 
 /** "pypi", "Crates.io", "go"… -> the OSV name; null if it isn't one we support. */
 export const parseEcosystem = (s: string): Ecosystem | null =>

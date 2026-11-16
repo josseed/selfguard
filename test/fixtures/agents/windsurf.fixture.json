@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "abs-npx": { "command": "/opt/homebrew/bin/npx", "args": ["--yes", "--package", "mcp-abs@1.2.3", "mcp-abs-bin"] },
+    "pipx": { "command": "pipx", "args": ["run", "--spec", "mcp-pipx==0.3.1", "mcp-pipx"] },
+    "remote": { "serverUrl": "https://windsurf.example.com/mcp" }
+  }
+}
