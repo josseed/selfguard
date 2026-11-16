@@ -1,7 +1,7 @@
 {
   "name": "selfguard",
   "version": "0.8.2",
-  "description": "Local-first guard that watches every JS repo you work on and alerts you about vulnerable or malicious dependencies.",
+  "description": "Local-first guard that watches every JavaScript, Python, Rust and Go repo you work on and alerts you about vulnerable or malicious dependencies.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -38,6 +38,9 @@
     "vulnerabilities",
     "osv",
     "npm",
+    "pypi",
+    "cargo",
+    "go",
     "supply-chain",
     "audit",
     "cli"

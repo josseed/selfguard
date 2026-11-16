@@ -3,8 +3,9 @@
  * OSV already matched server-side; we evaluate locally to find the fixed version
  * and to classify severity.
  */
+import type { Ecosystem } from "./lockfile/types.ts";
 import type { OsvEvent, OsvVuln } from "./osv.ts";
-import { compareParsed, parse, type SemVer } from "./semver.ts";
+import { compareParsedVersions, lowest, normalizeName, parseVersion, type Parsed } from "./versions.ts";
 
 export type Severity = "malicious" | "critical" | "high" | "moderate" | "low" | "unknown";
 
@@ -32,13 +33,11 @@ export function severityOf(vuln: OsvVuln): Severity {
   }
 }
 
-const ZERO: SemVer = { major: 0, minor: 0, patch: 0, pre: [] };
-
-function eventVersion(e: OsvEvent): SemVer | null {
+function eventVersion(eco: Ecosystem, e: OsvEvent): Parsed | null {
   const v = e.introduced ?? e.fixed ?? e.last_affected ?? e.limit;
   if (v === undefined) return null;
-  if (e.introduced === "0") return { ...ZERO, pre: [0] }; // lower than anything, incl. 0.0.0-x
-  return parse(v);
+  if (e.introduced === "0") return lowest(eco); // lower than anything, incl. 0.0.0-x
+  return parseVersion(eco, v);
 }
 
 export interface Evaluation {
@@ -47,26 +46,43 @@ export interface Evaluation {
   fixedIn?: string;
 }
 
-export function evaluate(vuln: OsvVuln, name: string, version: string): Evaluation {
-  const v = parse(version);
+/** Exact match; for PyPI also equivalent spellings ("1.0" == "1.0.0", "1.0RC1" == "1.0rc1"). */
+function sameVersion(eco: Ecosystem, listed: unknown, version: string, parsed: Parsed): boolean {
+  if (listed === version) return true;
+  if (eco !== "PyPI" || typeof listed !== "string") return false;
+  const p = parseVersion(eco, listed);
+  return p !== null && compareParsedVersions(p, parsed) === 0;
+}
+
+/**
+ * Whether `name@version` of `ecosystem` (default npm) is affected, and the lowest fix.
+ * SEMVER ranges are compared as SemVer; ECOSYSTEM ranges with the ecosystem's own
+ * ordering (PEP 440 for PyPI). GIT ranges are ignored.
+ */
+export function evaluate(vuln: OsvVuln, name: string, version: string, ecosystem: Ecosystem = "npm"): Evaluation {
+  const v = parseVersion(ecosystem, version);
   if (!v) return { affected: false };
+  const wanted = normalizeName(ecosystem, name);
   let affected = false;
-  const fixes: Array<{ raw: string; sv: SemVer }> = [];
+  const fixes: Array<{ raw: string; sv: Parsed }> = [];
 
   for (const aff of vuln.affected ?? []) {
-    if (aff.package?.ecosystem !== "npm" || aff.package?.name !== name) continue;
-    if (Array.isArray(aff.versions) && aff.versions.includes(version)) affected = true;
+    if (aff.package?.ecosystem !== ecosystem || normalizeName(ecosystem, aff.package?.name ?? "") !== wanted) continue;
+    if (Array.isArray(aff.versions) && aff.versions.some((x) => sameVersion(ecosystem, x, version, v))) affected = true;
 
     for (const range of aff.ranges ?? []) {
       if (range.type !== "SEMVER" && range.type !== "ECOSYSTEM") continue;
+      const scheme: Ecosystem = range.type === "SEMVER" ? "npm" : ecosystem; // "npm" = plain SemVer
+      const cur = scheme === ecosystem ? v : parseVersion(scheme, version);
+      if (!cur) continue;
       const events = (range.events ?? [])
-        .map((e) => ({ e, sv: eventVersion(e) }))
-        .filter((x): x is { e: OsvEvent; sv: SemVer } => x.sv !== null)
-        .sort((a, b) => compareParsed(a.sv, b.sv));
+        .map((e) => ({ e, sv: eventVersion(scheme, e) }))
+        .filter((x): x is { e: OsvEvent; sv: Parsed } => x.sv !== null)
+        .sort((a, b) => compareParsedVersions(a.sv, b.sv));
 
       let inRange = false;
       for (const { e, sv } of events) {
-        const c = compareParsed(v, sv);
+        const c = compareParsedVersions(cur, sv);
         if (e.introduced !== undefined) {
           if (c >= 0) inRange = true;
         } else if (e.fixed !== undefined) {
@@ -83,6 +99,10 @@ export function evaluate(vuln: OsvVuln, name: string, version: string): Evaluati
   }
 
   if (!affected) return { affected };
-  fixes.sort((a, b) => compareParsed(a.sv, b.sv));
-  return fixes[0] ? { affected, fixedIn: fixes[0].raw } : { affected };
+  // Fixes from SEMVER and ECOSYSTEM ranges may use different schemes: rank in the ecosystem's.
+  const ranked = fixes
+    .map((f) => ({ raw: f.raw, sv: parseVersion(ecosystem, f.raw) }))
+    .filter((f): f is { raw: string; sv: Parsed } => f.sv !== null)
+    .sort((a, b) => compareParsedVersions(a.sv, b.sv));
+  return ranked[0] ? { affected, fixedIn: ranked[0].raw } : { affected };
 }

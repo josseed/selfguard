@@ -3,7 +3,8 @@ import { basename } from "node:path";
 import type { Severity } from "./match.ts";
 import { criticalDialog, notify } from "./notify.ts";
 import { groupByPackage, worstSeverity } from "./report.ts";
-import type { Finding } from "./store.ts";
+import { packageKey } from "./lockfile/types.ts";
+import { findingKey, type Finding } from "./store.ts";
 
 export interface ProjectNews {
   path: string;
@@ -55,7 +56,7 @@ function byRepo(news: ProjectNews[]): Array<ProjectNews & { label: string; check
     }
     g.checkouts++;
     for (const f of n.newFindings) {
-      const k = `${f.id}|${f.name}@${f.version}`;
+      const k = findingKey(f);
       if (g.seen.has(k)) continue;
       g.seen.add(k);
       g.newFindings.push(f);
@@ -115,7 +116,7 @@ export function buildAlert(news: ProjectNews[]): Alert {
   };
 }
 
-const pkgKey = (f: Finding): string => `${f.name}@${f.version}`;
+const pkgKey = (f: Finding): string => packageKey(f);
 
 /** "datahub ✓ 17 vulnerable packages fixed": only for active checkouts, grouped by repo. */
 export function buildResolvedAlert(news: ProjectNews[]): Alert {

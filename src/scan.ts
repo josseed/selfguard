@@ -2,10 +2,10 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { sha256 } from "./fsutil.ts";
 import type { Project } from "./lockfile/detect.ts";
-import { isSupported, parseLockfile } from "./lockfile/index.ts";
-import type { Dependency } from "./lockfile/types.ts";
+import { isSupported, manifestFor, parseLockfile, parseManifest } from "./lockfile/index.ts";
+import { ecosystemOf, packageKey, type Dependency } from "./lockfile/types.ts";
 import { evaluate, severityOf, severityRank } from "./match.ts";
-import { getVulns, queryBatch, type OsvVuln } from "./osv.ts";
+import { getVulns, queryBatch, type OsvVuln, type PackageQuery } from "./osv.ts";
 import { repoIdentity, type RepoIdentity } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import { findingKey, loadRepo, type Finding, type RepoRecord } from "./store.ts";
@@ -20,7 +20,7 @@ export const MAX_LOCKFILE_BYTES = 100 * 1024 * 1024;
 export type ScanInput = Project & {
   machine?: string;
   identity?: RepoIdentity | null;
-  /** Remote lockfile and package.json (null: unreadable or too large). */
+  /** Remote lockfile and its manifest, package.json or pyproject.toml (null: unreadable or too large). */
   content?: { lock: Buffer; manifest: Buffer | null; mtimeMs: number; size: number } | null;
   reuse?: boolean;
 };
@@ -123,9 +123,10 @@ function inventory(project: ScanInput): Inventory {
 
   try {
     let manifest: unknown;
+    const manifestName = manifestFor(project.lockType);
     try {
-      const raw = remote ? project.content?.manifest : readFileSync(join(project.root, "package.json"));
-      manifest = raw ? JSON.parse(raw.toString("utf8")) : undefined;
+      const raw = remote ? project.content?.manifest : manifestName ? readFileSync(join(project.root, manifestName)) : null;
+      manifest = raw ? parseManifest(project.lockType, raw.toString("utf8")) : undefined;
     } catch {
       manifest = undefined;
     }
@@ -150,7 +151,7 @@ function buildFindings(
   const prevSeen = new Map((previous?.findings ?? []).map((f) => [findingKey(f), f.firstSeen]));
   const findings: Finding[] = [];
   for (const dep of deps) {
-    const ids = refsPerDep.get(`${dep.name}@${dep.version}`) ?? [];
+    const ids = refsPerDep.get(packageKey(dep)) ?? [];
     const reported = new Set<string>();
     for (const id of ids) {
       const vuln = vulns.get(id);
@@ -158,7 +159,7 @@ function buildFindings(
       // Collapse duplicates published under several ids (e.g. GHSA + CVE alias).
       if (vuln?.aliases?.some((a) => reported.has(a)) || reported.has(id)) continue;
       reported.add(id);
-      const ev = vuln ? evaluate(vuln, dep.name, dep.version) : { affected: true };
+      const ev = vuln ? evaluate(vuln, dep.name, dep.version, ecosystemOf(dep)) : { affected: true };
       const f: Finding = {
         id,
         aliases: (vuln?.aliases ?? []).map((a) => clean(a, 64)).slice(0, 10),
@@ -171,6 +172,7 @@ function buildFindings(
         firstSeen: "",
       };
       if (ev.fixedIn) f.fixedIn = ev.fixedIn;
+      if (dep.ecosystem && dep.ecosystem !== "npm") f.ecosystem = dep.ecosystem;
       f.firstSeen = prevSeen.get(findingKey(f)) ?? now;
       findings.push(f);
     }
@@ -214,10 +216,10 @@ function updateSeen(previous: RepoRecord | null, findings: Finding[], now: strin
 export async function scanProjects(projects: ScanInput[]): Promise<ScanOutcome[]> {
   const inventories = projects.map(inventory);
 
-  const unique = new Map<string, { name: string; version: string }>();
+  const unique = new Map<string, PackageQuery>();
   for (const { record } of inventories) {
     if (record.error) continue;
-    for (const d of record.deps) unique.set(`${d.name}@${d.version}`, { name: d.name, version: d.version });
+    for (const d of record.deps) unique.set(packageKey(d), { name: d.name, version: d.version, ecosystem: ecosystemOf(d) });
   }
   const queries = [...unique.values()];
 
@@ -227,7 +229,7 @@ export async function scanProjects(projects: ScanInput[]): Promise<ScanOutcome[]
   if (queries.length > 0) {
     try {
       const refs = await queryBatch(queries);
-      refsPerDep = new Map(queries.map((q, i) => [`${q.name}@${q.version}`, refs[i]!.map((r) => r.id)]));
+      refsPerDep = new Map(queries.map((q, i) => [packageKey(q), refs[i]!.map((r) => r.id)]));
       vulns = await getVulns(refs.flat());
     } catch (err) {
       networkError = `could not reach OSV: ${clean((err as Error).message, 200)}`;

@@ -39,6 +39,8 @@ import {
   type BrowseResult,
   type Target,
 } from "./remote.ts";
+import { manifestFor } from "./lockfile/index.ts";
+import type { LockfileType } from "./lockfile/types.ts";
 import { identityFromFacts } from "./repoid.ts";
 import { clean } from "./sanitize.ts";
 import { scanProjects, type ScanInput, type ScanOutcome } from "./scan.ts";
@@ -710,7 +712,13 @@ export async function syncMachine(m: Machine, opts: { full?: boolean; force?: st
       if (!rec || force.has(p.root) || rec.lockfile !== p.lockfile) return true;
       return p.lockfile !== null && (rec.lockSize !== p.size || rec.lockMtimeMs !== p.mtimeMs);
     });
-    const want = changed.filter((p) => p.lockfile && p.lockType && !p.lockfile.endsWith("/bun.lockb")).flatMap((p) => [p.lockfile!, posix.join(p.root, "package.json")]);
+    const manifestOf = (p: { root: string; lockType: LockfileType | null }): string | null => {
+      const m = p.lockType ? manifestFor(p.lockType) : null;
+      return m ? posix.join(p.root, m) : null;
+    };
+    const want = changed
+      .filter((p) => p.lockfile && p.lockType && !p.lockfile.endsWith("/bun.lockb"))
+      .flatMap((p) => [p.lockfile!, ...(manifestOf(p) ? [manifestOf(p)!] : [])]);
     const files = want.length ? await fetchFiles(targetOf(m), want) : new Map<string, Buffer | null>();
     const changedSet = new Set(changed.map((p) => p.root));
 
@@ -723,7 +731,8 @@ export async function syncMachine(m: Machine, opts: { full?: boolean; force?: st
         if (p.lockfile?.endsWith("/bun.lockb")) content = { lock: Buffer.alloc(0), manifest: null, mtimeMs: p.mtimeMs, size: p.size };
         else if (p.lockfile) {
           const lock = files.get(p.lockfile);
-          if (lock) content = { lock, manifest: files.get(posix.join(p.root, "package.json")) ?? null, mtimeMs: p.mtimeMs, size: p.size };
+          const manifest = manifestOf(p);
+          if (lock) content = { lock, manifest: manifest ? (files.get(manifest) ?? null) : null, mtimeMs: p.mtimeMs, size: p.size };
         }
         inputs.push({ ...common, content });
       } else if (opts.full) {

@@ -4,6 +4,7 @@
  */
 import { join } from "node:path";
 import { atomicWrite, isObject, readJsonFile } from "./fsutil.ts";
+import type { Ecosystem } from "./lockfile/types.ts";
 import { vulnCacheDir } from "./paths.ts";
 import { VERSION } from "./version.ts";
 
@@ -47,7 +48,13 @@ export interface OsvVuln {
 export interface PackageQuery {
   name: string;
   version: string;
+  /** Default npm. */
+  ecosystem?: Ecosystem;
 }
+
+/** Name as OSV indexes it (PyPI names PEP 503-normalized). */
+const queryName = (q: PackageQuery): string =>
+  q.ecosystem === "PyPI" ? q.name.toLowerCase().replace(/[-_.]+/g, "-") : q.name;
 
 /** A vulnerability id reported for a query, with its last-modified timestamp. */
 export interface VulnRef {
@@ -111,7 +118,7 @@ export async function queryBatch(pkgs: PackageQuery[]): Promise<VulnRef[][]> {
 
     for (let page = 0; pending.length > 0 && page < 20; page++) {
       const queries = pending.map(({ i, token }) => ({
-        package: { ecosystem: "npm", name: pkgs[i]!.name },
+        package: { ecosystem: pkgs[i]!.ecosystem ?? "npm", name: queryName(pkgs[i]!) },
         version: pkgs[i]!.version,
         ...(token ? { page_token: token } : {}),
       }));

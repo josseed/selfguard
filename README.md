@@ -5,7 +5,7 @@
 [![provenance](https://img.shields.io/badge/npm-provenance-blue)](https://www.npmjs.com/package/selfguard#provenance)
 [![license](https://img.shields.io/npm/l/selfguard)](LICENSE)
 
-**A local-first guard for the dependencies of every JavaScript repo on your machine.**
+**A local-first guard for the dependencies of every JavaScript, Python, Rust and Go repo on your machine.**
 
 Most dependency scanners only check a project when you remember to run them, or only for repos
 hosted on a platform. selfguard tracks every project on your machine and checks their lockfiles
@@ -50,7 +50,9 @@ HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
   stays on screen until you dismiss it.
 - **Actionable output.** One upgrade target per vulnerable package ("upgrade lodash to 4.18.0"),
   not a wall of advisories.
-- **Every package manager.** npm, pnpm, yarn (classic and berry) and bun lockfiles.
+- **JavaScript, Python, Rust and Go.** npm, pnpm, yarn (classic and berry) and bun lockfiles,
+  `uv.lock` and `poetry.lock`, `Cargo.lock`, and `go.mod`. See
+  [supported ecosystems](docs/multi-ecosystem.md) for what each one covers.
 - **Repo-aware.** Git worktrees and clones of the same repo are grouped, each with its branch.
 - **Incident response.** `selfguard where <package>` answers "do I use this anywhere?" in one
   command.
@@ -110,6 +112,7 @@ $ selfguard scan
 |---|---|
 | [Getting started](docs/getting-started.md) | Install, setup, dashboard, alerts, uninstall |
 | [CLI reference](docs/cli.md) | Every command and flag, exit codes, environment variables |
+| [Supported ecosystems](docs/multi-ecosystem.md) | JavaScript, Python, Rust and Go: files read, what is checked, limitations |
 | [How it works](docs/how-it-works.md) | Discovery, lockfile parsing, repo grouping, OSV, caching, alerts |
 | [AI and automation](docs/ai-and-automation.md) | MCP server setup, tools, JSON output, scripting and CI |
 | [Security model](docs/security-model.md) | What selfguard trusts, what it sends, how it is released |
@@ -123,16 +126,17 @@ $ selfguard scan
 | Alerts when a new advisory hits an old project | ✅ | ❌ | ❌ | ✅ |
 | Local-only (no repo hosting required) | ✅ | ✅ | ✅ | ❌ |
 | npm, pnpm, yarn, bun | ✅ | npm only | ✅ | ✅ |
+| uv, Poetry, Cargo, Go modules | ✅ | ❌ | ✅ | ✅ |
 | Malicious package feed | ✅ via OSV | ❌ | ✅ via OSV | partial |
 | Opens PRs with fixes | ❌ | ❌ (`npm audit fix` locally) | guided remediation | ✅ |
-| Ecosystems | JavaScript | JavaScript | many | many |
+| Ecosystems | JavaScript, Python, Rust, Go | JavaScript | many | many |
 
 selfguard complements these tools rather than replacing them. Keep Dependabot or Renovate for
 automated fix PRs, and use selfguard to know what is vulnerable on your machine right now.
 
 ## Privacy
 
-selfguard sends only `name` and `version` pairs of your locked dependencies to the OSV.dev API.
+selfguard sends only the ecosystem, `name` and `version` of your locked dependencies to the OSV.dev API.
 No file paths, repo names or source code ever leave your machine. All state lives in
 `~/.selfguard`, readable only by your user. See the [security model](docs/security-model.md).
 

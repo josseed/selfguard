@@ -1,5 +1,5 @@
 /**
- * Shell integration. The shell does the cheap work (walk up for package.json,
+ * Shell integration. The shell does the cheap work (walk up for a project file,
  * stat the lockfile on each prompt); node only runs when you enter a different
  * project or the lockfile changes. Network work always happens in a detached
  * background process so your prompt never waits on it.
@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isExcluded, loadConfig } from "./config.ts";
 import { ensureDir } from "./fsutil.ts";
-import { findProject } from "./lockfile/detect.ts";
+import { findProject, PROJECT_MARKERS } from "./lockfile/detect.ts";
 import { logFile, stateRoot } from "./paths.ts";
 import { groupByPackage, paint, summarizeCounts, worstSeverity } from "./report.ts";
 import { lockChanged } from "./scan.ts";
@@ -40,7 +40,7 @@ if (( $+commands[selfguard] )); then
   _selfguard_chpwd() {
     local d=$PWD found=""
     while [[ $d != / && $d != $HOME ]]; do
-      if [[ -f $d/package.json || -f $d/package-lock.json || -f $d/npm-shrinkwrap.json ]]; then found=$d; break; fi
+      if [[ ${PROJECT_MARKERS.map((f) => `-f $d/${f}`).join(" || ")} ]]; then found=$d; break; fi
       [[ -e $d/.git ]] && break
       d=$d:h
     done

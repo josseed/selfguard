@@ -163,11 +163,13 @@ projects takes seconds.
 Re-scans only the tracked projects whose lockfile changed since their last scan. It is fast
 (a `stat` per project), and it is what the lockfile watcher runs.
 
-### `selfguard where <package>`
+### `selfguard where <package> [--ecosystem <name>]`
 
 Lists the tracked projects that depend on `<package>` (direct or transitive), with the installed
-versions. Vulnerable versions are highlighted. Exact npm package names only, e.g. `lodash` or
-`@scope/name`. No network.
+versions and their ecosystem. Vulnerable versions are highlighted. Use exact names: npm
+(`lodash`, `@scope/name`), PyPI (`requests`; compared PEP 503-normalized, so `Django` and
+`django` match), crates.io (`serde`) or a Go module path (`golang.org/x/net`). By default every
+ecosystem is searched; `--ecosystem npm|PyPI|crates.io|Go` narrows it. No network.
 
 ### `selfguard vuln <id>`
 

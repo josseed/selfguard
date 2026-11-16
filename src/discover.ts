@@ -1,20 +1,23 @@
 /**
- * Discovery of JS projects under folders the user chose.
+ * Discovery of projects (JavaScript, Python, Rust, Go) under folders the user chose.
  * Breadth-first and depth-limited. Descends into every subfolder (including inside
  * projects, so monorepos with several lockfiles are found) except dependency and
  * generated folders like node_modules. Never follows symlinks.
  */
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { isExcluded } from "./config.ts";
 import { LOCKFILES, type Project } from "./lockfile/detect.ts";
 
 /** Installed dependencies and generated caches: never your code. */
 export const SKIP_DIRS: ReadonlySet<string> = new Set([
   "node_modules", "bower_components", "jspm_packages", // JS deps
-  "vendor", "Pods", "venv", "__pycache__", "target", // other ecosystems' deps/build caches
+  "vendor", "Pods", "venv", "__pycache__", "site-packages", "__pypackages__", "target", // other ecosystems' deps/build caches
 ]);
+
+/** Go's module cache ($GOPATH/pkg/mod) holds thousands of go.mod files of downloaded modules. */
+export const isModuleCache = (parent: string, name: string): boolean => name === "mod" && basename(parent) === "pkg";
 
 /** Only skipped when they sit directly in your home folder (macOS system folders). */
 const HOME_SKIP = new Set(["Library", "Applications", "Movies", "Music", "Pictures", "Public"]);
@@ -58,7 +61,7 @@ export async function discover(root: string, opts: DiscoverOptions): Promise<Pro
       for (const e of entries) {
         if (!e.isDirectory() || e.isSymbolicLink()) continue;
         if (e.name.startsWith(".")) continue; // .git, .next, .cache, .turbo, .yarn…
-        if (SKIP_DIRS.has(e.name)) continue;
+        if (SKIP_DIRS.has(e.name) || isModuleCache(dir, e.name)) continue;
         if (dir === home && HOME_SKIP.has(e.name)) continue;
         next.push(join(dir, e.name));
       }

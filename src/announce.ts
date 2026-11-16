@@ -3,6 +3,7 @@
  * (new advisories, fixes, periodic reminders). Decisions live in alerts.ts.
  */
 import { activityOf } from "./activity.ts";
+import { packageKey } from "./lockfile/types.ts";
 import { buildAlert, buildReminder, buildResolvedAlert, deliver, needsAttention, type AttentionRepo, type ProjectNews } from "./alerts.ts";
 import { loadConfig, type RemindEvery } from "./config.ts";
 import { appendEvents, eventPackages, type SelfguardEvent } from "./events.ts";
@@ -87,8 +88,8 @@ export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean
       active: n.active !== false,
     };
     if (n.newFindings.length) events.push({ ...base, kind: "new", ...(n.firstScan ? { firstScan: true } : {}), ...eventPackages(n.newFindings) });
-    const still = new Set((n.findings ?? []).map((f) => `${f.name}@${f.version}`));
-    const fixed = (n.resolvedFindings ?? []).filter((f) => !still.has(`${f.name}@${f.version}`));
+    const still = new Set((n.findings ?? []).map(packageKey));
+    const fixed = (n.resolvedFindings ?? []).filter((f) => !still.has(packageKey(f)));
     if (fixed.length) events.push({ ...base, kind: "resolved", ...eventPackages(fixed) });
   }
   try {

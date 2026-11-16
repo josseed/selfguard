@@ -116,6 +116,9 @@ function ago(iso) {
 
 const tildify = (p) => (p ? p.replace(/^\/(Users|home)\/[^/]+/, "~") : "");
 const advisoryUrl = (id) => `https://osv.dev/vulnerability/${encodeURIComponent(id)}`;
+/** Packages of the same name can exist in several ecosystems (npm, PyPI, crates.io, Go). */
+const pkgId = (p) => `${p.ecosystem || "npm"}:${p.name}`;
+const ecoTag = (p) => (p.ecosystem && p.ecosystem !== "npm" ? h("span", { class: "tag gap-left", title: `${p.ecosystem} package` }, p.ecosystem) : null);
 const plural = (n, w, ws) => `${n} ${n === 1 ? w : ws || `${w}s`}`;
 const isSerious = (sev, direct, dev) => sev === "malicious" || (!dev && (sev === "critical" || (sev === "high" && direct)));
 const sevBadge = (sev) => h("span", { class: "badge", "data-sev": sev }, sev);
@@ -387,10 +390,10 @@ function pageOverview() {
     ? h("ul", { class: "list" },
         ...fixes.map((p) => {
           const versions = p.fixes.length === 1 ? `@${p.fixes[0].version}` : "";
-          return h("li", { class: "clickable", onclick: () => { state.ui.openPkg = p.name; state.ui.pkgFilter = "serious"; location.hash = "#/packages"; } },
+          return h("li", { class: "clickable", onclick: () => { state.ui.openPkg = pkgId(p); state.ui.pkgFilter = "serious"; location.hash = "#/packages"; } },
             sevBadge(p.worstSeverity),
             h("div", { class: "grow" },
-              h("div", { class: "title" }, h("span", { class: "mono" }, `${p.name}${versions}`), p.fixes.length > 1 ? h("span", { class: "faint small" }, ` · ${p.fixes.length} versions`) : null),
+              h("div", { class: "title" }, h("span", { class: "mono" }, `${p.name}${versions}`), ecoTag(p), p.fixes.length > 1 ? h("span", { class: "faint small" }, ` · ${p.fixes.length} versions`) : null),
               h("div", { class: "sub" }, `${plural(p.seriousRepos.length, "repo")}: ${p.seriousRepos.map((r) => r.label).slice(0, 3).join(", ")}${p.seriousRepos.length > 3 ? "…" : ""}`)),
             h("div", { class: "nowrap" }, fixText(p)));
         }))
@@ -580,7 +583,7 @@ function pageRepo() {
           return h("tr", { class: p.checkouts.some((c) => c.active) ? "" : "dim" },
             h("td", { class: "top" }, sevBadge(p.worstSeverity)),
             h("td", { class: "top" },
-              h("div", { class: "mono" }, `${p.name}@${p.version}`, isSerious(p.worstSeverity, p.direct, p.dev) ? h("span", { class: "tag serious gap-left" }, "serious") : null),
+              h("div", { class: "mono" }, `${p.name}@${p.version}`, ecoTag(p), isSerious(p.worstSeverity, p.direct, p.dev) ? h("span", { class: "tag serious gap-left" }, "serious") : null),
               h("div", { class: "small muted" }, kind),
               h("details", { class: "adv" },
                 h("summary", {}, plural(p.advisories.length, "advisory", "advisories")),
@@ -598,7 +601,7 @@ function pageRepo() {
 
   $("page").replaceChildren(h("div", { class: "stack" },
     kpis,
-    card("Vulnerable packages", direct ? "Bump direct dependencies in package.json; for transitive ones, upgrade the package that pulls them in or refresh the lockfile." : null, table, null, scopeToggle),
+    card("Vulnerable packages", direct ? "Bump direct dependencies in the manifest (package.json, pyproject.toml, Cargo.toml or go.mod); for transitive ones, upgrade the package that pulls them in or refresh the lockfile." : null, table, null, scopeToggle),
     card(`Checkouts (${d.checkouts.length})`, "Worktrees and clones of this repo", checkouts,
       d.checkouts.length > listed.length ? h("button", { class: "btn small", type: "button", onclick: () => { state.ui.allCheckouts = true; pageRepo(); } }, `Show all ${d.checkouts.length}`) : null)));
 }
@@ -700,10 +703,10 @@ function pagePackages() {
     host.replaceChildren(card(null, "Judged on each repo's main checkout (or its most recently active one).", h("div", { class: "table-wrap" }, h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Package"), h("th", {}, "Worst"), h("th", { class: "right" }, "Repos"), h("th", {}, "Installed → fix"))),
       h("tbody", {}, ...rows.flatMap((p) => {
-        const open = state.ui.openPkg === p.name;
+        const open = state.ui.openPkg === pkgId(p);
         const repos = state.ui.pkgFilter === "serious" ? p.seriousRepos : p.repos;
-        const row = h("tr", { class: "clickable", onclick: () => { state.ui.openPkg = open ? null : p.name; renderTable(); } },
-          h("td", {}, h("div", { class: "mono" }, open ? "▾ " : "▸ ", p.name), h("div", { class: "small muted" }, [p.direct ? "direct" : "transitive", p.dev ? "dev only" : null].filter(Boolean).join(" · "))),
+        const row = h("tr", { class: "clickable", onclick: () => { state.ui.openPkg = open ? null : pkgId(p); renderTable(); } },
+          h("td", {}, h("div", { class: "mono" }, open ? "▾ " : "▸ ", p.name, ecoTag(p)), h("div", { class: "small muted" }, [p.direct ? "direct" : "transitive", p.dev ? "dev only" : null].filter(Boolean).join(" · "))),
           h("td", {}, sevBadge(p.worstSeverity)),
           h("td", { class: "right num" }, repos.length),
           h("td", { class: "small" }, ...p.fixes.map((f, i) => h("div", { class: "nowrap" },

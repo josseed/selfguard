@@ -7,6 +7,7 @@ import { appStatus, installApp, uninstallApp } from "./app.ts";
 import { GUIDE } from "./guide.ts";
 import { hookEnter, ZSH_HOOK } from "./hook.ts";
 import { findProject } from "./lockfile/detect.ts";
+import { SUPPORTED_ECOSYSTEMS } from "./lockfile/types.ts";
 import { runMcpServer } from "./mcp.ts";
 import { groupByPackage, paint, renderFindings, severityLabel, tildify } from "./report.ts";
 import { clean } from "./sanitize.ts";
@@ -53,6 +54,7 @@ Projects:
   selfguard sync                     find new repos in your folders + re-check everything
   selfguard check                    re-scan only projects whose lockfile changed
   selfguard where <package>          which projects use <package>, which versions
+                                     (--ecosystem npm|PyPI|crates.io|Go to narrow it)
   selfguard vuln <id>                details of an advisory and which projects it affects
 
 Folders:
@@ -334,7 +336,7 @@ async function cmdRemind(args: string[]): Promise<number> {
       notification: alert.kind === "none" ? null : { title: alert.title, subtitle: alert.subtitle, body: alert.body },
       repos: serious.map((r) => ({
         repo: r.repo,
-        packages: r.packages.map((g) => ({ name: g.name, version: g.version, worstSeverity: g.worst, upgradeTo: g.upgradeTo ?? null, direct: g.direct })),
+        packages: r.packages.map((g) => ({ name: g.name, version: g.version, ecosystem: g.ecosystem, worstSeverity: g.worst, upgradeTo: g.upgradeTo ?? null, direct: g.direct })),
       })),
     });
     return 0;
@@ -945,10 +947,12 @@ function cmdRoots(args: string[]): number {
 }
 
 function cmdWhere(args: string[]): number {
-  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: JSON_OPT });
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { ...JSON_OPT, ecosystem: { type: "string" } } });
   const name = positionals[0];
-  if (!name) usage("usage: selfguard where <package>");
-  const r = api.whereUsed(name);
+  if (!name) usage("usage: selfguard where <package> [--ecosystem npm|PyPI|crates.io|Go]");
+  const eco = values.ecosystem === undefined ? undefined : SUPPORTED_ECOSYSTEMS.find((e) => e.toLowerCase() === values.ecosystem!.toLowerCase());
+  if (values.ecosystem !== undefined && !eco) usage(`unknown ecosystem: ${values.ecosystem} (npm, PyPI, crates.io or Go)`);
+  const r = api.whereUsed(name, eco);
   if (values.json) {
     emit(r);
     return 0;
@@ -957,7 +961,10 @@ function cmdWhere(args: string[]): number {
   if (r.usedIn.length === 0) out.write(`${clean(name)} is not used in any tracked project.\n`);
   for (const p of r.usedIn) {
     const list = p.versions
-      .map((v) => `${v.vulnerable ? c.red(clean(v.version)) : clean(v.version)}${v.direct ? "" : c.dim(" (transitive)")}`)
+      .map(
+        (v) =>
+          `${v.vulnerable ? c.red(clean(v.version)) : clean(v.version)}${v.ecosystem === "npm" ? "" : c.dim(` [${v.ecosystem}]`)}${v.direct ? "" : c.dim(" (transitive)")}`,
+      )
       .join(", ");
     out.write(`${c.bold(tildify(p.path))}  ${list}\n`);
   }

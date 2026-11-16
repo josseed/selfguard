@@ -10,6 +10,7 @@ import { needsAttention } from "./alerts.ts";
 import * as api from "./api.ts";
 import { groupByPackage } from "./report.ts";
 import { GUIDE } from "./guide.ts";
+import { SUPPORTED_ECOSYSTEMS } from "./lockfile/types.ts";
 import { VERSION } from "./version.ts";
 
 const KNOWN_PROTOCOLS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -69,6 +70,7 @@ export const TOOLS: Tool[] = [
           packages: groupByPackage(r.findings.filter(needsAttention)).map((g) => ({
             name: g.name,
             version: g.version,
+            ecosystem: g.ecosystem,
             worstSeverity: g.worst,
             direct: g.direct,
             upgradeTo: g.worst === "malicious" ? null : (g.upgradeTo ?? null),
@@ -153,10 +155,19 @@ export const TOOLS: Tool[] = [
     name: "selfguard_where",
     title: "Where is a package used",
     description:
-      "Find which tracked projects depend on a package (any version, direct or transitive), and whether that version is vulnerable. Use for incident response (e.g. 'is the compromised package X anywhere?'). No network.",
-    inputSchema: obj({ package: { type: "string", description: "Exact npm package name, e.g. lodash or @scope/name." } }, ["package"]),
+      "Find which tracked projects depend on a package (any version, direct or transitive, in npm, PyPI, crates.io or Go projects), and whether that version is vulnerable. Use for incident response (e.g. 'is the compromised package X anywhere?'). No network.",
+    inputSchema: obj(
+      {
+        package: { type: "string", description: "Exact package name: npm (lodash, @scope/name), PyPI (requests), crates.io (serde) or Go module path (golang.org/x/net)." },
+        ecosystem: { type: "string", enum: ["npm", "PyPI", "crates.io", "Go"], description: "Only this ecosystem (default: all)." },
+      },
+      ["package"],
+    ),
     annotations: { readOnlyHint: true, openWorldHint: false },
-    run: (a) => api.whereUsed(str(a, "package")),
+    run: (a) => {
+      const eco = typeof a.ecosystem === "string" ? SUPPORTED_ECOSYSTEMS.find((e) => e === a.ecosystem) : undefined;
+      return api.whereUsed(str(a, "package"), eco);
+    },
   },
   {
     name: "selfguard_vulnerability",

@@ -204,8 +204,9 @@ background watching on, they are checked every 15 minutes.
 
 For each vulnerable package selfguard tells you:
 
-- **Direct or transitive.** A direct dependency is declared in your `package.json`. A
-  transitive one is pulled in by another package.
+- **Direct or transitive.** A direct dependency is declared in your `package.json`
+  (`pyproject.toml`, `Cargo.toml` or `go.mod` in other ecosystems). A transitive one is pulled
+  in by another package.
 - **`upgrade to X or later`.** The lowest version that fixes every advisory with a published fix.
 
 Typical fixes:
@@ -217,6 +218,10 @@ Typical fixes:
   [npm `overrides`](https://docs.npmjs.com/cli/configuring-npm/package-json#overrides),
   [pnpm `overrides`](https://pnpm.io/package_json#pnpmoverrides) or
   [yarn `resolutions`](https://yarnpkg.com/configuration/manifest#resolutions).
+- **Python, Rust, Go:** `uv lock --upgrade-package <name>` (or `override-dependencies` under
+  `[tool.uv]`), `poetry update --lock <name>`, `cargo update -p <name> --precise <version>`, and
+  `go get <module>@v<version> && go mod tidy`. Go versions are shown as OSV lists them, without
+  the leading `v`.
 - **Malicious package:** remove it immediately, reinstall from a clean state, and **rotate any
   credentials** the machine or CI could reach (npm tokens, cloud keys, SSH keys, `.env`
   secrets). Upgrading is not enough: the damage happens at install time.

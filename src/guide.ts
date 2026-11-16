@@ -4,14 +4,17 @@
  */
 export const GUIDE = `# selfguard: guide for AI agents
 
-selfguard tracks the JavaScript projects on this machine and checks their locked dependencies
+selfguard tracks the JavaScript, Python, Rust and Go projects on this machine and checks their locked dependencies
 against OSV.dev (GitHub advisories, CVEs, and malicious packages "MAL-*"). It is local-first:
 state lives in ~/.selfguard, only package names+versions are sent to OSV, and it never runs
-project code or package managers.
+project code, package managers or language toolchains.
 
 ## Concepts
 - project: a folder with a lockfile: package-lock.json, npm-shrinkwrap.json, pnpm-lock.yaml (v5-v9),
-  yarn.lock (classic v1 and berry v2+) or bun.lock. The binary bun.lockb is not supported.
+  yarn.lock (classic v1 and berry v2+), bun.lock (npm); uv.lock, poetry.lock (PyPI); Cargo.lock
+  (crates.io); go.mod (Go). One lockfile per folder, JavaScript first. The binary bun.lockb is not supported.
+- ecosystem: packages and findings carry \`ecosystem\` ("npm", "PyPI", "crates.io", "Go"; absent = npm in
+  stored records). Go versions are shown without their "v" (as OSV has them): use "v" + version with go get.
 - roots: folders where projects are discovered (recursive, depth-limited, skips node_modules-like dirs).
 - exclude: paths never tracked (fixtures, examples, archived repos).
 - severity order: malicious > critical > high > moderate > low > unknown.
@@ -62,9 +65,11 @@ Exit codes: 0 ok, 1 scan found vulnerabilities, 2 usage or runtime error. No pro
 1. Start with attention (or status); prioritize malicious, then critical/high, and direct over transitive deps.
 2. Malicious package: tell the user to remove it immediately and rotate credentials that were
    available on that machine/CI (npm tokens, cloud keys, SSH keys). Do not just upgrade it.
-3. Direct dependency: propose bumping it to >= upgradeTo in package.json, then the user runs the install.
-4. Transitive dependency: find which direct dependency pulls it in; propose upgrading that one, or an
-   npm "overrides" entry pinning the package to >= upgradeTo.
+3. Direct dependency: propose bumping it to >= upgradeTo in the manifest (package.json, pyproject.toml,
+   Cargo.toml or go.mod), then the user refreshes the lockfile.
+4. Transitive dependency: find which direct dependency pulls it in; propose upgrading that one, or pinning
+   it (npm "overrides", uv override-dependencies, cargo update -p <name> --precise <version>,
+   go get <module>@v<version>).
 5. After the user installs, run selfguard_check (or selfguard_scan on the project) to verify.
    The user can also follow everything in the local dashboard: selfguard ui.
 6. Dev-only findings matter less for production but still matter for developer machines and CI.

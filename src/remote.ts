@@ -61,8 +61,8 @@ export function shq(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-export const FETCHABLE: ReadonlySet<string> = new Set([...LOCKFILES.map(([f]) => f).filter((f) => f !== "bun.lockb"), "package.json"]);
-export const SKIP: readonly string[] = ["node_modules", "bower_components", "jspm_packages", "vendor", "Pods", "venv", "__pycache__", "target"];
+export const FETCHABLE: ReadonlySet<string> = new Set([...LOCKFILES.map(([f]) => f).filter((f) => f !== "bun.lockb"), "package.json", "pyproject.toml"]);
+export const SKIP: readonly string[] = ["node_modules", "bower_components", "jspm_packages", "vendor", "Pods", "venv", "__pycache__", "site-packages", "__pypackages__", "target"];
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_LIST_BYTES = 16 * 1024 * 1024;
 const MAX_FETCH_BYTES = 200 * 1024 * 1024;
@@ -279,7 +279,7 @@ sg_list() {
     [ -n "$root" ] || continue
     root=$(sg_expand "$root")
     [ -d "$root" ] || continue
-    find "$root" -maxdepth $((depth + 1)) \( \( ${SKIP.map((d) => `-name ${d}`).join(" -o ")} -o -name '.*' \) -type d ! -path "$root" -prune \) -o \( ${LOCKFILES.map(([n]) => `-name ${n}`).join(" -o ")} -o -name package.json \) -type f -print 2>/dev/null
+    find "$root" -maxdepth $((depth + 1)) \( \( ${SKIP.map((d) => `-name ${d}`).join(" -o ")} -o -name '.*' -o -path '*/pkg/mod' \) -type d ! -path "$root" -prune \) -o \( ${LOCKFILES.map(([n]) => `-name ${n}`).join(" -o ")} -o -name package.json \) -type f -print 2>/dev/null
   done | sed -n 's|/[^/]*$||p' | sort -u | while IFS= read -r dir; do
     case $dir in /*) ;; *) continue ;; esac
     lock=
@@ -298,7 +298,7 @@ sg_list() {
 }
 
 # Files in $SG_FILES (one per line): "F<TAB>size<TAB>path" + exactly size bytes, gzipped.
-# Only lockfiles and package.json, never symlinks, at most SG_MAX bytes each.
+# Only lockfiles and manifests (package.json, pyproject.toml), never symlinks, at most SG_MAX bytes each.
 sg_fetch() {
   printf '%s\n' "$SG_FILES" | while IFS= read -r f; do
     [ -n "$f" ] || continue
