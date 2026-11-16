@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Mac app, first stage** (`macos/`, built with `scripts/build-app.sh`, not distributed yet): a
+  menu bar icon with the state of every repo (malicious, needs attention, monitoring partly
+  off, all clear), the repos that need attention, "Check Now", "Sync Everything", and the
+  dashboard in a window locked to its own `127.0.0.1` address. The app bundles a pinned,
+  checksum-verified Node.js, so it needs nothing installed. See
+  [docs/design/mac-app.md](docs/design/mac-app.md).
+- `GET /api/menubar`: the summary the app shows (state, totals, repos that need attention,
+  services, last check and sync, update).
+
 ## [0.10.1] - 2026-11-16
 
 ### Fixed

@@ -6,17 +6,18 @@ import { test } from "node:test";
 import { STATIC } from "../src/ui/assets.ts";
 
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
+const MAC = fileURLToPath(new URL("../macos/Sources/", import.meta.url));
 const MAX_LINES = 300;
 
 function files(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? files(join(dir, e.name)) : /\.(ts|js|mjs|css|html)$/.test(e.name) ? [join(dir, e.name)] : [],
+    e.isDirectory() ? files(join(dir, e.name)) : /\.(ts|js|mjs|css|html|swift)$/.test(e.name) ? [join(dir, e.name)] : [],
   );
 }
 
 test(`source files stay under ${MAX_LINES} lines (split modules by responsibility)`, () => {
-  const long = files(SRC)
-    .map((f) => ({ f: relative(SRC, f), n: readFileSync(f, "utf8").split("\n").length - 1 }))
+  const long = [...files(SRC), ...files(MAC)]
+    .map((f) => ({ f: relative(join(SRC, ".."), f), n: readFileSync(f, "utf8").split("\n").length - 1 }))
     .filter(({ n }) => n > MAX_LINES)
     .map(({ f, n }) => `${f} (${n})`);
   assert.deepEqual(long, []);

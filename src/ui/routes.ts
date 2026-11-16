@@ -10,6 +10,7 @@ import { checkForUpdate } from "../update.ts";
 import { VERSION } from "../version.ts";
 import { readBody } from "./http.ts";
 import { everywhere, everywhereStatus, pairJobs, pairStatus, startEverywhere, startPairJob } from "./jobs.ts";
+import { getMenuBar } from "./menubar.ts";
 import { getOverview, updateStatus } from "./overview.ts";
 
 function str(body: Record<string, unknown>, key: string): string {
@@ -59,6 +60,7 @@ export async function route(method: string, url: URL, req: IncomingMessage, ctx:
   if (method === "GET") {
     if (p === "/api/ping") return { ok: true, version: VERSION };
     if (p === "/api/overview") return getOverview();
+    if (p === "/api/menubar") return getMenuBar();
     if (p === "/api/repo") return api.getRepoDetail(url.searchParams.get("key") ?? "");
     if (p === "/api/repo/markdown") {
       const path = url.searchParams.get("path");
