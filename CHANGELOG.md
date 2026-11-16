@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-16
+
 ### Added
 
 - **Python, Rust and Go projects.** selfguard now reads `uv.lock`, `poetry.lock` (with
@@ -241,7 +243,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/josseed/selfguard/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/josseed/selfguard/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/josseed/selfguard/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/josseed/selfguard/compare/v0.7.1...v0.8.0
