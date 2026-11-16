@@ -17,12 +17,15 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { fchmodSync, openSync, readFileSync, rmSync } from "node:fs";
 import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { maybeRemind } from "../announce.ts";
 import { needsAttention } from "../alerts.ts";
 import * as api from "../api.ts";
 import { readEvents } from "../events.ts";
 import { loadConfig } from "../config.ts";
+import { clean } from "../sanitize.ts";
+import { compare as compareVersions, isValid as isValidVersion } from "../semver.ts";
 import { atomicWrite, ensureDir, isObject, readJsonFile } from "../fsutil.ts";
 import { cliEntry } from "../hook.ts";
 import { severityRank, type Severity } from "../match.ts";
@@ -56,6 +59,23 @@ const CSP = [
 ].join("; ");
 
 const staticDir = (): string => fileURLToPath(new URL("./static/", import.meta.url));
+
+/**
+ * The page, script and styles of THIS version, read once when the server starts. Serving them
+ * from disk on every request would mix versions after `npm i -g selfguard@…`: an old server
+ * would hand out the new page, which calls endpoints the old server doesn't have.
+ */
+function loadAssets(dir = staticDir()): Map<string, { body: Buffer; type: string }> {
+  const out = new Map<string, { body: Buffer; type: string }>();
+  for (const [path, a] of Object.entries(STATIC)) {
+    try {
+      out.set(path, { body: readFileSync(join(dir, a.file)), type: a.type });
+    } catch {
+      /* missing: answered with 500 below */
+    }
+  }
+  return out;
+}
 
 export interface Overview {
   version: string;
@@ -328,6 +348,8 @@ function updateStatus(): unknown {
 interface RouteContext {
   /** Restart this dashboard with the code on disk (same port and token). */
   restart?: () => void;
+  /** Where the page files are (tests). */
+  staticDir?: string;
 }
 
 async function route(method: string, url: URL, req: IncomingMessage, ctx: RouteContext = {}): Promise<unknown> {
@@ -525,6 +547,7 @@ const STATUS: Record<string, number> = {
 };
 
 export function createUiServer(token: string, onActivity: () => void = () => {}, ctx: RouteContext = {}): Server {
+  const assets = loadAssets(ctx.staticDir);
   const server: Server = createServer((req, res) => {
     const port = (server.address() as AddressInfo | null)?.port ?? 0;
     res.setHeader("x-content-type-options", "nosniff");
@@ -544,16 +567,13 @@ export function createUiServer(token: string, onActivity: () => void = () => {},
     const method = req.method ?? "GET";
 
     if (!url.pathname.startsWith("/api/")) {
-      const asset = STATIC[url.pathname];
-      if (!asset || (method !== "GET" && method !== "HEAD")) {
+      if (!(url.pathname in STATIC) || (method !== "GET" && method !== "HEAD")) {
         send(res, 404, "not found", "text/plain; charset=utf-8");
         return;
       }
-      try {
-        send(res, 200, readFileSync(`${staticDir()}${asset.file}`), asset.type);
-      } catch {
-        send(res, 500, "dashboard files missing", "text/plain; charset=utf-8");
-      }
+      const asset = assets.get(url.pathname);
+      if (asset) send(res, 200, asset.body, asset.type);
+      else send(res, 500, "dashboard files missing", "text/plain; charset=utf-8");
       return;
     }
 
@@ -592,10 +612,66 @@ function urlOf(i: UiInstance): string {
   return `http://127.0.0.1:${i.port}/#t=${i.token}`;
 }
 
-function ping(i: UiInstance): Promise<boolean> {
+/**
+ * What a ping answer says: the version of a selfguard dashboard that accepted our token, or
+ * null for anything else (not running, another server on the port, a wrong token…).
+ */
+export function parsePing(status: number | undefined, body: string): string | null {
+  if (status !== 200) return null;
+  try {
+    const j = JSON.parse(body) as { ok?: unknown; version?: unknown };
+    return j && j.ok === true && typeof j.version === "string" && isValidVersion(j.version) ? j.version : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Replace a running dashboard only with a newer version (never downgrade it). */
+export function shouldReplace(running: string, installed: string): boolean {
+  return isValidVersion(running) && isValidVersion(installed) && compareVersions(installed, running) > 0;
+}
+
+/** The version a running dashboard reports (null: not running / not ours). */
+function ping(i: UiInstance): Promise<string | null> {
   return new Promise((resolve) => {
     const req = request(
       { host: "127.0.0.1", port: i.port, path: "/api/ping", headers: { "x-selfguard-token": i.token }, timeout: 1500 },
+      (res) => {
+        let body = "";
+        res.on("data", (c) => {
+          if (body.length < 4096) body += c;
+        });
+        res.on("end", () => resolve(parsePing(res.statusCode, body)));
+      },
+    );
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(null);
+    });
+    req.end();
+  });
+}
+
+async function runningInstance(): Promise<(UiInstance & { version: string }) | null> {
+  const i = readJsonFile<UiInstance>(uiFile());
+  if (!i || !isObject(i) || typeof i.port !== "number" || typeof i.token !== "string" || typeof i.pid !== "number") return null;
+  const version = await ping(i);
+  return version ? { ...i, version } : null;
+}
+
+/** POST /api/restart on a running dashboard (0.7.1+): it re-execs the installed code, same port and token. */
+function askRestart(i: UiInstance): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = request(
+      {
+        host: "127.0.0.1",
+        port: i.port,
+        path: "/api/restart",
+        method: "POST",
+        headers: { "x-selfguard-token": i.token, "content-type": "application/json", origin: `http://127.0.0.1:${i.port}` },
+        timeout: 3000,
+      },
       (res) => {
         res.resume();
         resolve(res.statusCode === 200);
@@ -606,14 +682,62 @@ function ping(i: UiInstance): Promise<boolean> {
       req.destroy();
       resolve(false);
     });
-    req.end();
+    req.end("{}");
   });
 }
 
-async function runningInstance(): Promise<UiInstance | null> {
-  const i = readJsonFile<UiInstance>(uiFile());
-  if (!i || !isObject(i) || typeof i.port !== "number" || typeof i.token !== "string" || typeof i.pid !== "number") return null;
-  return (await ping(i)) ? i : null;
+async function waitFor<T>(fn: () => Promise<T>, ok: (v: T) => boolean, ms: number): Promise<T> {
+  let v = await fn();
+  for (const end = Date.now() + ms; !ok(v) && Date.now() < end; ) {
+    await new Promise((r) => setTimeout(r, 150));
+    v = await fn();
+  }
+  return v;
+}
+
+/** Start `ui --serve` in the background (with a token to hand over, on a restart). */
+function spawnServer(port: number, token?: string): void {
+  ensureDir(stateRoot());
+  const logFd = openSync(logFile(), "a", 0o600);
+  fchmodSync(logFd, 0o600);
+  const child = spawn(process.execPath, [cliEntry(), "ui", "--serve", "--no-open", "--port", String(port)], {
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+    env: token ? { ...process.env, SELFGUARD_UI_TOKEN: token } : process.env,
+  });
+  child.unref();
+}
+
+/**
+ * A dashboard of an older version is running (e.g. 0.7.1 after `npm i -g selfguard@0.8.1`).
+ * Replace it at the same address and with the same token, so open tabs keep working:
+ * ask it to restart itself (it re-execs the installed code); if it can't (older than 0.7.1, or
+ * it came back with another install's version), stop that verified process and start ours,
+ * handing the token over.
+ */
+async function replaceOlder(running: UiInstance & { version: string }): Promise<void> {
+  const current = (): Promise<string | null> => ping(running);
+  if (await askRestart(running)) {
+    const v = await waitFor(current, (x) => x === VERSION, 8000);
+    if (v === VERSION) return;
+  }
+  // Still there with an older version (it answered our token, so the pid is that server's).
+  const still = await current();
+  if (still && still !== VERSION) {
+    try {
+      process.kill(running.pid, "SIGTERM");
+    } catch {
+      /* already gone */
+    }
+    const after = await waitFor(current, (x) => x === null, 5000);
+    if (after !== null) {
+      throw new Error(`the running dashboard (${clean(after, 20)}, pid ${running.pid}) didn't stop; close it and run selfguard ui again`);
+    }
+  }
+  if ((await current()) === null) {
+    rmSync(uiFile(), { force: true });
+    spawnServer(running.port, running.token);
+  }
 }
 
 function openBrowser(url: string): void {
@@ -635,13 +759,7 @@ export async function serve(port: number, onReady: (i: UiInstance) => void): Pro
     setTimeout(() => {
       stop();
       server.closeAllConnections();
-      const logFd = openSync(logFile(), "a", 0o600);
-      const child = spawn(process.execPath, [cliEntry(), "ui", "--serve", "--no-open", "--port", String(boundPort)], {
-        detached: true,
-        stdio: ["ignore", logFd, logFd],
-        env: { ...process.env, SELFGUARD_UI_TOKEN: token },
-      });
-      child.unref();
+      spawnServer(boundPort, token);
       process.exit(0);
     }, 150);
   };
@@ -701,19 +819,20 @@ export async function runUi(opts: { port: number; open: boolean; foreground?: bo
     });
     return;
   }
-  let instance = await runningInstance();
+  const running = await runningInstance();
+  let instance: UiInstance | null = running;
+  if (running && shouldReplace(running.version, VERSION)) {
+    // A dashboard left from before an update: replace it, same address and session.
+    opts.log(`Restarting the dashboard (it was running ${clean(running.version, 20)}, installed ${VERSION}).`);
+    await replaceOlder(running);
+    instance = null;
+  }
   if (!instance) {
-    ensureDir(stateRoot());
-    rmSync(uiFile(), { force: true });
-    const logFd = openSync(logFile(), "a", 0o600);
-    fchmodSync(logFd, 0o600);
-    const child = spawn(process.execPath, [cliEntry(), "ui", "--serve", "--no-open", "--port", String(opts.port)], {
-      detached: true,
-      stdio: ["ignore", logFd, logFd],
-      env: process.env,
-    });
-    child.unref();
-    for (let i = 0; i < 50 && !instance; i++) {
+    if (!running || !shouldReplace(running.version, VERSION)) {
+      rmSync(uiFile(), { force: true });
+      spawnServer(opts.port);
+    }
+    for (let i = 0; i < 80 && !instance; i++) {
       await new Promise((r) => setTimeout(r, 100));
       instance = await runningInstance();
     }
