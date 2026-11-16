@@ -9,13 +9,16 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 
 - **Mac app, first stage** (`macos/`, built with `scripts/build-app.sh`, not distributed yet): a
-  menu bar icon with the state of every repo (malicious, needs attention, monitoring partly
-  off, all clear), the repos that need attention, "Check Now", "Sync Everything", and the
-  dashboard in a window locked to its own `127.0.0.1` address. The app bundles a pinned,
+  menu bar icon that changes for what is **new since you last looked** (and for malicious
+  packages or monitoring that is off), not for the standing backlog; the latest findings and
+  fixes; the repos that need attention, with their branch; "Check Now" and "Sync Everything"
+  with a notification of the result; "Open at Login"; and the dashboard in a window locked to
+  its own `127.0.0.1` address, with a Dock icon while it is open. The menu reads a file, so the
+  dashboard server only runs while the window is used. The app bundles a pinned,
   checksum-verified Node.js, so it needs nothing installed. See
   [docs/design/mac-app.md](docs/design/mac-app.md).
-- `GET /api/menubar`: the summary the app shows (state, totals, repos that need attention,
-  services, last check and sync, update).
+- `selfguard menubar` and `~/.selfguard/menubar.json` (also `GET /api/menubar`): the summary
+  the app shows, rewritten after every scan with news, `sync`, `dismiss` and `forget`.
 
 ### Changed
 

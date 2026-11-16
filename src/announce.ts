@@ -8,6 +8,7 @@ import { placeCheckouts, type Placement } from "./canonical.ts";
 import { packageKey } from "./lockfile/types.ts";
 import { buildAlert, buildReminder, buildResolvedAlert, deliver, needsAttention, type AttentionRepo, type ProjectNews } from "./alerts.ts";
 import { loadConfig, type RemindEvery } from "./config.ts";
+import { writeMenuBar } from "./menubar.ts";
 import { appendEvents, eventPackages, type SelfguardEvent } from "./events.ts";
 import type { ScanOutcome } from "./scan.ts";
 import type { SourceOutcome } from "./sources/scan.ts";
@@ -130,6 +131,8 @@ export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean
   } catch {
     /* the log is a convenience; never fail a scan because of it */
   }
+  // The Mac app reads its menu from this file; only rewritten when a scan brought news.
+  if (events.length || news.some((n) => n.newFindings.length || n.resolvedFindings?.length)) writeMenuBar();
   if (opts.notify === false) return false;
   const alerts = [buildAlert(news), buildResolvedAlert(news)].filter((a) => a.kind !== "none");
   for (const a of alerts) await deliver(a);

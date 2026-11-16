@@ -1,64 +1,138 @@
+import AppKit
 import Foundation
 
 /// State shared by the menu and the dashboard window. Everything comes from the engine: the
-/// app keeps no data of its own.
+/// menu reads `~/.selfguard/menubar.json`, which the engine rewrites after every scan with
+/// news; the dashboard server only runs while the window is used.
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var summary: MenuBarSummary?
-    @Published private(set) var icon: IconState = .starting
     /// "Checking…" or "Syncing…" while a command runs.
     @Published private(set) var busy: String?
+    /// Result of the last Check Now / Sync, shown in the menu.
+    @Published private(set) var lastResult: String?
     @Published private(set) var problem: String?
     /// What the dashboard window shows; changing it navigates the window.
     @Published var pageURL: URL?
     /// Bumped to ask the scene to bring up the dashboard window.
     @Published private(set) var windowRequests = 0
+    /// Events newer than this are "new since you looked".
+    @Published private(set) var lastSeen: Date
 
     let engine: Engine?
     private var instance: DashboardInstance?
-    private var poller: Task<Void, Never>?
-    /// The dashboard start in progress: the menu and the window share it, so they never
-    /// start two servers.
     private var starting: Task<DashboardInstance?, Never>?
-    private static let pollSeconds: UInt64 = 60
+    private var tasks: [Task<Void, Never>] = []
+    private var fileStamp: Date?
+    private static let lastSeenKey = "lastSeen"
+    private var summaryURL: URL { Engine.stateRoot.appendingPathComponent("menubar.json") }
 
     init() {
         engine = Engine.locate()
-        if engine == nil {
-            icon = .unavailable
-            problem = "The selfguard engine is missing from the app. Reinstall selfguard."
-        }
+        let stored = UserDefaults.standard.object(forKey: Self.lastSeenKey) as? Date
+        lastSeen = stored ?? Date()
+        if stored == nil { UserDefaults.standard.set(lastSeen, forKey: Self.lastSeenKey) }
+        if engine == nil { problem = "The selfguard engine is missing from the app. Reinstall selfguard." }
     }
 
     func start() {
-        guard poller == nil, engine != nil else { return }
-        poller = Task { [weak self] in
+        guard tasks.isEmpty, let engine else { return }
+        loadSummary()
+        // Closing the menu means what it showed has been seen.
+        NotificationCenter.default.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.markSeen() }
+        }
+        // Watch the file (cheap: one stat every 3 s).
+        tasks.append(Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refresh()
-                try? await Task.sleep(nanoseconds: Self.pollSeconds * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                self?.loadSummaryIfChanged()
             }
+        })
+        // Refresh what the file can't know by itself (services, last sync) every 15 minutes.
+        tasks.append(Task { [weak self] in
+            while !Task.isCancelled {
+                await engine.run(["menubar"], timeout: 120)
+                self?.loadSummary()
+                try? await Task.sleep(nanoseconds: 15 * 60 * 1_000_000_000)
+            }
+        })
+    }
+
+    private func loadSummaryIfChanged() {
+        let stamp = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path))?[.modificationDate] as? Date
+        if stamp != fileStamp { loadSummary() }
+    }
+
+    private func loadSummary() {
+        fileStamp = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path))?[.modificationDate] as? Date
+        if let s = MenuBarSummary.load(from: summaryURL) {
+            summary = s
+            problem = nil
         }
     }
 
-    /// Fetch the summary, (re)starting the dashboard server if it isn't answering. Polling
-    /// also keeps the server alive: it stops by itself after 30 minutes without requests.
-    func refresh() async {
-        guard let engine else { return }
-        for attempt in 0..<2 {
-            if instance == nil || attempt > 0 {
-                instance = await startDashboard(engine)
-            }
-            guard let instance else { break }
-            if let s = await fetchSummary(instance) {
-                summary = s
-                icon = IconState(s.state)
-                problem = nil
-                return
-            }
-        }
-        icon = .unavailable
-        problem = "The selfguard dashboard isn't answering. See ~/.selfguard/selfguard.log."
+    // MARK: - What the icon and the menu show
+
+    /// New findings (not fixes) since the menu was last opened.
+    var unseen: [MenuBarSummary.Event] {
+        (summary?.events ?? []).filter { $0.kind == "new" && ($0.date ?? .distantPast) > lastSeen }
     }
+
+    /// News and fixes since the menu was last opened.
+    var recent: [MenuBarSummary.Event] {
+        (summary?.events ?? []).filter { ($0.date ?? .distantPast) > lastSeen }
+    }
+
+    var icon: IconState {
+        guard engine != nil else { return .unavailable }
+        guard let s = summary else { return problem == nil ? .starting : .unavailable }
+        if s.state == "malicious" { return .malicious }
+        if !unseen.isEmpty { return .news }
+        if let svc = s.services, !svc.sync || !svc.watcher { return .degraded }
+        return s.attentionRepos > 0 ? .backlog : .clean
+    }
+
+    /// The menu was closed: what it showed has been seen.
+    func markSeen() {
+        guard let newest = summary?.events.compactMap(\.date).max(), newest > lastSeen else { return }
+        lastSeen = newest
+        UserDefaults.standard.set(newest, forKey: Self.lastSeenKey)
+    }
+
+    // MARK: - Commands
+
+    /// `selfguard check`: re-scan what changed. `selfguard sync`: re-check everything.
+    func checkNow() { runCommand(["check"], label: "Checking…", done: "Check") }
+    func syncNow() { runCommand(["sync"], label: "Syncing…", done: "Sync") }
+
+    private func runCommand(_ args: [String], label: String, done: String) {
+        guard let engine, busy == nil else { return }
+        busy = label
+        lastResult = nil
+        let before = Set((summary?.events ?? []).map(\.id))
+        Task {
+            let status = await engine.run(args)
+            await engine.run(["menubar"], timeout: 120)
+            loadSummary()
+            busy = nil
+            let fresh = (summary?.events ?? []).filter { !before.contains($0.id) }
+            let found = fresh.filter { $0.kind == "new" }.count
+            let fixed = fresh.filter { $0.kind == "resolved" }.count
+            let text: String
+            if status != 0 && status != 1 {
+                text = "\(done) failed: see ~/.selfguard/selfguard.log"
+            } else if found + fixed == 0 {
+                text = "\(done) done: nothing changed"
+            } else {
+                text = "\(done) done: \([found > 0 ? "\(found) repo(s) with new findings" : nil, fixed > 0 ? "\(fixed) with fixes" : nil].compactMap { $0 }.joined(separator: ", "))"
+            }
+            lastResult = text
+            Notifier.post(title: "selfguard", body: text)
+        }
+    }
+
+    // MARK: - Dashboard window
 
     private func startDashboard(_ engine: Engine) async -> DashboardInstance? {
         if let starting { return await starting.value }
@@ -69,34 +143,16 @@ final class AppModel: ObservableObject {
         return result
     }
 
-    private func fetchSummary(_ i: DashboardInstance) async -> MenuBarSummary? {
-        guard let (data, res) = try? await URLSession.shared.data(for: i.request("api/menubar")),
-              (res as? HTTPURLResponse)?.statusCode == 200
-        else { return nil }
-        return try? JSONDecoder().decode(MenuBarSummary.self, from: data)
-    }
-
-    /// `selfguard check`: re-scan what changed. `selfguard sync`: re-check everything.
-    func checkNow() { runCommand(["check"], label: "Checking…") }
-    func syncNow() { runCommand(["sync"], label: "Syncing…") }
-
-    private func runCommand(_ args: [String], label: String) {
-        guard let engine, busy == nil else { return }
-        busy = label
-        Task {
-            await engine.run(args)
-            busy = nil
-            await refresh()
-        }
-    }
-
-    /// Point the window at the dashboard (optionally a repo or a page). False if the
-    /// dashboard can't be started.
+    /// Point the window at the dashboard (optionally a repo or a page), starting the server
+    /// if needed. False if it can't be started.
     func showDashboard(repo: String? = nil, page: String? = nil) async -> Bool {
         var alive = false
         if let current = instance { alive = await current.ping() != nil }
         if !alive, let engine { instance = await startDashboard(engine) }
-        guard let instance else { return false }
+        guard let instance else {
+            problem = "The dashboard didn't start. See ~/.selfguard/selfguard.log."
+            return false
+        }
         pageURL = instance.pageURL(repo: repo, page: page)
         return true
     }

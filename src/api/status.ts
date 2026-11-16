@@ -9,7 +9,7 @@ import { expandRemote, loadMachineStatus } from "../machines.ts";
 import { severityRank, type Severity } from "../match.ts";
 import { worstSeverity } from "../report.ts";
 import type { RepoIdentity } from "../repoid.ts";
-import { checkoutId, identityOf, listAllRepos, repoKeyOf, type Finding } from "../store.ts";
+import { checkoutId, findingKey, identityOf, listAllRepos, repoKeyOf, type Finding } from "../store.ts";
 import { dismissalsFor, summarize } from "./common.ts";
 import type { ProjectSummary, RepoGroup } from "./shapes.ts";
 
@@ -136,17 +136,31 @@ export function getAttention(): Array<AttentionRepo & { key: string; path: strin
     const p = placed.get(checkoutId(rec));
     if (p?.active && p.role !== "copy") activeKeys.add(p.key);
   }
+  // A malicious package doesn't wait for a merge: any checkout's (or copy's) counts.
+  const maliciousElsewhere = new Map<string, Finding[]>();
+  for (const { rec } of present) {
+    const p = placed.get(checkoutId(rec));
+    if (!p || p.representative) continue;
+    const bad = rec.findings.filter((f) => f.severity === "malicious");
+    if (bad.length) maliciousElsewhere.set(p.key, [...(maliciousElsewhere.get(p.key) ?? []), ...bad]);
+  }
   const out: Array<AttentionRepo & { key: string; path: string; machine: string | null; branch: string | null }> = [];
   for (const { rec, repo } of present) {
     const p = placed.get(checkoutId(rec));
-    if (!p?.representative || !activeKeys.has(p.key) || rec.findings.length === 0) continue;
+    if (!p?.representative) continue;
+    const extra = maliciousElsewhere.get(p.key) ?? [];
+    // Repos nobody works on (or dismissed) aren't nagged about; their malicious packages
+    // still alert when a scan finds them.
+    if (!activeKeys.has(p.key)) continue;
+    const findings = extra.length ? [...rec.findings, ...extra.filter((f) => !rec.findings.some((g) => findingKey(g) === findingKey(f)))] : rec.findings;
+    if (findings.length === 0) continue;
     out.push({
       key: p.key,
       label: `${rec.machine ? `${rec.machine} · ` : ""}${p.label ?? repo?.label ?? (rec.path.split("/").pop() || rec.path)}`,
       path: rec.path,
       machine: rec.machine ?? null,
       branch: repo?.branch ?? null,
-      findings: rec.findings,
+      findings,
     });
   }
   return out;

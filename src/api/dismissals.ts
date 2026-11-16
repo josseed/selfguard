@@ -1,3 +1,4 @@
+import { writeMenuBar } from "../menubar.ts";
 import { resolve } from "node:path";
 import { loadConfig, normalizeDir, saveConfig } from "../config.ts";
 import { liveDismissals, pruneDismissals, trackedActivity } from "../dismiss.ts";
@@ -33,6 +34,7 @@ export function dismissRepo(key: string): DismissedRepo {
   const at = new Date().toISOString();
   cfg.dismissed = [...cfg.dismissed.filter((d) => d.key !== key), { key, label, at }];
   saveConfig(cfg);
+  writeMenuBar();
   return { key, label, dismissedAt: at };
 }
 
@@ -57,7 +59,10 @@ export function undismissRepo(key: string): { key: string; removed: boolean } {
   const cfg = loadConfig();
   const before = cfg.dismissed.length;
   cfg.dismissed = cfg.dismissed.filter((d) => d.key !== key);
-  if (cfg.dismissed.length < before) saveConfig(cfg);
+  if (cfg.dismissed.length < before) {
+    saveConfig(cfg);
+    writeMenuBar();
+  }
   return { key, removed: cfg.dismissed.length < before };
 }
 

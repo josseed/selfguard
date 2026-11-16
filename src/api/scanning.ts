@@ -1,3 +1,4 @@
+import { writeMenuBar } from "../menubar.ts";
 import { existsSync } from "node:fs";
 import { activityOf } from "../activity.ts";
 import { announce } from "../announce.ts";
@@ -128,6 +129,7 @@ export async function sync(opts: { notify?: boolean } = {}): Promise<SyncResult>
     await announceMachines(local, remote, opts.notify ?? false, sources);
     updateState({ lastSync: new Date().toISOString() });
     pruneDismissed(loadConfig());
+    writeMenuBar();
     return {
       projects: projects.length + remote.reduce((n, r) => n + r.projects, 0),
       discovered: discovered.map((p) => p.root),

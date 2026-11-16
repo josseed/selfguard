@@ -19,6 +19,8 @@ struct SelfguardApp: App {
         Window("selfguard", id: "dashboard") {
             DashboardView(model: model)
                 .frame(minWidth: 900, minHeight: 600)
+                .onAppear { DockIcon.show(true) }
+                .onDisappear { DockIcon.show(false) }
         }
         .defaultSize(width: 1200, height: 820)
     }
@@ -36,6 +38,7 @@ private struct MenuBarIcon: View {
             .task {
                 delegate.model = model
                 model.start()
+                LoginItem.enableOnFirstLaunch()
                 if CommandLine.arguments.contains("--dashboard") { model.openWindow() }
             }
             .onChange(of: model.windowRequests) { _ in

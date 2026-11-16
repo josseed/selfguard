@@ -12,7 +12,7 @@ import { cmdDiscover, cmdDismiss, cmdForget, cmdRoots, cmdUndismiss, cmdUnexclud
 import { cmdMachines } from "./cli/machines.ts";
 import { emit, err, jsonMode, out, usage, UsageError } from "./cli/output.ts";
 import { cmdReport, cmdScan, cmdStatus, cmdVuln, cmdWhere } from "./cli/projects.ts";
-import { cmdApp, cmdSchedule, cmdSettings, cmdUi } from "./cli/settings.ts";
+import { cmdApp, cmdMenuBar, cmdSchedule, cmdSettings, cmdUi } from "./cli/settings.ts";
 import { cmdShare } from "./cli/share.ts";
 import { cmdCheck, cmdRemind, cmdSync, cmdUpdate } from "./cli/sync.ts";
 import { cmdTools } from "./cli/tools.ts";
@@ -29,6 +29,7 @@ Setup:
 Dashboard and alerts:
   selfguard ui [--no-open] [--port N]
                                      local dashboard in your browser (127.0.0.1 only)
+  selfguard menubar                  summary for the Mac app (rewrites ~/.selfguard/menubar.json)
   selfguard app install | uninstall | status
                                      macOS: ~/Applications/selfguard.app opens the dashboard
                                      (Spotlight, Launchpad, Dock)
@@ -143,6 +144,8 @@ async function main(argv: string[]): Promise<number> {
       return cmdUi(rest);
     case "app":
       return cmdApp(rest);
+    case "menubar":
+      return cmdMenuBar(rest);
     case "discover":
       return cmdDiscover(rest);
     case "machines":

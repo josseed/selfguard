@@ -134,3 +134,29 @@ test("default branch: origin/HEAD, else a local main or master (loose or packed)
   writeFileSync(join(dir, "refs", "remotes", "origin", "HEAD"), "ref: refs/remotes/origin/develop\n");
   assert.equal(defaultBranchOf(dir), "develop");
 });
+
+test("attention: the default branch's findings, plus malicious packages from any checkout", async () => {
+  const { saveRepo } = await import("../src/store.ts");
+  const { getAttention } = await import("../src/api/status.ts");
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "sg-attn-")));
+  const main = join(base, "shop");
+  mkdirSync(join(main, ".git", "worktrees", "feat"), { recursive: true });
+  mkdirSync(join(main, ".git", "refs", "heads"), { recursive: true });
+  writeFileSync(join(main, ".git", "config"), '[remote "origin"]\n\turl = https://github.com/acme/shop.git\n');
+  writeFileSync(join(main, ".git", "HEAD"), "ref: refs/heads/master\n");
+  writeFileSync(join(main, ".git", "refs", "heads", "master"), "0123\n");
+  const wt = join(base, "shop-feat");
+  mkdirSync(wt);
+  writeFileSync(join(wt, ".git"), `gitdir: ${join(main, ".git", "worktrees", "feat")}\n`);
+  writeFileSync(join(main, ".git", "worktrees", "feat", "commondir"), "../..\n");
+  writeFileSync(join(main, ".git", "worktrees", "feat", "HEAD"), "ref: refs/heads/feat\n");
+  const finding = (name: string, severity: Finding["severity"]): Finding => ({ id: `GHSA-${name}`, name, version: "1.0.0", severity, aliases: [], summary: "", direct: true, dev: false, firstSeen: "" });
+
+  saveRepo(rec(main, [], [finding("on-main", "critical")]));
+  saveRepo(rec(wt, [], [finding("on-main", "critical"), finding("feature-only", "critical"), finding("evil", "malicious")]));
+  const [repo, ...others] = getAttention();
+  assert.equal(others.length, 0, "one entry per repo");
+  assert.equal(repo?.key, "github.com/acme/shop");
+  assert.equal(repo?.path, main);
+  assert.deepEqual(repo?.findings.map((f) => f.name).sort(), ["evil", "on-main"]);
+});

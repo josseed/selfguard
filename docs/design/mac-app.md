@@ -1,7 +1,8 @@
 # Design: selfguard for Mac
 
-Status: phase 1 done (2026-11-16): the app builds locally with `scripts/build-app.sh`. Phases
-2 to 5 are pending.
+Status (2026-11-16): phase 1 done, and from phase 2 the summary file, "new since you looked",
+the login item, the Dock icon while the window is open and Check/Sync result notifications.
+Pending: native notifications for findings, adopting the services, the CLI link, phases 3–5.
 
 ## Goal
 
@@ -53,9 +54,15 @@ selfguard.app/Contents/
 - **Dashboard process**: reuses the running instance from `ui.json` if it answers `/api/ping`
   with the same version, otherwise starts `engine/node dist/cli.js ui --serve --no-open` as a
   child process and restarts it if it dies.
-- **State for the menu**: one new read-only endpoint, `/api/menubar` (counts, worst severity,
-  malicious yes/no, last check/sync, service health), polled every 30 s, plus a file watch on
-  `~/.selfguard/events.jsonl` for immediate refresh.
+- **State for the menu**: `~/.selfguard/menubar.json`, rewritten by the engine after every scan
+  with news, `sync`, `dismiss` and `forget`, and by `selfguard menubar` (the app runs it at
+  launch, after Check Now / Sync and every 15 minutes for service health). The app checks the
+  file's date every 3 s. No server is needed for the menu: polling one kept a ~700 MB dashboard
+  process alive for good (measured), so the server only runs while the window is used.
+- **Icon**: changes for findings that are new since the menu was last opened, a malicious
+  package, or a service that is off. The backlog (repos that need attention) is listed in the
+  menu but doesn't change the icon: with real data it never empties, and an icon that never
+  changes is ignored.
 - **Notifications**: the app watches `events.jsonl` and posts native notifications. Malicious
   findings open an `NSAlert` that can't be missed, like today's dialog. While the app is
   running, the engine leaves alerts to it (a `notifier: app` setting plus a heartbeat file the

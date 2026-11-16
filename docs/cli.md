@@ -69,6 +69,13 @@ carries a per-session token. See the [security model](security-model.md#dashboar
 | `--no-open` | Print the URL without opening a browser. |
 | `--port` | Port to listen on (default: a random free port). |
 
+### `selfguard menubar [--json]`
+
+Rewrites `~/.selfguard/menubar.json` and prints it: the summary the Mac app shows in its menu
+bar (state, repos that need attention, latest findings and fixes, services, last check and
+sync). selfguard also rewrites it after every scan that finds or fixes something, and after
+`dismiss`, `undismiss`, `forget` and `sync`. Local only, no network.
+
 ### `selfguard app install | uninstall | status`
 
 macOS only. Creates `~/Applications/selfguard.app`, a launcher for the dashboard, so you can

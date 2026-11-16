@@ -1,3 +1,4 @@
+import { writeMenuBar } from "../menubar.ts";
 import { resolve } from "node:path";
 import { announce } from "../announce.ts";
 import { clampDepth, DEFAULT_DEPTH, isExcluded, loadConfig, normalizeDir, saveConfig, type Root } from "../config.ts";
@@ -91,6 +92,7 @@ export function forget(path: string, opts: { exclude?: boolean } = {}): { path: 
   }
   // Their repo's CI workflows and agent configs too, unless another tracked project lives there.
   forgetSourcesOf([root, ...alsoForgotten], listRepos().map((r) => r.path));
+  if (wasTracked) writeMenuBar();
   return { path: root, wasTracked, excluded: exclude, alsoForgotten };
 }
 
