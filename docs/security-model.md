@@ -9,8 +9,8 @@ what it sends, and how it is built and released. To report a vulnerability, see
 
 | Threat | Mitigation |
 |---|---|
-| A hostile repository runs code when you `cd` into it or scan it | Lockfiles and `package.json` are parsed as data by selfguard's own parsers. No package manager, `npm ls`, lifecycle script, `.npmrc` or project config is ever executed or loaded. |
-| A crafted lockfile crashes or abuses the parser | Lockfiles over 100 MB are refused. The YAML reader supports only the subset lockfiles use: no anchors, aliases or tags, so no "billion laughs". Nesting depth is bounded and objects have no prototype, so keys like `__proto__` are plain data. |
+| A hostile repository runs code when you `cd` into it or scan it | Lockfiles, `package.json`, `pyproject.toml` and `go.mod` are parsed as data by selfguard's own parsers. No package manager (`npm`, `pip`, `uv`, `poetry`, `cargo`, `go`), lifecycle or build script, `.npmrc` or project config is ever executed or loaded. |
+| A crafted lockfile crashes or abuses the parser | Lockfiles over 100 MB are refused. The YAML reader supports only the subset lockfiles use: no anchors, aliases or tags, so no "billion laughs". The TOML reader (Cargo.lock, uv.lock, poetry.lock, pyproject.toml) has no evaluation features either. Nesting depth is bounded and objects have no prototype, so keys like `__proto__` are plain data. |
 | Package names or advisory text inject terminal escape sequences | Everything printed is stripped of C0/C1 control characters and bidirectional overrides ("Trojan Source"), and truncated. |
 | Notification text injects AppleScript | Text is passed to `osascript` as arguments to an `on run` handler, never interpolated into script source. The dialog's button only opens `https://osv.dev/vulnerability/<id>` URLs built by selfguard. |
 | A website talks to the local dashboard | It listens on `127.0.0.1` only and checks the `Host` header (DNS rebinding). Every API call needs a random per-session token sent in a custom header, which other sites can't send without a CORS preflight that is never answered. POSTs must be same-origin JSON. See [Dashboard](#dashboard). |
@@ -32,8 +32,9 @@ Downloads unless you already watch a folder there, so it never shows a privacy p
 Calls to the OSV.dev API at `https://api.osv.dev/v1`, plus the daily update check described
 below:
 
-- `POST /querybatch` with `{ "package": { "ecosystem": "npm", "name": … }, "version": … }` for
-  each unique dependency;
+- `POST /querybatch` with `{ "package": { "ecosystem": …, "name": … }, "version": … }` for
+  each unique dependency. The ecosystem is `npm`, `PyPI`, `crates.io` or `Go`; Go module paths
+  (`github.com/org/module`) are public module names, sent like any package name;
 - `GET /vulns/{id}` for advisory details not already cached.
 
 Requests carry the `User-Agent: selfguard/<version>` header. No file paths, project or repo
@@ -88,8 +89,8 @@ starts a small HTTP service (a launchd agent, or a systemd user unit on Linux):
   and port, and the pairing endpoints accept only `application/json`. A page in a browser,
   even one that re-points its own domain at this address (DNS rebinding), can't talk to it.
 - **Read-only, same reader.** It answers the same requests as the SSH reader (list, fetch,
-  browse, ping; `reader.ts` produces byte-identical answers) with the same limits: lockfile and
-  `package.json` names only, no symlinked files, 50 MB per file, at most 1,000 files and 64
+  browse, ping; `reader.ts` produces byte-identical answers) with the same limits: lockfile,
+  `package.json` and `pyproject.toml` names only, no symlinked files, 50 MB per file, at most 1,000 files and 64
   folders per request, nothing outside the granted folder (paths resolved with `realpath`, so
   symlinks and `..` can't escape). Git facts (branch, remote URL, activity) also come only from
   a `.git` and a common git dir inside the granted folder. A narrower grant never reveals a
@@ -145,7 +146,7 @@ What the key can do on the machine:
   It resolves every requested path with `pwd -P` and refuses anything outside, including
   through symlinks or `..`. The dashboard's folder picker stops at that folder.
 - **Only lockfiles.** Answers contain lockfile names, sizes and dates, the bytes of files
-  named like a lockfile or `package.json` (never symlinks, at most 50 MB each), and a few git
+  named like a lockfile (`go.mod` included), `package.json` or `pyproject.toml` (never symlinks, at most 50 MB each), and a few git
   facts: branch, worktree pointer, remote URL and last activity. No `.env`, keys or source
   files.
 - **Only from this Mac.** When the machine is on your tailnet, the line is pinned to this Mac's

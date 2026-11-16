@@ -59,7 +59,7 @@ Then ask things like:
 | `selfguard_check` | | ✅ | Re-scan only projects whose lockfile changed. Use it to verify a fix. |
 | `selfguard_machines` | ✅ | | Other machines (dev servers): folders, projects, last sync or error. |
 | `selfguard_machines_sync` | | ✅ | Check other machines now over SSH (read-only there). Use it to verify a fix on a server. |
-| `selfguard_where` | ✅ | | Which projects use a package, which versions, whether vulnerable. |
+| `selfguard_where` | ✅ | | Which projects use a package (any ecosystem, or `ecosystem` to narrow), which versions, whether vulnerable. |
 | `selfguard_vulnerability` | ✅ | ✅ | Advisory details plus the user's affected projects. |
 | `selfguard_roots_list` | ✅ | | Watched folders and exclusions. |
 | `selfguard_roots_add` / `selfguard_roots_remove` | | | Manage watched folders. |

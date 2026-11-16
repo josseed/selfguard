@@ -53,7 +53,7 @@ async function pickRoots(initial: Root[], exclude: string[], suggested: Root[] =
       const box = it.selected ? c.green("[x]") : "[ ]";
       const name = fitStart(tildify(it.path), width).padEnd(width);
       const label = (
-        it.count === null ? "counting…" : it.count === 0 ? "no JS projects" : `${it.count} project${it.count === 1 ? "" : "s"}`
+        it.count === null ? "counting…" : it.count === 0 ? "no projects" : `${it.count} project${it.count === 1 ? "" : "s"}`
       ).padEnd(14);
       const count = it.count ? label : c.dim(label);
       lines.push(`${pointer} ${box} ${i === cursor ? c.bold(name) : name}  ${count} ${c.dim(`depth ${it.depth}`)}`);

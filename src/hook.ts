@@ -1,16 +1,16 @@
 /**
- * Shell integration. The shell does the cheap work (walk up for package.json,
+ * Shell integration. The shell does the cheap work (walk up for a project file,
  * stat the lockfile on each prompt); node only runs when you enter a different
  * project or the lockfile changes. Network work always happens in a detached
  * background process so your prompt never waits on it.
  */
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
+import { existsSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isExcluded, loadConfig } from "./config.ts";
 import { ensureDir } from "./fsutil.ts";
-import { findProject } from "./lockfile/detect.ts";
+import { findProject, PROJECT_MARKERS } from "./lockfile/detect.ts";
 import { logFile, stateRoot } from "./paths.ts";
 import { groupByPackage, paint, summarizeCounts, worstSeverity } from "./report.ts";
 import { lockChanged } from "./scan.ts";
@@ -40,7 +40,7 @@ if (( $+commands[selfguard] )); then
   _selfguard_chpwd() {
     local d=$PWD found=""
     while [[ $d != / && $d != $HOME ]]; do
-      if [[ -f $d/package.json || -f $d/package-lock.json || -f $d/npm-shrinkwrap.json ]]; then found=$d; break; fi
+      if [[ ${PROJECT_MARKERS.map((f) => `-f $d/${f}`).join(" || ")} ]]; then found=$d; break; fi
       [[ -e $d/.git ]] && break
       d=$d:h
     done
@@ -88,7 +88,13 @@ export function spawnBackgroundScan(dir: string): void {
 export function hookEnter(dir: string, onPrompt = false): void {
   try {
     const project = findProject(dir);
-    if (!project || isExcluded(project.root, loadConfig().exclude)) return;
+    if (!project) {
+      // A Python or Rust project without its lockfile yet: watch the folder itself (its mtime
+      // changes when `uv lock` or `cargo generate-lockfile` creates one), so it is picked up.
+      if (["pyproject.toml", "Cargo.toml"].some((f) => existsSync(join(dir, f))) && !isExcluded(dir, loadConfig().exclude)) process.stdout.write(dir);
+      return;
+    }
+    if (isExcluded(project.root, loadConfig().exclude)) return;
     process.stdout.write(project.lockfile ?? join(project.root, "package-lock.json"));
 
     const c = paint(process.stderr);

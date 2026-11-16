@@ -1,7 +1,7 @@
 import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWrite, isObject, readJsonFile, sha256 } from "./fsutil.ts";
-import type { Dependency, LockfileType } from "./lockfile/types.ts";
+import { packageKey, type Dependency, type Ecosystem, type LockfileType } from "./lockfile/types.ts";
 import type { Severity } from "./match.ts";
 import { machineDir, machineReposDir, reposDir } from "./paths.ts";
 import { repoIdentity, type RepoIdentity } from "./repoid.ts";
@@ -16,6 +16,8 @@ export interface Finding {
   direct: boolean;
   dev: boolean;
   fixedIn?: string;
+  /** Absent means npm. */
+  ecosystem?: Ecosystem;
   /** When we first saw this finding for this repo (ISO). */
   firstSeen: string;
 }
@@ -59,7 +61,7 @@ export function repoKeyOf(rec: { path: string; machine?: string | null }, identi
   return identity?.key ?? (rec.machine ? `${rec.machine}|path:${rec.path}` : `path:${rec.path}`);
 }
 
-export const findingKey = (f: Pick<Finding, "id" | "name" | "version">): string => `${f.id}|${f.name}@${f.version}`;
+export const findingKey = (f: Pick<Finding, "id" | "name" | "version" | "ecosystem">): string => `${f.id}|${packageKey(f)}`;
 
 const dirFor = (machine?: string | null): string => (machine ? machineReposDir(machine) : reposDir());
 

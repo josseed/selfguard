@@ -1,14 +1,20 @@
 /** Shared helpers for lockfile parsers. */
 import { isObject } from "../fsutil.ts";
-import { isValid } from "../semver.ts";
-import type { Dependency, ParsedLockfile } from "./types.ts";
+import { isValidVersion } from "../versions.ts";
+import type { Dependency, Ecosystem, ParsedLockfile } from "./types.ts";
 
 export class Collector {
   private map = new Map<string, Dependency>();
   skipped = 0;
 
+  private readonly ecosystem: Ecosystem;
+
+  constructor(ecosystem: Ecosystem = "npm") {
+    this.ecosystem = ecosystem;
+  }
+
   add(name: string, version: string, direct: boolean, dev: boolean): void {
-    if (!name || !isValid(version)) {
+    if (!name || name.length > 512 || !isValidVersion(this.ecosystem, version)) {
       this.skipped++;
       return;
     }
@@ -18,7 +24,7 @@ export class Collector {
       prev.direct ||= direct;
       prev.dev &&= dev; // prod if reachable from prod anywhere
     } else {
-      this.map.set(key, { name, version, direct, dev });
+      this.map.set(key, this.ecosystem === "npm" ? { name, version, direct, dev } : { name, version, direct, dev, ecosystem: this.ecosystem });
     }
   }
 

@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "site"
+version = "0.1.0"
+description = ""
+
+[tool.poetry.dependencies]
+python = "^3.10"
+Django = "3.2.0"
+internal-tools = { path = "../internal-tools", develop = true }
+
+[tool.poetry.group.dev.dependencies]
+black = "22.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

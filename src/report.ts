@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { severityRank, type Severity } from "./match.ts";
-import { compare, isValid } from "./semver.ts";
+import { ecosystemOf, packageKey, type Ecosystem } from "./lockfile/types.ts";
+import { compareVersions, isValidVersion } from "./versions.ts";
 import { clean } from "./sanitize.ts";
 import type { Finding, RepoRecord } from "./store.ts";
 
@@ -68,7 +69,7 @@ export function renderFindings(rec: RepoRecord, stream: NodeJS.WriteStream, verb
   const title = `${c.bold(tildify(rec.path))}  ${c.dim(`${rec.deps.length} packages`)}`;
   lines.push(title);
   if (rec.error) lines.push(`  ${c.yellow("!")} ${clean(rec.error)}`);
-  if (rec.skipped > 0) lines.push(c.dim(`  ${rec.skipped} entries skipped (git/file/link deps)`));
+  if (rec.skipped > 0) lines.push(c.dim(`  ${rec.skipped} entries skipped (git, path, local or non-registry deps)`));
   if (rec.findings.length === 0) {
     if (!rec.error) lines.push(`  ${c.green("✓")} no known vulnerabilities`);
     return lines.join("\n");
@@ -77,7 +78,7 @@ export function renderFindings(rec: RepoRecord, stream: NodeJS.WriteStream, verb
   lines.push(`  ${groups.length} vulnerable package(s), ${rec.findings.length} advisories: ${summarizeCounts(rec.findings)}`);
   for (const g of groups) {
     const pkg = `${clean(g.name, 120)}@${clean(g.version, 60)}`;
-    const tags = [g.direct ? "direct" : "transitive", g.dev ? "dev" : ""].filter(Boolean).join(", ");
+    const tags = [g.ecosystem === "npm" ? "" : g.ecosystem, g.direct ? "direct" : "transitive", g.dev ? "dev" : ""].filter(Boolean).join(", ");
     lines.push("");
     lines.push(`  ${severityLabel(g.worst, c)} ${c.bold(pkg)} ${c.dim(`(${tags})`)}`);
     if (g.worst === "malicious") {
@@ -108,6 +109,7 @@ export function worstSeverity(findings: Finding[]): Severity | null {
 export interface PackageGroup {
   name: string;
   version: string;
+  ecosystem: Ecosystem;
   direct: boolean;
   dev: boolean;
   worst: Severity;
@@ -120,16 +122,17 @@ export interface PackageGroup {
 export function groupByPackage(findings: Finding[]): PackageGroup[] {
   const map = new Map<string, PackageGroup>();
   for (const f of findings) {
-    const key = `${f.name}@${f.version}`;
+    const key = packageKey(f);
+    const eco = ecosystemOf(f);
     let g = map.get(key);
     if (!g) {
-      g = { name: f.name, version: f.version, direct: f.direct, dev: f.dev, worst: f.severity, findings: [], unfixed: 0 };
+      g = { name: f.name, version: f.version, ecosystem: eco, direct: f.direct, dev: f.dev, worst: f.severity, findings: [], unfixed: 0 };
       map.set(key, g);
     }
     g.findings.push(f);
     if (severityRank(f.severity) < severityRank(g.worst)) g.worst = f.severity;
-    if (f.fixedIn && isValid(f.fixedIn)) {
-      if (!g.upgradeTo || compare(f.fixedIn, g.upgradeTo) > 0) g.upgradeTo = f.fixedIn;
+    if (f.fixedIn && isValidVersion(eco, f.fixedIn)) {
+      if (!g.upgradeTo || compareVersions(eco, f.fixedIn, g.upgradeTo) > 0) g.upgradeTo = f.fixedIn;
     } else {
       g.unfixed++;
     }

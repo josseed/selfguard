@@ -141,6 +141,7 @@ async function projectDirs(root: string, depth: number, into: Set<string>): Prom
     if (level >= depth) return;
     for (const e of entries) {
       if (!e.isDirectory() || e.name.startsWith(".") || SKIP_SET.has(e.name)) continue;
+      if (e.name === "mod" && dir.endsWith("/pkg")) continue; // Go module cache, like -path '*/pkg/mod'
       await walk(`${dir}/${e.name}`, level + 1);
     }
   };

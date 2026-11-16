@@ -6,6 +6,36 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-16
+
+### Added
+
+- **Python, Rust and Go projects.** selfguard now reads `uv.lock`, `poetry.lock` (with
+  `pyproject.toml` for direct and dev dependencies), `Cargo.lock` and `go.mod`, and checks them
+  against OSV's PyPI, crates.io and Go databases. Discovery, the shell hook, the lockfile
+  watcher, other machines, alerts, the dashboard, markdown reports, `where` and the MCP tools
+  handle them like JavaScript projects. Nothing from those ecosystems needs to be installed, and
+  no Python, Cargo or Go tool is ever run.
+- PyPI versions are compared with PEP 440 ordering and names PEP 503-normalized. Go versions are
+  stored without their leading `v`, as OSV lists them. Packages carry an `ecosystem` field in
+  JSON, MCP and API output (absent in records stored by earlier versions, meaning npm).
+- `selfguard where <package> --ecosystem npm|PyPI|crates.io|Go`, and an `ecosystem` argument for
+  the `selfguard_where` MCP tool (case-insensitive; unknown values are an error).
+- Advisories without a severity label (PYSEC, GO, RUSTSEC) take it from their CVSS v3 vector or
+  from an alias that has one. Copies of an advisory under several ids are collapsed even when
+  only one of them lists the other, keeping the copy with a known severity.
+- RustSec informational notices (unmaintained, unsound) are not reported as vulnerabilities.
+
+### Changed
+
+- A folder with lockfiles of several ecosystems is one project, checked through the first of:
+  JavaScript, uv, Poetry, Cargo, Go, whichever subfolder you enter it from.
+- Discovery skips `testdata` folders (fixtures, ignored by the go tool) and Go module caches
+  wherever `GOPATH` is. A `package.json` (or `Cargo.toml`, `pyproject.toml`) below a
+  lockfile of another ecosystem no longer resolves to it.
+- SSH readers installed by earlier versions keep working but only list JavaScript lockfiles:
+  reinstall them (`selfguard machines install <name>`) to include Python, Rust and Go.
+
 ## [0.8.2] - 2026-11-16
 
 ### Fixed
@@ -213,7 +243,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/josseed/selfguard/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/josseed/selfguard/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/josseed/selfguard/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/josseed/selfguard/compare/v0.7.1...v0.8.0

@@ -32,29 +32,40 @@ SELFGUARD_HOME=$(mktemp -d) SELFGUARD_NO_NOTIFY=1 node dist/cli.js scan ~/some/p
 
 ```text
 src/
-  cli.ts            command-line entry point (argument parsing, human output)
-  api.ts            structured operations shared by the CLI (--json) and the MCP server
-  mcp.ts            MCP server over stdio
+  cli.ts, cli/      command-line entry point and one module per command group (human output)
+  api.ts, api/      structured operations shared by the CLI (--json), MCP and dashboard
+  mcp.ts, mcp/      MCP server over stdio; tool definitions in mcp/tools.ts
   guide.ts          guide for AI agents (selfguard guide / MCP instructions)
-  scan.ts           lockfile → OSV → findings
+  scan.ts           lockfile → OSV → findings; findings.ts collapses advisory aliases
   osv.ts            OSV.dev client and advisory cache
-  match.ts          OSV range evaluation and severity
-  semver.ts         SemVer 2.0 parsing and precedence
-  lockfile/         detection and parsers (npm, pnpm, yarn, bun, YAML subset)
+  match.ts          OSV range evaluation and severity (cvss.ts scores CVSS v3 vectors)
+  versions.ts       versions per ecosystem: semver.ts (SemVer 2.0), pep440.ts (Python)
+  lockfile/         detection and parsers (npm, pnpm, yarn, bun, uv, Poetry, Cargo, go.mod;
+                    YAML and TOML subsets)
   discover.ts       bounded project discovery in watched folders
+  everywhere.ts, everywhere/  "find my projects" in the whole home folder
   repoid.ts         repository identity for grouping worktrees and clones
   hook.ts           zsh hook and background scans
   activity.ts       which checkouts are active (recent git activity)
   alerts.ts         what to notify (pure); announce.ts logs events and delivers via notify.ts
   events.ts         activity log; state.ts small runtime state (last reminder, sync…)
-  schedule.ts       launchd agents: periodic sync and lockfile watcher
-  ui/               local dashboard: server.ts (HTTP + JSON API) and static/ (HTML, CSS, JS)
+  schedule.ts, schedule/  launchd agents: periodic sync, lockfile watcher, sharing
+  remote.ts, remote/      other machines over SSH: reader script, transport, answer parsers
+  reader.ts         the same reader in TypeScript, for sharing
+  machines.ts, machines/  other machines: config, pairing, sync
+  share.ts, share/  selfguard ↔ selfguard sharing over the tailnet
+  ui/               local dashboard: server.ts and its modules (HTTP + JSON API), and
+                    static/ (HTML, CSS and ES modules, listed in ui/assets.ts)
   app.ts            macOS launcher app (~/Applications/selfguard.app); icon in assets/
   setup.ts, tui.ts  interactive setup wizard
   store.ts, config.ts, paths.ts, fsutil.ts, sanitize.ts, report.ts
 test/               node:test suites and fixtures
 docs/               user documentation
 ```
+
+A module that grows past **300 lines** is split by responsibility into a folder next to it,
+keeping the original file as the entry point that re-exports its API. `test/layout.test.ts`
+enforces the limit for everything under `src/`.
 
 ## Ground rules
 
@@ -69,7 +80,7 @@ These keep selfguard trustworthy. Pull requests that break them can't be merged:
    `innerHTML`, and keep the CSP strict (no inline scripts or styles).
 4. **Only package names and versions may leave the machine.**
 5. **`api.ts` returns data, `cli.ts` renders it.** New features should be available through
-   `--json` and, where it makes sense, as an MCP tool (`src/mcp.ts`), documented in
+   `--json` and, where it makes sense, as an MCP tool (`src/mcp/tools.ts`), documented in
    `src/guide.ts` and `docs/`.
 
 ## Tests

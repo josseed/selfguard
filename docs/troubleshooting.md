@@ -48,8 +48,9 @@ Malicious-package alerts also open a dialog that stays on screen, so they can't 
 - Check that `~/.zshrc` contains `eval "$(selfguard init zsh)"`, then open a **new** terminal.
 - `command -v selfguard` must print a path inside an interactive shell. If you use nvm or fnm,
   make sure they are initialized **before** the selfguard line in `~/.zshrc`.
-- The hook only reacts to folders inside a project: it looks for `package.json` or a lockfile
-  while walking up, and stops at the git root or your home folder.
+- The hook only reacts to folders inside a project: it looks for `package.json`,
+  `pyproject.toml`, `Cargo.toml` or a lockfile (`go.mod` included) while walking up, and stops at
+  the git root or your home folder.
 - Only zsh is supported. In bash or fish, run `selfguard scan` manually or use the scheduled sync.
 
 ## Background scans don't seem to run
@@ -86,6 +87,24 @@ bun install --save-text-lockfile
 selfguard checks what is actually installed, and that lives in the lockfile. Run your package
 manager's install once (`npm install`, `pnpm install`, `yarn`, `bun install`) and commit the
 lockfile. With only a `package.json`, versions are ranges and can't be matched precisely.
+
+Python and Rust projects without a lockfile aren't registered: `requirements.txt`,
+`pyproject.toml` or `Cargo.toml` alone don't pin what is installed. Create one with `uv lock`,
+`poetry lock` or `cargo generate-lockfile`. Go projects are read from `go.mod` directly.
+
+## A Python, Rust or Go project shows fewer packages than expected
+
+- **Skipped entries** are git, path, URL and editable dependencies, and crates from registries
+  other than crates.io. They can't be matched against OSV.
+- **Go:** for modules that declare `go 1.16` or older, `go.mod` may not list every indirect
+  dependency. Run `go mod tidy` with a recent Go to record them. The Go standard library isn't
+  checked (`go.mod` only states the minimum Go version, not the toolchain you build with).
+- **Mixed folders:** a folder with both `package-lock.json` and `uv.lock` (or `Cargo.lock`) is
+  checked through its JavaScript lockfile only. Move the other ecosystem to its own folder
+  (`api/`, `src-tauri/`) to have it checked too.
+- **Other machines over SSH:** readers installed by an older selfguard only list JavaScript
+  lockfiles. Reinstall it with `selfguard machines install <name>`; with sharing, update
+  selfguard on that machine.
 
 ## Some dependencies are "skipped"
 

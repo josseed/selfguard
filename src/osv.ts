@@ -4,7 +4,9 @@
  */
 import { join } from "node:path";
 import { atomicWrite, isObject, readJsonFile } from "./fsutil.ts";
+import type { Ecosystem } from "./lockfile/types.ts";
 import { vulnCacheDir } from "./paths.ts";
+import { normalizeName } from "./versions.ts";
 import { VERSION } from "./version.ts";
 
 const API = process.env.SELFGUARD_OSV_API ?? "https://api.osv.dev/v1";
@@ -26,8 +28,14 @@ export interface OsvRange {
   events: OsvEvent[];
 }
 
+export interface OsvSeverity {
+  type: string;
+  score: string;
+}
+
 export interface OsvAffected {
   package?: { ecosystem?: string; name?: string };
+  severity?: OsvSeverity[];
   ranges?: OsvRange[];
   versions?: string[];
   database_specific?: Record<string, unknown>;
@@ -39,6 +47,7 @@ export interface OsvVuln {
   summary?: string;
   details?: string;
   aliases?: string[];
+  severity?: OsvSeverity[];
   affected?: OsvAffected[];
   database_specific?: Record<string, unknown>;
   withdrawn?: string;
@@ -47,7 +56,12 @@ export interface OsvVuln {
 export interface PackageQuery {
   name: string;
   version: string;
+  /** Default npm. */
+  ecosystem?: Ecosystem;
 }
+
+/** Name as OSV indexes it (PyPI names PEP 503-normalized). */
+const queryName = (q: PackageQuery): string => normalizeName(q.ecosystem ?? "npm", q.name);
 
 /** A vulnerability id reported for a query, with its last-modified timestamp. */
 export interface VulnRef {
@@ -111,7 +125,7 @@ export async function queryBatch(pkgs: PackageQuery[]): Promise<VulnRef[][]> {
 
     for (let page = 0; pending.length > 0 && page < 20; page++) {
       const queries = pending.map(({ i, token }) => ({
-        package: { ecosystem: "npm", name: pkgs[i]!.name },
+        package: { ecosystem: pkgs[i]!.ecosystem ?? "npm", name: queryName(pkgs[i]!) },
         version: pkgs[i]!.version,
         ...(token ? { page_token: token } : {}),
       }));
