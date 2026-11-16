@@ -58,6 +58,7 @@ Then ask things like:
 | `selfguard_sync` | | ✅ | Discover new projects and re-check everything; returns only what's new. |
 | `selfguard_check` | | ✅ | Re-scan only projects whose lockfile changed. Use it to verify a fix. |
 | `selfguard_machines` | ✅ | | Other machines (dev servers): folders, projects, last sync or error. |
+| `selfguard_sources` | ✅ | | Agent tools (MCP servers) on this machine and each repo's GitHub Actions workflows: findings with `certainty`, file and line, and warnings. |
 | `selfguard_machines_sync` | | ✅ | Check other machines now over SSH (read-only there). Use it to verify a fix on a server. |
 | `selfguard_where` | ✅ | | Which projects use a package (any ecosystem, or `ecosystem` to narrow), which versions, whether vulnerable. |
 | `selfguard_vulnerability` | ✅ | ✅ | Advisory details plus the user's affected projects. |

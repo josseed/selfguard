@@ -135,7 +135,20 @@ inside a monorepo package scans the monorepo root.
 |---|---|
 | `-v`, `--verbose` | List every advisory, not just the first three per package. |
 
-Exits with code `1` if any vulnerability is found, which makes it usable as a CI gate.
+Exits with code `1` if any vulnerability is found, which makes it usable as a CI gate. The
+repo's GitHub Actions workflows and agent configs are checked in the same pass; when they have
+findings or warnings, one line points to `selfguard tools <dir>` (they don't change the exit
+code).
+
+### `selfguard tools [dir] [-v|--verbose]`
+
+Last results for what runs beside your lockfiles: this machine's **agent tools** (MCP servers
+from Claude Code, Claude Desktop, Cursor, VS Code, Windsurf, Codex and Gemini CLI configs) and
+each repo's **GitHub Actions** workflows and project agent configs. With `dir`, only the git
+repo around it. Shows findings with their certainty (confirmed, may be affected, version
+unknown), file and line, and warnings such as unpinned actions or MCP servers. Reads local
+state only; `scan`, `sync` and `check` refresh it. See
+[CI workflows and agent tools](ci-and-agent-tools.md).
 
 ### `selfguard report [dir] [-v|--verbose] [-m|--markdown]`
 
@@ -166,10 +179,12 @@ Re-scans only the tracked projects whose lockfile changed since their last scan.
 ### `selfguard where <package> [--ecosystem <name>]`
 
 Lists the tracked projects that depend on `<package>` (direct or transitive), with the installed
-versions and their ecosystem. Vulnerable versions are highlighted. Use exact names: npm
+versions and their ecosystem, including actions in CI workflows and MCP servers in agent configs
+(marked as such). Vulnerable versions are highlighted. Use exact names: npm
 (`lodash`, `@scope/name`), PyPI (`requests`; compared PEP 503-normalized, so `Django` and
-`django` match), crates.io (`serde`) or a Go module path (`golang.org/x/net`). By default every
-ecosystem is searched; `--ecosystem npm|PyPI|crates.io|Go` narrows it. No network.
+`django` match), crates.io (`serde`), a Go module path (`golang.org/x/net`) or a GitHub action
+(`tj-actions/changed-files`, any case). By default every ecosystem is searched;
+`--ecosystem npm|PyPI|crates.io|Go|"GitHub Actions"` narrows it. No network.
 
 ### `selfguard vuln <id>`
 

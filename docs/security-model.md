@@ -27,14 +27,28 @@ symlinks, and skips cloud drives, because listing them can trigger downloads. Re
 `~/.selfguard`. On macOS, the weekly background pass doesn't enter Desktop, Documents or
 Downloads unless you already watch a folder there, so it never shows a privacy prompt on its own.
 
+## CI workflows and agent configs
+
+selfguard also reads, as data, each tracked repo's `.github/workflows/*.yml` and composite
+`action.yml` files, and the MCP server definitions of AI agents: `~/.claude.json`, Claude
+Desktop's, Cursor's, VS Code's, Windsurf's, Codex's and Gemini CLI's config files, and their
+per-repo counterparts (`.mcp.json`, `.cursor/mcp.json`, …). These configs often hold secrets.
+From each server only the agent, server name, launcher, package name, version or pin, file
+and line are kept; environment variables, headers, URLs, tokens and other arguments are never
+stored, logged, printed, returned to an AI or sent anywhere. Remote MCP servers are recorded by
+host only. Nothing is executed, and GitHub is never queried to resolve commit SHAs. See
+[CI workflows and agent tools](ci-and-agent-tools.md).
+
 ## What leaves your machine
 
 Calls to the OSV.dev API at `https://api.osv.dev/v1`, plus the daily update check described
 below:
 
 - `POST /querybatch` with `{ "package": { "ecosystem": …, "name": … }, "version": … }` for
-  each unique dependency. The ecosystem is `npm`, `PyPI`, `crates.io` or `Go`; Go module paths
-  (`github.com/org/module`) are public module names, sent like any package name;
+  each unique dependency. The ecosystem is `npm`, `PyPI`, `crates.io`, `Go` or
+  `GitHub Actions`; Go module paths (`github.com/org/module`) and actions (`owner/repo`) are
+  public names, sent like any package name. Actions, and MCP servers without an exact version,
+  are sent without `version`;
 - `GET /vulns/{id}` for advisory details not already cached.
 
 Requests carry the `User-Agent: selfguard/<version>` header. No file paths, project or repo

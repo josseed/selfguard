@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub Actions workflows.** Actions referenced in `.github/workflows` and composite
+  `action.yml` files are checked against OSV's GitHub Actions advisories (for example the
+  compromised `tj-actions/changed-files`). OSV doesn't match versions for actions, so they are
+  queried by name and evaluated locally: an exact tag is confirmed, `@v4` "may be affected",
+  a branch or bare SHA "version unknown". Warnings, without the network, for actions not
+  pinned to a SHA, `pull_request_target` workflows that check out the PR head, and untrusted
+  event text interpolated into `run:` scripts.
+- **MCP servers of AI agents.** Servers configured for Claude Code, Claude Desktop, Cursor,
+  VS Code, Windsurf, Codex and Gemini CLI (on this machine and in each repo) and launched with
+  npx, bunx, pnpm/yarn dlx, uvx or pipx are checked as npm or PyPI packages; unpinned ones are
+  warned about, with the version last run from the npx cache. Only names and versions are kept:
+  secrets in those configs are never stored or sent.
+- `selfguard tools [dir]`, the `selfguard_sources` MCP tool, an Agent tools card and a sources
+  section per repo in the dashboard. A malicious action or MCP server raises the same alert as
+  a malicious package. `selfguard where` also finds actions and MCP servers.
+
 ## [0.9.0] - 2026-11-16
 
 ### Added

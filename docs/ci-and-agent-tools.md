@@ -1,165 +1,125 @@
 # CI workflows and agent tools
 
-Status: **proposed; not implemented**. This document designs two new sources for selfguard:
-GitHub Actions workflows and the MCP servers configured for AI agents. Both run with the
-developer's credentials (CI secrets, tokens, source code) outside any project lockfile, and
-neither is checked by the current scans.
+Besides lockfiles, selfguard checks two things that run with your credentials (CI secrets,
+tokens, source code) without being in any project lockfile:
 
-## Goals
+- **GitHub Actions** referenced by each repo's workflows.
+- **MCP servers** configured for AI agents, on this machine and in each repo.
 
-- Report actions and MCP servers that match a known advisory, especially malicious ones
-  (`MAL-*`), with the same alerts, dashboard and MCP tools as dependencies.
-- Flag risky practices that need no network: mutable references and unpinned packages.
-- Keep the security model: files are read as data, nothing is executed, and only package
-  names, versions and ecosystems are sent to OSV.
+Files are read as data: nothing is executed, GitHub is never called, and only package or
+action names (and exact versions where OSV supports them) are sent to OSV. Results appear in
+`selfguard tools`, `selfguard where`, the `selfguard_sources` MCP tool, the dashboard (an
+**Agent tools** card and a section on each repo's page) and the usual alerts: a malicious
+action or MCP server opens the same dialog as a malicious package. Repo status counts cover
+lockfiles only; sources are shown separately.
 
-Non-goals: secret scanning, container images, a full workflow linter, editing files.
+## Findings and warnings
 
-## 1. GitHub Actions workflows
+- **Findings** come from OSV advisories, each with a `certainty`:
+  - `confirmed`: the exact version written is affected.
+  - `may-be-affected`: a mutable tag such as `@v4`; some release of that line is affected.
+  - `version-unknown`: a branch, a SHA without a version comment, or an unpinned package.
+    Every advisory of the package is listed.
 
-### Inputs
+  Malicious advisories (`MAL-*`) always apply, whatever the version.
+- **Warnings** are risky practices found without the network. They are never counted as
+  vulnerable packages.
 
-`.github/workflows/*.yml` and `*.yaml` at the git root of each tracked repo, and `action.yml`
-or `action.yaml` of composite actions anywhere in the repo. Workflows belong to the repo, not
-to a lockfile folder, so they are scanned once per git root, even if the root also has a
-lockfile.
+## GitHub Actions
 
-### Extraction
+### Files read
 
-The YAML reader used for pnpm skips sequence items, and workflows are mostly sequences
-(`steps:`). Extraction is therefore a line scanner for `uses:` values, not a YAML parser:
+- `.github/workflows/*.yml` and `*.yaml` at the git root of each tracked repo. Subfolders are
+  not read.
+- `action.yml` and `action.yaml` of composite actions anywhere in the repo, up to 6 levels
+  deep. Dependency, build, hidden (except `.github`) and symlinked folders are skipped.
 
-| `uses:` value | Result |
+The lockfile watcher also watches each `.github/workflows` folder.
+
+### References
+
+| Written as | Checked as |
 |---|---|
-| `owner/repo@ref`, `owner/repo/path@ref` | action `owner/repo` (path dropped) at `ref` |
-| `owner/repo/.github/workflows/x.yml@ref` | reusable workflow `owner/repo` at `ref` |
-| `./path` | local action: read its `action.yml` instead |
-| `docker://image` | skipped and counted (out of scope) |
+| `owner/repo@ref`, `owner/repo/path@ref`, reusable `owner/repo/.github/workflows/x.yml@ref` | action `owner/repo` |
+| `@v4.1.0`, `@4.1.0` | exact version |
+| `@v4`, `@v4.1` | release line: may be affected |
+| 40-character SHA with a `# v4.1.0` (or `# tag=…`, `# pin@…`, `# ratchet:…@…`) comment | that version |
+| SHA without a version comment, or a branch | version unknown |
+| `./local` | through that folder's `action.yml` |
+| `docker://…`, values with `${{ }}` | skipped and counted |
 
-Quoted values, trailing comments and `${{ }}` expressions are handled; a value with an
-expression is skipped. Each result keeps the file and line for the report.
+Action names keep the case they are written in. OSV stores GitHub's own spelling and matches
+it case-sensitively (`Azure/setup-kubectl` has advisories, `azure/setup-kubectl` none), so an
+action written in another case than its advisory isn't matched. `selfguard where` ignores case.
 
-### Versions
+OSV doesn't match versions for this ecosystem server-side: a query for
+`tj-actions/changed-files` at `45.0.7` returns nothing (checked on 2026-11-16). Every action is
+therefore queried **by name only**, and the advisory ranges are evaluated locally, including
+partial versions such as `fixed: 41`.
 
-Checked against OSV on 2026-11-16: advisories in the `GitHub Actions` ecosystem use
-`ECOSYSTEM` ranges with release numbers (`introduced: 0`, `fixed: 46.0.1`, sometimes partial
-like `fixed: 41`), and OSV does **not** match them server-side: a query for
-`tj-actions/changed-files` at `45.0.7` (or `v45.0.7`) returns nothing, while the same query
-without a version returns both advisories. So:
+### Warnings
 
-- Every action is queried **by name only**, and the ranges are evaluated locally (as
-  `match.ts` already does), with a SemVer comparison that accepts partial versions
-  (`41` = `41.0.0`) and a leading `v`.
-- **Version tag** (`@v4.1.0`): evaluated with that version.
-- **Major or minor tag** (`@v4`, `@v4.1`): the exact release is unknown offline. Reported as
-  affected when any release of that major (or minor) line is in a range, marked "mutable
-  reference: may be affected".
-- **Commit SHA** (`@8f4b7f8…`): if the line carries the `# v4.1.0` comment that Dependabot and
-  Renovate write, that version is used; otherwise every advisory of the action is listed as
-  "version unknown". Resolving a SHA through the GitHub API is not done: it would reveal which
-  repos you use.
-- **Branch** (`@main`): mutable; listed like an unknown version.
+| Rule | Severity | When |
+|---|---|---|
+| `unpinned-action` | moderate | A third-party action isn't pinned to a full commit SHA (`actions/*` and `github/*` are exempt). |
+| `pr-target-checkout` | high | A `pull_request_target` or `workflow_run` workflow checks out the pull request head with `actions/checkout`. |
+| `script-injection` | high | Untrusted event text (issue, PR, comment and review titles and bodies, head ref, commit messages, page names…) is interpolated with `${{ }}` into a `run:` script. Passing it through `env:` is the safe form and isn't flagged. |
 
-Malicious advisories apply whatever the version, so a compromised action is always reported.
+Limits: flow mappings (`- { uses: x }`), anchors, multi-line quoted scalars and expressions
+split across lines aren't interpreted; a checkout done with `run: git …`, or untrusted text
+passed through an intermediate `env:` or step output, isn't detected.
 
-### Practice checks (no network)
+## MCP servers of AI agents
 
-Shown as warnings, not counted as vulnerable packages:
+### Files read
 
-1. Third-party action not pinned to a full commit SHA (actions from `actions/*` and
-   `github/*` can be exempted by a setting).
-2. `pull_request_target` or `workflow_run` workflows that check out the pull request head.
-3. `${{ github.event.* }}` text fields (titles, bodies, branch names) interpolated directly
-   into `run:` scripts.
-
-Each warning cites the file and line. Further checks need their own design.
-
-## 2. MCP servers and agent tools
-
-### Inputs
-
-Configuration files of common agents, read only for their server definitions:
-
-| Agent | Machine-wide | Per project |
+| Agent | This machine | In each repo |
 |---|---|---|
 | Claude Code | `~/.claude.json` (`mcpServers`, and per-project entries) | `.mcp.json` |
-| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | — |
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json`, `~/.config/Claude/claude_desktop_config.json` | — |
 | Cursor | `~/.cursor/mcp.json` | `.cursor/mcp.json` |
-| VS Code | user `mcp.json` | `.vscode/mcp.json` (`servers`) |
+| VS Code (and Insiders) | user `mcp.json` (`servers`) | `.vscode/mcp.json` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | — |
 | Codex | `~/.codex/config.toml` (`[mcp_servers.*]`) | — |
 | Gemini CLI | `~/.gemini/settings.json` | `.gemini/settings.json` |
 
-Paths and keys must be verified against each tool's current documentation during
-implementation; the list is data, so adding an agent is one entry.
+JSON with comments and trailing commas is accepted. A file that can't be parsed gives an
+`unreadable-agent-config` warning that never quotes its content.
+
+### Launchers
+
+| Launcher | Checked as |
+|---|---|
+| `npx` (`-y`, `-p`/`--package`), `bunx`, `pnpm dlx`, `pnpx`, `yarn dlx`, `npm exec` | npm package |
+| `uvx`, `uv tool run` (`--from`), `pipx run` (`--spec`) | PyPI package |
+| absolute paths to those, `cmd /c …`, a whole command in one string | as above |
+| `docker`, `node`, `python`, other binaries, git URLs, tarballs, local paths | skipped and counted |
+
+Only an exact version (`@1.2.3`, `==1.2.3`) is pinned. Tags and ranges (`@latest`, `^1`) are a
+version-unknown reference plus an `unpinned-mcp-server` warning (moderate): the server runs
+whatever is latest when the agent starts. For an unpinned npx package, the copy in the npx cache
+(`~/.npm/_npx`) gives the version last run, shown in the warning and checked as that version.
 
 ### Privacy
 
-These files can hold secrets (`env`, `headers`, API keys in arguments). selfguard keeps only
-the launcher, package name and version of each server. It never stores, prints, logs or sends
-environment variables, headers, URLs with credentials, or other arguments. Remote servers
-(`url` / `httpUrl`) are listed by host only and not checked.
+Agent configs often hold secrets. From each server selfguard keeps only the agent, server name,
+launcher, package name, version or pin, file and line. Environment variables, headers, URLs,
+tokens and other arguments are never stored, printed, logged, returned to an AI or sent. Remote
+servers (`url`, `httpUrl`, `serverUrl`, HTTP/SSE types) aren't checked; a low
+`remote-mcp-server` warning names the host only. A test puts secrets in every one of those
+places and checks that none reaches records, events, logs, CLI and MCP output or OSV requests.
 
-### Extraction
+Limits: line numbers are best effort; changes to the npx cache don't trigger a rescan; VS Code's
+`settings.json` (`mcp.servers`), Windows paths, `CLAUDE_CONFIG_DIR`/`CODEX_HOME` overrides,
+managed configs and the bunx, pnpm and uv caches aren't read.
 
-From `command` and `args`:
+## When they are checked
 
-| Launcher | Package and version |
-|---|---|
-| `npx` (`-y`, `--yes`, `-p`/`--package`), `bunx`, `pnpm dlx`, `yarn dlx` | npm `name@version` |
-| `uvx` (`--from`), `pipx run` (`--spec`) | PyPI `name==version` |
-| `docker run`, `node /path`, `python /path`, other binaries | skipped and listed as "not checked" |
+- `selfguard scan <dir>`: the repo's workflows and agent configs, in the same OSV request as its
+  lockfile. A one-line summary points to `selfguard tools <dir>` when something needs a look.
+- `selfguard sync` and the scheduled sync: every tracked repo's sources and this machine's
+  agent configs. `selfguard check` and the watcher: sources whose files changed.
+- Other machines: not yet. Their reader would need to serve workflow and agent config files,
+  which widens what a restricted key can read; that needs its own review.
 
-A server without an exact version is **unpinned**: it runs whatever is latest when the agent
-starts. For npx, the version actually run may be recoverable from the npx cache
-(`~/.npm/_npx/*/package-lock.json`); this is to be confirmed. Otherwise the package is queried
-by name only: malicious advisories are reported, and other advisories are summarized as "N
-advisories exist for some versions; pin a version to check it."
-
-### Where it shows
-
-- Machine-wide servers appear as an **Agent tools** item: dashboard section, `selfguard tools`
-  command and MCP tool, with the agent and config file each server comes from.
-- Per-project servers (`.mcp.json`, `.cursor/mcp.json`, …) are attached to their repo, like
-  workflows.
-- A malicious server raises the same blocking dialog as a malicious package.
-
-## Shared implementation
-
-- **Sources beside the lockfile.** A record now has one lockfile. Workflows and project MCP
-  configs become additional sources of a repo, stored in their own records keyed by git root
-  and kind (`ci`, `agents`), so the one-lockfile-per-folder model and existing records are
-  untouched. Machine-wide agent configs get one record of kind `agents`.
-- **Change detection.** Size and mtime of each source file, hashed when they change, as with
-  lockfiles. The launchd watcher also watches `.github/workflows` and the agent config files.
-- **Scanning.** Extracted references become dependencies with an ecosystem (`GitHub Actions`,
-  `npm`, `PyPI`) and go through the same deduplicated OSV batch. A name-only query is a
-  query without `version`; OSV then returns every advisory of the package, so local range
-  evaluation decides which ones apply (and must handle partial versions).
-- **Remote machines.** Phase 2: the reader would need to list and serve workflow and agent
-  config files, which widens what a restricted key can read; it needs its own review.
-- **Output.** Findings carry their source (`lockfile`, `workflow`, `agent-config`) and, for
-  workflows, file and line. JSON, MCP, markdown and the dashboard show them.
-
-## Phases
-
-1. Workflows: `uses:` extraction, OSV check, mutable-reference warning.
-2. Agent configs: Claude Code, Cursor, VS Code and Claude Desktop; npx and uvx launchers.
-3. Remaining agents and launchers, workflow practice checks 2 and 3, npx cache resolution.
-4. Remote machines, after a review of the reader's scope.
-
-## Acceptance criteria
-
-- Fixtures for every `uses:` form and every launcher, including quoting, comments,
-  expressions, SHAs with and without version comments, and unknown commands.
-- A test that config secrets (`env`, headers, keys in arguments) never appear in records,
-  logs, JSON output or OSV requests.
-- Mocked OSV tests: a malicious action and a malicious npx server raise malicious findings
-  whatever the reference; version tags are matched locally against `ECOSYSTEM` ranges
-  (including partial versions such as `fixed: 41`); name-only results are never reported as
-  confirmed when the version is unknown.
-- A live check (manual, not in CI) that `tj-actions/changed-files@v45.0.7` is reported and
-  `@v46.0.1` is not.
-- Existing lockfile records and outputs are unchanged.
-- README, how-it-works, security model (new files read, what leaves the machine), CLI, MCP
-  guide and changelog updated before the planned label is removed.
+Records are stored in `~/.selfguard/sources/`, separate from lockfile records.

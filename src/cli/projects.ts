@@ -30,8 +30,24 @@ export async function cmdScan(args: string[]): Promise<number> {
   if (values.background) return backgroundScan(path);
   const r = await api.scanPath(path);
   if (values.json) emit(r);
-  else out.write(`${renderFindings(loadRepo(r.project.path)!, out, values.verbose ?? false)}\n`);
+  else out.write(`${renderFindings(loadRepo(r.project.path)!, out, values.verbose ?? false)}\n${sourcesLine(r.project.path)}`);
   return r.project.advisories > 0 ? 1 : 0;
+}
+
+/** One line pointing to `selfguard tools` when the repo's workflows or agent configs need a look. */
+function sourcesLine(path: string): string {
+  let repos: api.SourceReport[];
+  try {
+    repos = api.getSources({ path }).repos;
+  } catch {
+    return ""; // not in a git repo: no workflows to check
+  }
+  const vulnerable = repos.reduce((n, r) => n + r.vulnerableReferences, 0);
+  const warnings = repos.reduce((n, r) => n + r.warnings.length, 0);
+  if (!vulnerable && !warnings) return "";
+  const c = paint(out);
+  const what = [vulnerable ? c.red(`${vulnerable} vulnerable reference(s)`) : "", warnings ? c.yellow(`${warnings} warning(s)`) : ""].filter(Boolean).join(", ");
+  return `\n  CI workflows and agent configs: ${what} ${c.dim(`→ selfguard tools ${clean(path, 200)}`)}\n`;
 }
 
 export function cmdReport(args: string[]): number {
@@ -132,9 +148,9 @@ export function cmdStatus(args: string[]): number {
 export function cmdWhere(args: string[]): number {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { ...JSON_OPT, ecosystem: { type: "string" } } });
   const name = positionals[0];
-  if (!name) usage("usage: selfguard where <package> [--ecosystem npm|PyPI|crates.io|Go]");
+  if (!name) usage("usage: selfguard where <package> [--ecosystem npm|PyPI|crates.io|Go|GitHub Actions]");
   const eco = values.ecosystem === undefined ? undefined : parseEcosystem(values.ecosystem);
-  if (eco === null) usage(`unknown ecosystem: ${values.ecosystem} (npm, PyPI, crates.io or Go)`);
+  if (eco === null) usage(`unknown ecosystem: ${values.ecosystem} (npm, PyPI, crates.io, Go or "GitHub Actions")`);
   const r = api.whereUsed(name, eco);
   if (values.json) {
     emit(r);
@@ -149,7 +165,8 @@ export function cmdWhere(args: string[]): number {
           `${v.vulnerable ? c.red(clean(v.version)) : clean(v.version)}${v.ecosystem === "npm" ? "" : c.dim(` [${v.ecosystem}]`)}${v.direct ? "" : c.dim(" (transitive)")}`,
       )
       .join(", ");
-    out.write(`${c.bold(tildify(p.path))}  ${list}\n`);
+    const from = p.source === "ci" ? c.dim(" (CI workflows)") : p.source === "agents" ? c.dim(" (agent configs)") : "";
+    out.write(`${c.bold(tildify(p.path))}${from}  ${list}\n`);
   }
   return 0;
 }

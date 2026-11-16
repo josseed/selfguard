@@ -135,6 +135,19 @@ test("scanSources: a SHA's version comment is evaluated like the tag", async () 
   assert.deepEqual(out!.record.refs.map((r) => r.pin), ["0123456789ab", "0123456789ab"]);
 });
 
+test("where finds actions in workflows, case-insensitively, and says they come from CI", async () => {
+  const root = repo();
+  put(root, ".github/workflows/a.yml", "jobs:\n  a:\n    steps:\n      - uses: tj-actions/changed-files@v45.0.7\n");
+  const [out] = await sources.scanSources([{ kind: "ci", target: sources.repoTarget(root) }]);
+  sources.saveSource(out!.record);
+  const api = await import("../src/api.ts");
+  const r = api.whereUsed("TJ-Actions/Changed-Files");
+  const hit = r.usedIn.find((u) => u.path === root)!;
+  assert.equal(hit.source, "ci");
+  assert.deepEqual(hit.versions, [{ version: "45.0.7", ecosystem: "GitHub Actions", direct: true, dev: false, vulnerable: true }]);
+  assert.equal(api.whereUsed("tj-actions/changed-files", "npm").usedIn.length, 0);
+});
+
 test("the fixtures directory isn't read as workflows of this repo", () => {
   const here = realpathSync(join(dirname(new URL(import.meta.url).pathname), ".."));
   const files = ci.GITHUB_ACTIONS.files(sources.repoTarget(here));

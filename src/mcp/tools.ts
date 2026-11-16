@@ -147,8 +147,8 @@ export const TOOLS: Tool[] = [
       "Find which tracked projects depend on a package (any version, direct or transitive, in npm, PyPI, crates.io or Go projects), and whether that version is vulnerable. Use for incident response (e.g. 'is the compromised package X anywhere?'). No network.",
     inputSchema: obj(
       {
-        package: { type: "string", description: "Exact package name: npm (lodash, @scope/name), PyPI (requests), crates.io (serde) or Go module path (golang.org/x/net)." },
-        ecosystem: { type: "string", enum: ["npm", "PyPI", "crates.io", "Go"], description: "Only this ecosystem (default: all)." },
+        package: { type: "string", description: "Exact package name: npm (lodash, @scope/name), PyPI (requests), crates.io (serde), Go module path (golang.org/x/net) or GitHub action (tj-actions/changed-files). Also searches CI workflows and agent configs." },
+        ecosystem: { type: "string", enum: ["npm", "PyPI", "crates.io", "Go", "GitHub Actions"], description: "Only this ecosystem (default: all)." },
       },
       ["package"],
     ),

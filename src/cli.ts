@@ -47,7 +47,7 @@ Projects:
   selfguard sync                     find new repos in your folders + re-check everything
   selfguard check                    re-scan only projects whose lockfile changed
   selfguard where <package>          which projects use <package>, which versions
-                                     (--ecosystem npm|PyPI|crates.io|Go to narrow it)
+                                     (also workflows and agent configs; --ecosystem to narrow)
   selfguard vuln <id>                details of an advisory and which projects it affects
   selfguard tools [dir] [-v]         agent tools (MCP servers) on this machine, and each repo's
                                      CI workflows and agent configs: advisories and warnings
