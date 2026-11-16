@@ -336,7 +336,7 @@ export async function probeSsh(host: string, port?: number, timeoutMs = 2500): P
  * What to tell someone whose machine refuses SSH: Remote Login is off there. For a tailnet
  * peer, suggests selfguard sharing (no SSH at all), or Connect if sharing already answers.
  */
-export async function sshOffHint(host: string, port?: number): Promise<string> {
+export async function sshOffHint(host: string, port?: number, machine?: string): Promise<string> {
   const bare = host.replace(/^[^@]*@/, "");
   const peer = findPeer(bare);
   const label = peer?.name ?? bare;
@@ -349,10 +349,18 @@ export async function sshOffHint(host: string, port?: number): Promise<string> {
       : os === "linux"
       ? `start sshd there (sudo systemctl enable --now ssh)`
       : `turn on SSH there (macOS: System Settings → General → Sharing → Remote Login; Linux: sudo systemctl enable --now ssh)`;
-  const head = `${label} refuses SSH connections${port && port !== 22 ? ` on port ${port}` : ""}: Remote Login (SSH) is off there, so nothing was installed.`;
-  if (share) return `${head} selfguard sharing is on there: connect with it instead (no SSH needed: Machines → Connect, or selfguard machines add ${bare} --via share).`;
-  if (peer) return `${head} If it runs selfguard, skip SSH: there, open Settings → Let my other machines see this one → Turn on, then Connect from here. Or ${turnOn}.`;
+  const head = `${label} refuses SSH connections${port && port !== 22 ? ` on port ${port}` : ""}: Remote Login (SSH) is off there, so ${machine ? "selfguard can't read it over SSH" : "nothing was installed"}.`;
+  const connect = machine ? `press Switch to sharing on its card (or selfguard machines migrate ${machine} --via share)` : `Machines → Connect, or selfguard machines add ${bare} --via share`;
+  if (share) return `${head} selfguard sharing is on there: use it instead, no SSH needed (${connect}).`;
+  if (peer) return `${head} If it runs selfguard, skip SSH: there, open Settings → Let my other machines see this one → Turn on, then ${machine ? "Switch to sharing" : "Connect"} from here. Or ${turnOn}.`;
   return `${head} To use SSH, ${turnOn}.`;
+}
+
+/** An SSH machine that can't be reached because its SSH port refuses: say Remote Login is off. */
+async function explainUnreachable(m: Machine, err: MachineError): Promise<MachineError> {
+  if (m.transport !== "ssh" || err.code !== "unreachable") return err;
+  if ((await probeSsh(m.host, m.port)) !== "refused") return err;
+  return new MachineError("ssh_off", await sshOffHint(m.host, m.port, m.name));
 }
 
 /** Tailnet peers with what they can do, probed in parallel (about 1.5 s at most). */
@@ -468,10 +476,7 @@ export async function verifyMachine(name: string): Promise<MachineInfo> {
     const h = await testHost(targetOf(m));
     saveMachineStatus(name, { home: h.home, os: h.os, error: null, errorCode: null });
   } catch (e) {
-    let err = toMachineError(e);
-    if (m.transport === "ssh" && err.code === "unreachable" && (await probeSsh(m.host, m.port)) === "refused") {
-      err = new MachineError("ssh_off", await sshOffHint(m.host, m.port));
-    }
+    const err = await explainUnreachable(m, toMachineError(e));
     saveMachineStatus(name, { error: err.message, errorCode: err.code, lastAttempt: new Date().toISOString() });
     throw err;
   }
@@ -742,7 +747,7 @@ export async function syncMachine(m: Machine, opts: { full?: boolean; force?: st
       outcomes,
     };
   } catch (e) {
-    const err = toMachineError(e);
+    const err = await explainUnreachable(m, toMachineError(e));
     saveMachineStatus(m.name, { lastAttempt: at, error: err.message, errorCode: err.code });
     return { ...base, ok: false, error: err.message };
   }

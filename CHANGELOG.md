@@ -14,7 +14,8 @@ All notable changes to this project are documented here. The format is based on
   installed, and the dashboard and CLI say that Remote Login (SSH) is off there. They explain
   how to turn it on, or offer selfguard sharing for a Mac on the tailnet (or **Connect** when
   sharing already answers). The Add a machine dialog warns as soon as you pick such a machine,
-  and **Verify** gives the same explanation.
+  and **Verify** and **Sync now** give the same explanation. A machine saved over SSH whose SSH
+  was turned off later is pointed to **Switch to sharing** instead of a bare "Connection refused".
 
 ## [0.8.1] - 2026-11-16
 
