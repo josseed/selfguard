@@ -28,9 +28,10 @@ HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
   changes (`git pull`, installs, merges), a scheduled sync catches newly published advisories,
   and a daily reminder lists what is still open and serious. When you fix something, you get a
   "✓ fixed" notification too.
-- **A dashboard, not just a terminal.** `selfguard ui` opens a local page with every repo, what
-  needs attention, how to fix it, and a feed of what changed. On macOS, `selfguard app install`
-  puts it in Spotlight and the Dock.
+- **A dashboard, not just a terminal.** The Mac app shows every repo, what needs attention,
+  how to fix it, and a feed of what changed, in its own window (`selfguard ui` opens it). There
+  is no web server and no browser involved. On Linux the CLI is complete: `selfguard status`,
+  `report`, `--json`.
 - **Bastion, a guard who tells you.** A 16-bit castle guard, brought up to date, acts out what
   changed on the dashboard and, in the Mac app, in a small panel: he sounds the horn for a
   critical vulnerability, fights off a malicious package and celebrates your fixes. With the
@@ -80,7 +81,8 @@ selfguard setup
 
 `setup` is a small terminal UI. Pick the folders where you keep your code, and selfguard scans
 them. It then offers to install the shell hook and background watching with notifications.
-Then open the dashboard:
+Then open the dashboard (the selfguard Mac app, from the
+[latest release](https://github.com/josseed/selfguard/releases/latest)):
 
 ```sh
 selfguard ui

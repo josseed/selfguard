@@ -1,38 +1,45 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { infoPlist, launcherScript, shQuote } from "../src/app.ts";
+import { DASHBOARD_PAGES, dashboardArgs } from "../src/app.ts";
 
-test("the launcher script quotes paths so they can't inject shell", () => {
-  assert.equal(shQuote("/a b/it's"), `'/a b/it'\\''s'`);
-  const script = launcherScript("/opt/node $(rm -rf ~)", "/x/it's/cli.js");
-  assert.equal(script.split("\n")[2], `exec '/opt/node $(rm -rf ~)' '/x/it'\\''s/cli.js' ui`);
-  // the shell really reads them back literally
-  const out = execFileSync("/bin/sh", ["-c", `printf '%s|' ${shQuote("a'b $HOME")} ${shQuote("`x`")}`], { encoding: "utf8" });
-  assert.equal(out, "a'b $HOME|`x`|");
+test("the app is opened on a repo or a page with plain arguments", () => {
+  assert.deepEqual(dashboardArgs(), ["--dashboard"]);
+  assert.deepEqual(dashboardArgs({ repo: "github.com/acme/web", page: "repos" }), ["--dashboard", "--repo", "github.com/acme/web", "--page", "repos"]);
+  assert.ok(DASHBOARD_PAGES.includes("settings") && DASHBOARD_PAGES.includes("overview"));
 });
 
-test("Info.plist describes a background launcher with the selfguard icon", () => {
-  const plist = infoPlist();
-  assert.match(plist, /<key>CFBundleExecutable<\/key><string>selfguard<\/string>/);
-  assert.match(plist, /<key>CFBundleIconFile<\/key><string>selfguard<\/string>/);
-  assert.match(plist, /<key>LSUIElement<\/key><true\/>/);
-});
-
-test("app install creates a runnable bundle in ~/Applications", { skip: process.platform !== "darwin" }, () => {
+const cli = new URL("../src/cli.ts", import.meta.url).pathname;
+const sandbox = () => {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "sg-app-")));
-  const cli = new URL("../src/cli.ts", import.meta.url).pathname;
-  const env = { ...process.env, HOME: home, SELFGUARD_HOME: join(home, ".sg"), SELFGUARD_NO_NOTIFY: "1" };
-  const res = JSON.parse(execFileSync(process.execPath, [cli, "app", "install", "--json"], { env, encoding: "utf8" }));
-  assert.equal(res.installed, true);
-  const app = join(home, "Applications", "selfguard.app", "Contents");
-  assert.equal(statSync(join(app, "MacOS", "selfguard")).mode & 0o777, 0o755);
-  assert.match(readFileSync(join(app, "MacOS", "selfguard"), "utf8"), / ui\n$/);
-  assert.ok(statSync(join(app, "Resources", "selfguard.icns")).size > 1000);
-  execFileSync("/usr/bin/plutil", ["-lint", join(app, "Info.plist")]);
-  const off = JSON.parse(execFileSync(process.execPath, [cli, "app", "uninstall", "--json"], { env, encoding: "utf8" }));
-  assert.equal(off.wasInstalled, true);
+  return { home, env: { ...process.env, HOME: home, SELFGUARD_HOME: join(home, ".sg"), SELFGUARD_NO_NOTIFY: "1" } };
+};
+const bundle = (home: string, id: string) => {
+  const dir = join(home, "Applications", "selfguard.app", "Contents");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>${id}</string></dict></plist>\n`);
+  return join(home, "Applications", "selfguard.app");
+};
+
+test("app uninstall removes only the old script launcher, never the real app", { skip: process.platform !== "darwin" }, () => {
+  const { home, env } = sandbox();
+  const real = bundle(home, "dev.selfguard.mac");
+  const run = (...args: string[]) => JSON.parse(execFileSync(process.execPath, [cli, "app", ...args, "--json"], { env, encoding: "utf8" }));
+  assert.equal(run("uninstall").removed, false);
+  assert.ok(existsSync(real), "the Mac app stays");
+  assert.equal(run("status").installed, true, "found (here or in /Applications)");
+  const legacy = bundle(home, "dev.selfguard.app");
+  assert.equal(run("status").legacyLauncher, true);
+  assert.equal(run("uninstall").removed, true);
+  assert.ok(!existsSync(legacy));
+});
+
+test("app install points to the download; ui validates --page", () => {
+  const { env } = sandbox();
+  const r = JSON.parse(execFileSync(process.execPath, [cli, "app", "install", "--json"], { env: { ...env, HOME: mkdtempSync(join(tmpdir(), "sg-app-")) }, encoding: "utf8" }));
+  assert.match(r.download, /github\.com\/josseed\/selfguard\/releases\/latest/);
+  assert.throws(() => execFileSync(process.execPath, [cli, "ui", "--page", "nope"], { env, stdio: "pipe" }), /--page must be one of/);
 });

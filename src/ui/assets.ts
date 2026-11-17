@@ -1,4 +1,8 @@
-/** The dashboard page files (allowlist, CSP) and loading them once per server. */
+/**
+ * The dashboard page's files (allowlist) and CSP: the single source of truth. The page is shown
+ * only inside the Mac app, which serves these files from a custom URL scheme; the build writes
+ * this list to dist/ui/static/files.json for it (scripts/postbuild.mjs, `filesManifest`).
+ */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,8 +11,8 @@ const JS = "text/javascript; charset=utf-8";
 const CSS = "text/css; charset=utf-8";
 
 /**
- * Every file the page may load (anything else is a 404). The script is a set of ES modules:
- * /app.js is the entry and imports the others, all same-origin (allowed by script-src 'self').
+ * Every file the page may load, by URL path (anything else is a 404). The script is a set of
+ * ES modules: /app.js is the entry and imports the others, all same-origin (script-src 'self').
  */
 export const STATIC: Record<string, { file: string; type: string }> = {
   "/": { file: "index.html", type: "text/html; charset=utf-8" },
@@ -39,12 +43,16 @@ export const STATIC: Record<string, { file: string; type: string }> = {
   "/mascot/fixed.png": { file: "mascot/fixed.png", type: "image/png" },
 };
 
+/**
+ * No network at all for the page: it never fetches (the API goes through the app's message
+ * handler), so connect-src is 'none'. Scripts, styles and images come from its own origin.
+ */
 export const CSP = [
   "default-src 'none'",
   "script-src 'self'",
   "style-src 'self'",
   "img-src 'self' data:",
-  "connect-src 'self'",
+  "connect-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
   "frame-ancestors 'none'",
@@ -52,19 +60,17 @@ export const CSP = [
 
 export const staticDir = (): string => fileURLToPath(new URL("./static/", import.meta.url));
 
-/**
- * The page, script and styles of THIS version, read once when the server starts. Serving them
- * from disk on every request would mix versions after `npm i -g selfguard@…`: an old server
- * would hand out the new page, which calls endpoints the old server doesn't have.
- */
-export function loadAssets(dir = staticDir()): Map<string, { body: Buffer; type: string }> {
-  const out = new Map<string, { body: Buffer; type: string }>();
-  for (const [path, a] of Object.entries(STATIC)) {
-    try {
-      out.set(path, { body: readFileSync(join(dir, a.file)), type: a.type });
-    } catch {
-      /* missing: answered with 500 by the server */
-    }
-  }
-  return out;
+/** What the Mac app reads (dist/ui/static/files.json): URL path → file and type, and the CSP. */
+export interface FilesManifest {
+  csp: string;
+  files: Record<string, { file: string; type: string }>;
+}
+
+export function filesManifest(): FilesManifest {
+  return { csp: CSP, files: STATIC };
+}
+
+/** Bastion's scenes (GET /api/mascot): the page can't fetch, so the engine reads the file. */
+export function readMascotManifest(dir = staticDir()): unknown {
+  return JSON.parse(readFileSync(join(dir, STATIC["/mascot/manifest.json"]!.file), "utf8"));
 }

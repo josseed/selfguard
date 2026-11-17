@@ -1,23 +1,31 @@
-// Talking to the local server: the token-authenticated JSON API and the data loaders.
+// Talking to the engine through the Mac app: the JSON API and the data loaders.
 import { $, h, state, toast } from "./core.js";
 import { pageMachines } from "./page-machines.js";
 
 // ---------- API ----------
 
+/**
+ * Call the engine. The page has no network: the Mac app owns the window and answers through
+ * its message handler (window.webkit.messageHandlers.selfguard), which forwards to the engine
+ * and replies { status, data } or { status, error: { code, message } }.
+ * Non-2xx answers throw an Error with the engine's message (and its code in `err.code`).
+ */
 export async function call(method, path, body) {
-  const res = await fetch(path, {
-    method,
-    headers: { "x-selfguard-token": state.token, ...(body ? { "content-type": "application/json" } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data?.error?.message || `HTTP ${res.status}`);
-    err.code = data?.error?.code;
+  const handler = window.webkit?.messageHandlers?.selfguard;
+  if (!handler) throw new Error("This page only works inside the selfguard Mac app");
+  let reply;
+  try {
+    reply = await handler.postMessage({ method, path, body: body ?? {} });
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : String(e));
+  }
+  const status = Number(reply?.status);
+  if (!(status >= 200 && status < 300)) {
+    const err = new Error(reply?.error?.message || `error ${status || ""}`.trim());
+    err.code = reply?.error?.code;
     throw err;
   }
-  return data;
+  return reply.data ?? {};
 }
 
 export async function busy(button, label, fn) {
@@ -46,7 +54,7 @@ export async function loadOverview() {
     state.overview = await call("GET", "/api/overview");
   } catch (e) {
     $("page").replaceChildren(
-      h("div", { class: "card" }, h("div", { class: "empty" }, h("strong", {}, "Not connected"), `${e.message}. Run "selfguard ui" again.`)),
+      h("div", { class: "card" }, h("div", { class: "empty" }, h("strong", {}, "Not connected"), `${e.message}. Quit selfguard from the menu bar and open it again.`)),
     );
     throw e;
   }

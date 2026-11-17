@@ -3,8 +3,23 @@
 export const SEVERITIES = ["malicious", "critical", "high", "moderate", "low"];
 export const RANK = { malicious: 0, critical: 1, high: 2, moderate: 3, low: 4, unknown: 5 };
 
+/**
+ * Small per-window memory (hidden banners, what the mascot has shown). Storage may be
+ * unavailable for a custom-scheme page: then nothing is remembered, and nothing breaks.
+ */
+export const store = {
+  get(key) {
+    try { return sessionStorage.getItem(key); } catch { return null; }
+  },
+  set(key, value) {
+    try { sessionStorage.setItem(key, value); } catch { /* not remembered */ }
+  },
+  remove(key) {
+    try { sessionStorage.removeItem(key); } catch { /* nothing to forget */ }
+  },
+};
+
 export const state = {
-  token: "",
   overview: null,
   packages: null,
   folders: null,
@@ -22,7 +37,7 @@ export const state = {
     repoSearch: "",
     repoGroupBy: "folder",
     repoMachine: "all",
-    updateHidden: sessionStorage.getItem("selfguard-update-hidden"),
+    updateHidden: store.get("selfguard-update-hidden"),
     collapsed: new Set(),
     pkgFilter: "serious",
     pkgSearch: "",

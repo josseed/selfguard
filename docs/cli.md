@@ -58,16 +58,24 @@ Node versions (nvm, fnm, Homebrew upgrade), run `selfguard schedule on` again.
 
 ## Dashboard and alerts
 
-### `selfguard ui [--no-open] [--port N]`
+### `selfguard ui [--repo KEY] [--page NAME]`
 
-Opens the local dashboard in your browser. It is served on `127.0.0.1` by a background process
-that stops after 30 minutes without use. If one is already running, it is reused. The URL
-carries a per-session token. See the [security model](security-model.md#dashboard).
+Opens the dashboard, which is the window of the selfguard Mac app (bundle id
+`dev.selfguard.mac`). There is no web server: the page runs inside the app and reaches the
+engine through the app, never through a port. See the [security model](security-model.md#dashboard).
+
+On macOS it launches the app (`open -b dev.selfguard.mac`); if it isn't installed it says where
+to download it ([latest release](https://github.com/josseed/selfguard/releases/latest)) and
+exits 1. On Linux there is no dashboard: it points to `selfguard status` and `selfguard report`,
+which cover everything.
 
 | Option | |
 |---|---|
-| `--no-open` | Print the URL without opening a browser. |
-| `--port` | Port to listen on (default: a random free port). |
+| `--repo` | Open a repo's page (its key, as in `status --json`). |
+| `--page` | Open a page: `overview`, `repos`, `packages`, `activity`, `folders`, `machines`, `settings`. |
+
+`--repo` and `--page` are used when the app is not running yet; if it already runs, `ui` just
+brings its dashboard window up.
 
 ### `selfguard menubar [--json]`
 
@@ -76,19 +84,29 @@ bar (state, repos that need attention, latest findings and fixes, services, last
 sync). selfguard also rewrites it after every scan that finds or fixes something, and after
 `dismiss`, `undismiss`, `forget` and `sync`. Local only, no network.
 
-### `selfguard app install | uninstall | status`
+### `selfguard app [install | uninstall | status]`
 
-macOS only. Creates `~/Applications/selfguard.app`, a launcher for the dashboard, so you can
-open it from Spotlight (<kbd>⌘</kbd>+<kbd>Space</kbd> → "selfguard"), Launchpad or the Dock.
+Where the Mac app is. `status` (and `install`, kept for old habits) says whether
+selfguard for Mac is installed and where to download it. The script launcher that
+`selfguard app install` used to generate in `~/Applications/selfguard.app` (before 0.14) is
+obsolete; `uninstall` removes it if it is there. It checks the bundle id first, so it never
+deletes the real app, which can live at the same path.
 
-The app is generated on your machine, not downloaded, so macOS doesn't quarantine it and it
-needs no Apple signature. It contains an icon, an `Info.plist` and a two-line shell script that
-runs `selfguard ui` with the absolute paths of your Node.js and selfguard. `status` tells you if
-it points at a different Node.js (after switching versions); `install` again to fix it.
-`schedule on` also refreshes it.
+### `selfguard bridge` (internal)
 
-Notifications still come from Script Editor (see [troubleshooting](troubleshooting.md#i-dont-see-notifications)),
-so clicking one doesn't open the dashboard.
+Used by the Mac app, not by people: serves the dashboard's JSON API over stdio, one JSON object
+per line each way.
+
+```text
+{"id": 1, "method": "GET", "path": "/api/overview", "query": {"key": "…"}, "body": {…}}
+{"id": 1, "status": 200, "data": {…}}
+{"id": 1, "status": 404, "error": {"code": "not_found", "message": "…"}}
+```
+
+Requests run concurrently and answers carry the `id`. `method` is `GET` or `POST`, `path`
+starts with `/api/`. A malformed line gets an answer with `"id": null`; lines over 1 MB are
+refused. It exits when stdin closes. Nothing but the protocol is written to stdout. To try it:
+`printf '{"id":1,"method":"GET","path":"/api/ping"}\n' | selfguard bridge`.
 
 ### `selfguard remind [--dry-run]`
 
@@ -416,7 +434,6 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `~/.selfguard/config.json` | Watched folders (`roots`), exclusions (`exclude`), `remind`, `activeDays` and other `machines`. |
 | `~/.selfguard/state.json` | When the last reminder, sync and check ran. |
 | `~/.selfguard/events.jsonl` | Activity log shown in the dashboard (new findings, fixes, reminders). Capped. |
-| `~/.selfguard/ui.json` | Port, PID and token of the running dashboard. Removed when it stops. |
 | `~/.selfguard/repos/*.json` | One record per tracked project: dependencies, findings, last scan. |
 | `~/.selfguard/machines/<name>/` | Records and last sync status of another machine. |
 | `~/.selfguard/machines/<name>/share.json` | Credential for a machine paired through sharing (mode `0600`). |
@@ -430,6 +447,5 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `~/Library/LaunchAgents/dev.selfguard.watch.plist` | macOS lockfile watcher (`schedule on`). |
 | `~/Library/LaunchAgents/dev.selfguard.discover.plist` | Weekly "find my projects" in the background (`schedule on`, unless `--auto-discover off`). |
 | `~/Library/LaunchAgents/dev.selfguard.remote.plist` | Checks other machines every 15 minutes (`schedule on`, when you have machines). |
-| `~/Applications/selfguard.app` | macOS launcher for the dashboard (`app install`). |
 
 The state directory is created with mode `0700` and its files with `0600`.

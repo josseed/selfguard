@@ -186,7 +186,7 @@ export function openEnableShare(peer) {
     h("header", {}, h("h2", {}, `Turn on sharing on ${peer.name}`), h("p", {}, "One click over there, no terminal, no SSH.")),
     h("div", { class: "body" },
       h("ol", { class: "steps" },
-        h("li", {}, "On ", h("strong", {}, peer.name), ", open selfguard (Spotlight → selfguard, or run selfguard ui)."),
+        h("li", {}, "On ", h("strong", {}, peer.name), ", open the selfguard Mac app (Spotlight → selfguard), or run selfguard share on in a terminal."),
         h("li", {}, "Go to ", h("strong", {}, "Settings → Let my other machines see this one"), " and press ", h("strong", {}, "Turn on"), "."),
         h("li", {}, "Come back here: this page notices it and lets you connect.")),
       h("details", {}, h("summary", { class: "small" }, `selfguard isn't installed on ${peer.name}?`),

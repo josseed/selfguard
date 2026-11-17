@@ -54,9 +54,11 @@ src/
   reader.ts         the same reader in TypeScript, for sharing
   machines.ts, machines/  other machines: config, pairing, sync
   share.ts, share/  selfguard ↔ selfguard sharing over the tailnet
-  ui/               local dashboard: server.ts and its modules (HTTP + JSON API), and
-                    static/ (HTML, CSS and ES modules, listed in ui/assets.ts)
-  app.ts            macOS launcher app (~/Applications/selfguard.app); icon in assets/
+  bridge.ts         `selfguard bridge`: the dashboard's JSON API over stdio (used by the Mac app)
+  ui/               dashboard: routes.ts (the JSON API), and static/ (HTML, CSS and ES
+                    modules, listed in ui/assets.ts, which the build also writes to
+                    dist/ui/static/files.json for the app)
+  app.ts            finds the Mac app and opens its dashboard; removes the old script launcher
   setup.ts, tui.ts  interactive setup wizard
   store.ts, config.ts, paths.ts, fsutil.ts, sanitize.ts, report.ts
 macos/              the Mac app (SwiftUI menu bar + the dashboard in a window); node.lock
@@ -81,7 +83,12 @@ SELFGUARD_HOME=$(mktemp -d) SELFGUARD_NO_NOTIFY=1 macos/build/selfguard.app/Cont
 ```
 
 The app adds no logic of its own: it reads `~/.selfguard/menubar.json` (`selfguard menubar`)
-and shows the dashboard. Local builds are ad-hoc signed with the same hardened runtime and
+and shows the dashboard. The dashboard has no server: the page (`src/ui/static/`) is served to
+the app's WKWebView from `dist/ui/static` under `selfguard://dashboard/`, and its API calls go
+through the app to a `selfguard bridge` process. To work on the page, edit `src/ui/static/`,
+run `npm run build` and `scripts/build-app.sh`, and open the app with `--dashboard` as above.
+To try the API without the app: `printf '{"id":1,"method":"GET","path":"/api/overview"}\n' |
+node dist/cli.js bridge`. Local builds are ad-hoc signed with the same hardened runtime and
 entitlements as releases; signing for distribution is in
 [docs/releasing-mac-app.md](docs/releasing-mac-app.md). To update
 the bundled Node, change `macos/node.lock` with the checksums from that release's

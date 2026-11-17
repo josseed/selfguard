@@ -1,17 +1,15 @@
 /** The JSON API: one function from (method, path, body) to an answer. */
-import type { IncomingMessage } from "node:http";
 import { maybeRemind } from "../announce.ts";
 import * as api from "../api.ts";
 import { isObject } from "../fsutil.ts";
-import { installApp, uninstallApp } from "../app.ts";
 import { scheduleOff, scheduleOn, updateDiscoverAgent, updateRemoteAgent, updateWatcher } from "../schedule.ts";
 import { loadRepo } from "../store.ts";
 import { checkForUpdate } from "../update.ts";
 import { VERSION } from "../version.ts";
-import { readBody } from "./http.ts";
 import { everywhere, everywhereStatus, pairJobs, pairStatus, startEverywhere, startPairJob } from "./jobs.ts";
 import { writeMenuBar } from "../menubar.ts";
 import { getOverview, updateStatus } from "./overview.ts";
+import { readMascotManifest } from "./assets.ts";
 
 function str(body: Record<string, unknown>, key: string): string {
   const v = body[key];
@@ -48,19 +46,14 @@ function refreshRemoteAgent(): void {
   }
 }
 
-export interface RouteContext {
-  /** Restart this dashboard with the code on disk (same port and token). */
-  restart?: () => void;
-  /** Where the page files are (tests). */
-  staticDir?: string;
-}
-
-export async function route(method: string, url: URL, req: IncomingMessage, ctx: RouteContext = {}): Promise<unknown> {
+/** `body` is the JSON object of a POST (empty for a GET); `url` carries the path and the query. */
+export async function route(method: string, url: URL, body: Record<string, unknown> = {}): Promise<unknown> {
   const p = url.pathname;
   if (method === "GET") {
     if (p === "/api/ping") return { ok: true, version: VERSION };
     if (p === "/api/overview") return getOverview();
     if (p === "/api/menubar") return writeMenuBar();
+    if (p === "/api/mascot") return readMascotManifest();
     if (p === "/api/repo") return api.getRepoDetail(url.searchParams.get("key") ?? "");
     if (p === "/api/repo/markdown") {
       const path = url.searchParams.get("path");
@@ -82,7 +75,6 @@ export async function route(method: string, url: URL, req: IncomingMessage, ctx:
     if (p === "/api/fs") return api.listDirectories(url.searchParams.get("path") ?? undefined);
   }
   if (method === "POST") {
-    const body = await readBody(req);
     if (p === "/api/scan") {
       const machine = machineOf(body);
       return machine ? api.scanRemote(machine, str(body, "path")) : api.scanPath(trackedPath(body), { notify: false });
@@ -185,11 +177,6 @@ export async function route(method: string, url: URL, req: IncomingMessage, ctx:
       await checkForUpdate({ force: true });
       return updateStatus();
     }
-    if (p === "/api/restart") {
-      if (!ctx.restart) throw new api.ApiError("unsupported", "this dashboard can't restart itself; run selfguard ui again");
-      ctx.restart();
-      return { restarting: true };
-    }
     if (p === "/api/everywhere/cancel") {
       if (everywhere.running) everywhere.cancelled = true;
       return everywhereStatus();
@@ -219,13 +206,6 @@ export async function route(method: string, url: URL, req: IncomingMessage, ctx:
       else if (body.enabled === false) scheduleOff();
       else throw new api.ApiError("invalid", "enabled must be true or false");
       return getOverview().schedule;
-    }
-    if (p === "/api/app") {
-      if (process.platform !== "darwin") throw new api.ApiError("unsupported", "the launcher app is macOS-only");
-      if (body.installed === true) installApp();
-      else if (body.installed === false) uninstallApp();
-      else throw new api.ApiError("invalid", "installed must be true or false");
-      return getOverview().app;
     }
   }
   throw new api.ApiError("not_found", "no such endpoint");

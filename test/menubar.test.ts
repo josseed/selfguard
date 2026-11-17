@@ -1,39 +1,13 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
-import { request, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, before, test } from "node:test";
+import { test } from "node:test";
 
 process.env.SELFGUARD_HOME = mkdtempSync(join(tmpdir(), "sg-menubar-"));
 process.env.SELFGUARD_NO_NOTIFY = "1";
 process.env.SELFGUARD_NO_LAUNCHD = "1";
 process.env.SELFGUARD_NO_UPDATE_CHECK = "1";
-
-const TOKEN = "test-token-0123456789";
-let server: Server;
-let port: number;
-
-before(async () => {
-  const { createUiServer } = await import("../src/ui/server.ts");
-  server = createUiServer(TOKEN);
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  port = (server.address() as AddressInfo).port;
-});
-after(() => server.close());
-
-function get(path: string, headers: Record<string, string> = {}): Promise<{ status: number; body: string }> {
-  return new Promise((resolve, reject) => {
-    const req = request({ host: "127.0.0.1", port, path, headers: { host: `127.0.0.1:${port}`, ...headers } }, (res) => {
-      let body = "";
-      res.on("data", (c) => (body += c));
-      res.on("end", () => resolve({ status: res.statusCode!, body }));
-    });
-    req.on("error", reject);
-    req.end();
-  });
-}
 
 test("menu bar state: malicious, then serious findings, then a service down", async () => {
   const { menuBarState } = await import("../src/menubar.ts");
@@ -46,11 +20,11 @@ test("menu bar state: malicious, then serious findings, then a service down", as
   assert.equal(menuBarState(zero, 0, null), "clean", "unknown services (not macOS) aren't a problem");
 });
 
-test("GET /api/menubar needs the token and returns the summary", async () => {
-  assert.equal((await get("/api/menubar")).status, 401);
-  const r = await get("/api/menubar", { "x-selfguard-token": TOKEN });
+test("GET /api/menubar returns the summary", async () => {
+  const { handleLine } = await import("../src/bridge.ts");
+  const r = await handleLine('{"id":1,"method":"GET","path":"/api/menubar"}');
   assert.equal(r.status, 200);
-  const m = JSON.parse(r.body);
+  const m = r.data as any;
   assert.equal(typeof m.version, "string");
   // Services come from this machine's launchd: off on a CI runner, maybe on here.
   const expected = m.services && (!m.services.sync || !m.services.watcher) ? "degraded" : "clean";

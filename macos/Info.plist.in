@@ -14,11 +14,6 @@
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <!-- Menu bar app: no Dock icon. -->
   <key>LSUIElement</key><true/>
-  <!-- The dashboard is served on 127.0.0.1 over plain HTTP; nothing else is allowed. -->
-  <key>NSAppTransportSecurity</key>
-  <dict>
-    <key>NSAllowsLocalNetworking</key><true/>
-  </dict>
   <key>NSHumanReadableCopyright</key><string>MIT License</string>
 </dict>
 </plist>

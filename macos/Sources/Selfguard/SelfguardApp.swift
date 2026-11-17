@@ -20,8 +20,14 @@ struct SelfguardApp: App {
         Window("selfguard", id: "dashboard") {
             DashboardView(model: model)
                 .frame(minWidth: 900, minHeight: 600)
-                .onAppear { DockIcon.show(true) }
-                .onDisappear { DockIcon.show(false) }
+                .onAppear {
+                    DockIcon.show(true)
+                    model.dashboardWindow(visible: true)
+                }
+                .onDisappear {
+                    DockIcon.show(false)
+                    model.dashboardWindow(visible: false)
+                }
         }
         .defaultSize(width: 1200, height: 820)
     }
@@ -40,8 +46,12 @@ private struct MenuBarIcon: View {
                 delegate.model = model
                 model.start()
                 LoginItem.enableOnFirstLaunch()
-                if CommandLine.arguments.contains("--dashboard") { model.openWindow() }
+                // `selfguard ui` starts the app with `--dashboard [--repo <key>] [--page <name>]`.
                 let args = CommandLine.arguments
+                func value(after flag: String) -> String? {
+                    args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+                }
+                if args.contains("--dashboard") { model.openWindow(repo: value(after: "--repo"), page: value(after: "--page")) }
                 if let i = args.firstIndex(of: "--mascot-demo"), i + 1 < args.count { model.mascotDemo(args[i + 1]) }
             }
             .onChange(of: model.windowRequests) { _ in
@@ -66,9 +76,11 @@ private extension MenuBarIcon {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
 
-    /// Alerts go back to the engine's macOS banners as soon as the app quits.
+    /// Alerts go back to the engine's macOS banners as soon as the app quits, and the
+    /// dashboard's engine process stops.
     func applicationWillTerminate(_: Notification) {
         AppAlerts.stop()
+        model?.bridge?.terminateNow()
     }
 
     func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows _: Bool) -> Bool {

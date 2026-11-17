@@ -217,6 +217,16 @@ Notifications are delivered through `osascript`, so macOS shows them as coming f
 **Script Editor**. See [troubleshooting](troubleshooting.md#i-dont-see-notifications) if they
 don't appear.
 
+## The dashboard
+
+The engine is the CLI; the Mac app is the only visual part, and the two never meet over a
+network. The app's window shows the dashboard page (`dist/ui/static`, served to its WKWebView
+under `selfguard://dashboard/`). When the page needs data it calls the app, which writes the
+request as one JSON line to a `selfguard bridge` child process and returns the answer. The
+bridge runs the same code as the CLI (`api.ts`), starts with the first request and stops a
+minute after the window closes. The menu bar reads `~/.selfguard/menubar.json` and needs no
+process at all. Without the app (Linux, servers) everything is in the CLI.
+
 ## When things are re-checked
 
 | Trigger | What happens |

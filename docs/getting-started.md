@@ -44,7 +44,7 @@ The setup wizard walks you through these steps:
 4. **Enable background watching** (macOS). A lockfile watcher re-checks a repo seconds after its
    lockfile changes, a full sync runs every 6 hours, and a daily reminder sums up what is still
    open and serious.
-5. **Add selfguard.app** (macOS) to open the dashboard from Spotlight or the Dock.
+5. **Point you to the Mac app** (macOS), which is the dashboard, if it isn't installed.
 
 Each step asks first, and you can re-run `selfguard setup` at any time to change your folders.
 
@@ -82,7 +82,9 @@ Only **active** checkouts (git activity in the last 30 days) alert you; see
 selfguard ui
 ```
 
-Opens a local page in your browser (served from `127.0.0.1` only, with a per-session token):
+Opens the dashboard in the selfguard Mac app ([download](https://github.com/josseed/selfguard/releases/latest)).
+It is the only visual part of selfguard: there is no web page and no server. On Linux use the
+CLI (`selfguard status`, `report`). The dashboard shows:
 
 - **Overview**: whether anything needs attention, counts by severity, and **Fix first**: the
   serious packages ranked by how many repos they affect.
@@ -102,14 +104,10 @@ Opens a local page in your browser (served from `127.0.0.1` only, with a per-ses
 - **Machines**: dev servers watched over SSH: connection status, their folders (with the same
   folder browser), sync now, remove.
 - **Settings**: reminder frequency, the active window, background watching on/off and
-  selfguard.app.
+  updates.
 
-The dashboard runs in the background and stops by itself after 30 minutes without use. Running
-`selfguard ui` again reopens it.
-
-On macOS, `selfguard app install` (also offered by `setup`) adds **selfguard.app** to
-`~/Applications`, so you can open the dashboard from Spotlight (<kbd>⌘</kbd>+<kbd>Space</kbd> →
-"selfguard") or keep it in the Dock.
+Open it from the menu bar icon ("Open Dashboard"), from Spotlight (<kbd>⌘</kbd>+<kbd>Space</kbd>
+→ "selfguard") or with `selfguard ui`.
 
 ### In the terminal
 
@@ -127,7 +125,7 @@ On macOS, `selfguard app install` (also offered by `setup`) adds **selfguard.app
 Useful commands:
 
 ```sh
-selfguard ui                    # dashboard
+selfguard ui                    # dashboard (Mac app)
 selfguard remind                # what is serious and still open, right now
 selfguard status                # active repos, riskiest first (--all for everything)
 selfguard scan                  # full report for the current project

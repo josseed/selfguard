@@ -8,7 +8,7 @@ import type { Project } from "./lockfile/detect.ts";
 import { groupByPackage, paint, summarizeCounts, tildify, worstSeverity } from "./report.ts";
 import { scanProjects, type ScanOutcome } from "./scan.ts";
 import { scheduleOn, scheduleStatus } from "./schedule.ts";
-import { appStatus, installApp } from "./app.ts";
+import { macAppPath, RELEASES_URL } from "./app.ts";
 import { findEverywhere, watchTargets } from "./api.ts";
 import { announce } from "./announce.ts";
 import { listRepos, saveRepo } from "./store.ts";
@@ -248,15 +248,9 @@ export async function runSetup(): Promise<number> {
     }
   }
 
-  if (process.platform === "darwin") {
-    if (appStatus().installed) {
-      out.write(`${c.green("✓")} selfguard.app already in ~/Applications\n`);
-    } else if (await confirm("Add selfguard.app to ~/Applications (open the dashboard from Spotlight or the Dock)?")) {
-      installApp();
-      out.write(`${c.green("✓")} Added. Open it with ⌘+Space → "selfguard".\n`);
-    }
+  if (process.platform === "darwin" && !macAppPath()) {
+    out.write(`${c.dim(`The dashboard is the selfguard Mac app: ${RELEASES_URL}`)}\n`);
   }
-
-  out.write(`\nDone. ${c.dim("selfguard ui (dashboard) · selfguard status · selfguard --help")}\n`);
+  out.write(`\nDone. ${c.dim("selfguard ui (dashboard, in the Mac app) · selfguard status · selfguard --help")}\n`);
   return 0;
 }
