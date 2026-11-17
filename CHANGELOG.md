@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Ignore a whole folder from the Repos page.** In the "By folder" view, each folder has an
+  "Ignore folder" button: everything inside stops being tracked, scanned, alerted and
+  discovered, including projects created there later (on this Mac or on another machine). It
+  is the same exclusion as `selfguard forget <folder>`. "Include again" under Folders or
+  Machines now brings the projects back right away instead of waiting for the next discovery.
+
+### Fixed
+
+- Excluding a folder with `forget` now refreshes the menu bar summary even when the folder
+  itself wasn't a tracked project.
+
 ## [0.13.0] - 2026-11-16
 
 ### Added

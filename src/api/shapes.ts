@@ -47,9 +47,10 @@ export interface RepoGroup {
   /**
    * Folder the repo is filed under: the first folder below the watched root that holds its
    * main checkout (e.g. ~/code/acme for ~/code/acme/api). Repos directly in a root are filed
-   * under the root. null when the checkout is outside every watched root.
+   * under the root (`root: true`; those are managed under Folders/Machines, not ignorable here).
+   * null when the checkout is outside every watched root.
    */
-  folder: { path: string; label: string } | null;
+  folder: { path: string; label: string; root: boolean } | null;
   checkouts: Array<{
     path: string;
     machine: string | null;

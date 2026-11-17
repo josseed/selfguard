@@ -38,7 +38,8 @@ export function folderBuckets(rows) {
     const id = f ? f.path : "";
     let b = buckets.get(id);
     if (!b) {
-      b = { id, label: f ? f.label : "Other", path: f ? tildify(f.path) : "outside watched folders", rows: [], serious: 0, worst: 9 };
+      // Ignorable only for a real folder bucket that isn't a watched root itself (the server checks again).
+      b = { id, machine: row.g.machine || null, folder: f && !f.root ? f.path.slice(row.g.machine ? row.g.machine.length + 1 : 0) : null, label: f ? f.label : "Other", path: f ? tildify(f.path) : "outside watched folders", rows: [], serious: 0, worst: 9 };
       buckets.set(id, b);
     }
     b.rows.push(row);

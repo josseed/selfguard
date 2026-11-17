@@ -9,7 +9,7 @@ export { ApiError } from "./errors.ts";
 
 export type { AdvisoryRef, ProjectReport, ProjectSummary, RepoGroup, VulnerablePackage } from "./api/shapes.ts";
 export { toReport } from "./api/common.ts";
-export { folderOf, getAttention, getStatus } from "./api/status.ts";
+export { folderOf, folderRoots, getAttention, getStatus } from "./api/status.ts";
 export { getReport, getReportMarkdown, getRepoDetail, getRepoMarkdown, type RepoDetail, type RepoPackage } from "./api/reports.ts";
 export {
   check,
@@ -24,6 +24,7 @@ export {
   type ScanResult,
   type SyncResult,
 } from "./api/scanning.ts";
+export { ignoreFolder, restoreExcluded, type IgnoreResult, type RestoreResult } from "./api/ignore.ts";
 export { addRoot, discoverNew, forget, listRoots, removeRoot, unexclude, type DiscoverResult, type RootsResult } from "./api/roots.ts";
 export { applyPlaces, autoDiscover, findEverywhere, type ApplyPlacesResult, type AutoDiscoverResult, type EverywhereScan } from "./api/places.ts";
 export { dismissRepo, listDismissed, resolveRepoKey, undismissRepo, type DismissedRepo } from "./api/dismissals.ts";
