@@ -1,6 +1,8 @@
 // Overview and Repos pages.
 import { $, ago, ecoTag, h, icon, pkgId, plural, sevBadge, SEVERITIES, state, tildify, toast } from "./core.js";
 import { card, empty, fixText, folderBuckets, repoGroups, seriousPackages, setHead, syncButton } from "./layout.js";
+import { busy, call } from "./api.js";
+import { refresh } from "./app.js";
 import { feedList } from "./pages-packages.js";
 import { agentToolsCard } from "./sources.js";
 import { mascot } from "./mascot.js";
@@ -78,6 +80,24 @@ export function statRow(label, value) {
   return h("div", { class: "row" }, h("span", {}, label), h("span", {}, value));
 }
 
+/** "Ignore folder" for a folder bucket: excludes it and everything inside (undo: Folders / Machines). */
+function ignoreButton(b) {
+  const btn = h("button", { class: "btn small ghost", type: "button", title: "Stop tracking everything in this folder" }, "Ignore folder");
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const all = folderBuckets(repoGroups("all")).find((x) => x.id === b.id) || b; // whatever the filters hide goes too
+    const n = all.rows.length;
+    const need = all.serious;
+    if (!confirm(`Ignore ${b.label}?\n\n${plural(n, "repo")} (${need} need attention) stop being tracked, scanned and alerted, including new projects created there later.\nYou can include it again under ${b.machine ? "Machines" : "Folders → Excluded"}.`)) return;
+    busy(btn, "…", async () => {
+      const r = await call("POST", "/api/folders/ignore", { path: b.folder, machine: b.machine || undefined });
+      toast(`Ignored ${b.label} · ${plural(r.forgotten, "repo")}`);
+      await refresh();
+    });
+  });
+  return btn;
+}
+
 export function pageRepos() {
   const o = state.overview;
   setHead("Repos", [], [syncButton()]);
@@ -124,15 +144,17 @@ export function pageRepos() {
             else state.ui.collapsed.delete(b.id);
             renderTable();
           };
+          const ignore = b.folder ? ignoreButton(b) : null;
           return h("tbody", { class: "group" },
-            h("tr", { class: "group-row" }, h("td", { colspan: 6 },
+            h("tr", { class: "group-row" }, h("td", { colspan: 6 }, h("div", { class: "group-head" },
               h("button", { class: "group-toggle", type: "button", "aria-expanded": String(open), onclick: toggle },
                 h("span", { class: "chev" }, icon("chevron")), icon("folder"),
                 h("span", { class: "group-name" }, b.label),
                 h("span", { class: "small muted" }, b.path),
                 h("span", { class: "grow" }),
                 b.serious && b.serious < b.rows.length ? h("span", { class: "tag serious" }, `${b.serious} need attention`) : null,
-                h("span", { class: "small muted" }, plural(b.rows.length, "repo"))))),
+                h("span", { class: "small muted" }, plural(b.rows.length, "repo"))),
+              ignore))),
             open ? b.rows.map(repoRow) : null);
         })
       : [h("tbody", {}, ...rows.map(repoRow))];

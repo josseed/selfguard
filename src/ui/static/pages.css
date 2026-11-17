@@ -134,3 +134,6 @@ label.place input { margin-top: 3px; }
 .notice { display: grid; gap: 10px; padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.45; }
 .notice[hidden] { display: none; }
 .notice.warn { background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--moderate) 40%, transparent); }
+.group-head { display: flex; align-items: center; }
+.group-head .group-toggle { flex: 1; width: auto; min-width: 0; }
+.group-head .btn { margin-right: 16px; flex: none; }

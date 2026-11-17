@@ -239,6 +239,12 @@ selfguard forget ~/code/shop/test/fixtures   # also hides everything below it
 selfguard unexclude ~/code/shop/test/fixtures  # undo
 ```
 
+Whole folders of old projects work the same way: `selfguard forget ~/code/old-clients`, or in the
+dashboard open **Repos**, group **By folder** and press **Ignore folder** on that folder. Nothing
+inside is tracked, scanned, alerted or discovered (including projects created there later). To undo,
+use **Include again** under **Folders → Excluded** (or **Machines** for another machine); the
+projects come back right away.
+
 ## Linux: schedule with cron
 
 `selfguard schedule` uses launchd and is macOS-only. On Linux, add a cron entry instead

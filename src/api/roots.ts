@@ -72,9 +72,10 @@ export function removeRoot(path: string): RootsResult & { removed: boolean } {
  * Stop tracking a path. With `exclude` (default), it's also excluded from discovery
  * so it never comes back (use for fixtures, examples, archived repos).
  */
-export function forget(path: string, opts: { exclude?: boolean } = {}): { path: string; wasTracked: boolean; excluded: boolean; alsoForgotten: string[] } {
+export function forget(path: string, opts: { exclude?: boolean; exact?: boolean } = {}): { path: string; wasTracked: boolean; excluded: boolean; alsoForgotten: string[] } {
   const abs = normalizeDir(path) ?? resolve(path);
-  const root = loadRepo(abs) ? abs : (findProject(abs)?.root ?? abs);
+  // `exact`: a plain folder, never the project that happens to contain it.
+  const root = opts.exact || loadRepo(abs) ? abs : (findProject(abs)?.root ?? abs);
   const wasTracked = forgetRepo(root);
   const alsoForgotten: string[] = [];
   const exclude = opts.exclude ?? true;
@@ -92,7 +93,7 @@ export function forget(path: string, opts: { exclude?: boolean } = {}): { path: 
   }
   // Their repo's CI workflows and agent configs too, unless another tracked project lives there.
   forgetSourcesOf([root, ...alsoForgotten], listRepos().map((r) => r.path));
-  if (wasTracked) writeMenuBar();
+  if (wasTracked || alsoForgotten.length) writeMenuBar();
   return { path: root, wasTracked, excluded: exclude, alsoForgotten };
 }
 

@@ -148,7 +148,7 @@ export async function route(method: string, url: URL, req: IncomingMessage, ctx:
     }
     if (p === "/api/machines/roots/add") return api.addMachineRoot(str(body, "name"), str(body, "path"), depthOf(body));
     if (p === "/api/machines/roots/remove") return api.removeMachineRoot(str(body, "name"), str(body, "path"));
-    if (p === "/api/machines/unexclude") return { removed: api.unexcludeOnMachine(str(body, "name"), str(body, "path")) };
+    if (p === "/api/machines/unexclude") return api.restoreExcluded(str(body, "path"), str(body, "name"));
     if (p === "/api/machines/sync") {
       const name = typeof body.name === "string" ? body.name : undefined;
       return api.checkMachines({ notify: true, only: name ? [name] : undefined });
@@ -173,10 +173,11 @@ export async function route(method: string, url: URL, req: IncomingMessage, ctx:
     if (p === "/api/folders/remove") return api.removeRoot(str(body, "path"));
     if (p === "/api/repo/dismiss") return api.dismissRepo(str(body, "key"));
     if (p === "/api/repo/undismiss") return api.undismissRepo(str(body, "key"));
+    if (p === "/api/folders/ignore") return api.ignoreFolder(str(body, "path"), machineOf(body));
     if (p === "/api/unexclude") {
       const path = str(body, "path");
       if (!api.listRoots().exclude.includes(path)) throw new api.ApiError("not_found", "that path is not excluded");
-      return api.unexclude(path);
+      return { ...api.listRoots(), ...(await api.restoreExcluded(path)) };
     }
     if (p === "/api/discover") return api.discoverNew({ dryRun: body.dryRun === true });
     if (p === "/api/everywhere/start") return startEverywhere();

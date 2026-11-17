@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { placeCheckouts } from "../canonical.ts";
 import type { AttentionRepo } from "../alerts.ts";
-import { loadConfig } from "../config.ts";
+import { loadConfig, type Config } from "../config.ts";
 import { packageKey } from "../lockfile/types.ts";
 import { expandRemote, loadMachineStatus } from "../machines.ts";
 import { severityRank, type Severity } from "../match.ts";
@@ -29,6 +29,18 @@ export function folderOf(path: string, roots: string[]): { path: string; label: 
   if (rest.length <= 1) return { path: root, label: tilde(root) };
   const dir = join(root, rest[0]!);
   return { path: dir, label: rest[0]! };
+}
+
+/** Watched folders per machine (null: this Mac), as used to bucket repos by folder. */
+export function folderRoots(cfg: Config): Map<string | null, string[]> {
+  const rootsOf = new Map<string | null, string[]>([[null, cfg.roots.map((r) => r.path)]]);
+  for (const m of cfg.machines) {
+    // Folders as the machine reported them (physical paths in restricted mode), else expanded.
+    const st = loadMachineStatus(m.name);
+    const reported = st.roots.filter((r) => r.ok).map((r) => r.path);
+    rootsOf.set(m.name, [...reported, ...m.roots.map((r) => expandRemote(r.path, st.home))]);
+  }
+  return rootsOf;
 }
 
 export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: RepoGroup[]; projects: ProjectSummary[] } {
@@ -76,13 +88,7 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
     if (place?.representative) g.rep = rec.findings;
     g.all.push(...rec.findings);
   });
-  const rootsOf = new Map<string | null, string[]>([[null, cfg.roots.map((r) => r.path)]]);
-  for (const m of cfg.machines) {
-    // Folders as the machine reported them (physical paths in restricted mode), else expanded.
-    const st = loadMachineStatus(m.name);
-    const reported = st.roots.filter((r) => r.ok).map((r) => r.path);
-    rootsOf.set(m.name, [...reported, ...m.roots.map((r) => expandRemote(r.path, st.home))]);
-  }
+  const rootsOf = folderRoots(cfg);
   const repos = [...groups.values()]
     .map(({ group, rep, all }) => {
       group.active = group.checkouts.some((k) => k.active && k.role !== "copy");
@@ -101,9 +107,11 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
           a.path.localeCompare(b.path),
       );
       const home = group.checkouts.find((k) => !k.worktree && k.role !== "copy") ?? group.checkouts[0];
-      const f = home ? folderOf(home.path, rootsOf.get(group.machine) ?? []) : null;
-      group.folder = f && group.machine ? { path: `${group.machine}:${f.path}`, label: `${group.machine} › ${f.label}` } : f;
-      if (!f && group.machine) group.folder = { path: `${group.machine}:`, label: group.machine };
+      const roots = rootsOf.get(group.machine) ?? [];
+      const f = home ? folderOf(home.path, roots) : null;
+      const folder = f && { ...f, root: roots.includes(f.path) };
+      group.folder = folder && group.machine ? { path: `${group.machine}:${folder.path}`, label: `${group.machine} › ${folder.label}`, root: folder.root } : folder;
+      if (!f && group.machine) group.folder = { path: `${group.machine}:`, label: group.machine, root: true };
       return group;
     })
     .filter((g) => !opts.onlyVulnerable || g.checkouts.some((k) => k.vulnerablePackages > 0))

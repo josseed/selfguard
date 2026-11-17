@@ -54,8 +54,8 @@ export function pageFolders() {
     ? h("ul", { class: "list" }, ...f.exclude.map((p) => {
         const b = h("button", { class: "btn small", type: "button" }, "Include again");
         b.addEventListener("click", () => busy(b, "…", async () => {
-          await call("POST", "/api/unexclude", { path: p });
-          toast("Included again. It will be picked up by the next discovery.");
+          const r = await call("POST", "/api/unexclude", { path: p });
+          toast(r.restored ? `Included again · ${plural(r.restored, "project")} found` : "Included again. New projects there are picked up by discovery.");
           await refresh();
         }));
         return h("li", {}, h("div", { class: "grow" }, h("div", { class: "title mono" }, tildify(p))), b);

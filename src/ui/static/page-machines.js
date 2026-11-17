@@ -125,8 +125,8 @@ export function pageMachines() {
       ? h("div", { class: "gap-top" }, h("div", { class: "small muted" }, "Excluded:"), h("ul", { class: "list" }, ...m.exclude.map((p) => {
           const b = h("button", { class: "btn small", type: "button" }, "Include again");
           b.addEventListener("click", () => busy(b, "…", async () => {
-            await call("POST", "/api/machines/unexclude", { name: m.name, path: p });
-            toast("Included again. It will be picked up by the next sync.");
+            const r = await call("POST", "/api/machines/unexclude", { name: m.name, path: p });
+            toast(r.restored ? `Included again · ${plural(r.restored, "project")} found` : "Included again. New projects there are picked up by the next sync.");
             await refresh();
           }));
           return h("li", {}, h("div", { class: "grow" }, h("div", { class: "title mono" }, tildify(p))), b);
