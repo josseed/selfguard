@@ -26,8 +26,10 @@ NOTARY=(xcrun notarytool submit --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API
 # Refuse anything that isn't signed for distribution with the hardened runtime.
 codesign --verify --strict --deep "$APP"
 for bin in "$APP/Contents/MacOS/selfguard" "$APP/Contents/Resources/engine/node"; do
-  codesign -d --verbose=2 "$bin" 2>&1 | grep -q "flags=.*runtime" || { echo "$bin: no hardened runtime" >&2; exit 1; }
-  codesign -d --verbose=2 "$bin" 2>&1 | grep -q "^Authority=Developer ID Application" || { echo "$bin: not Developer ID signed" >&2; exit 1; }
+  # Captured first: `codesign | grep -q` fails under pipefail when grep exits early (SIGPIPE).
+  info="$(codesign -d --verbose=2 "$bin" 2>&1)"
+  grep -q "flags=.*runtime" <<<"$info" || { echo "$bin: no hardened runtime" >&2; exit 1; }
+  grep -q "^Authority=Developer ID Application" <<<"$info" || { echo "$bin: not Developer ID signed" >&2; exit 1; }
 done
 
 # 1. Notarize the app, then staple the ticket so it opens offline too.
