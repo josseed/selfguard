@@ -29,6 +29,25 @@ jobs:
       - name: zero runtime dependencies
         run: node -e "const p=require('./package.json'); if (Object.keys(p.dependencies||{}).length) { console.error('runtime deps are not allowed'); process.exit(1) }"
 
+  # The macOS app (macos/): build the bundle with the pinned Node, check its signature and
+  # that the bundled CLI runs. Unsigned (ad-hoc); release signing is a separate job.
+  macos-app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - run: scripts/build-app.sh
+      - name: The bundled CLI runs with the bundled Node
+        run: |
+          app=macos/build/selfguard.app
+          test "$("$app/Contents/Resources/engine/bin/selfguard" --version)" = "$(node -p 'require("./package.json").version')"
+          plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist"
+
   # The published CLI supports Node 20.10+, but the test suite needs Node 22.18+ (type
   # stripping). Build with a current Node, then smoke-test the built CLI on Node 20.
   node20-smoke:

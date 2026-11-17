@@ -59,13 +59,33 @@ src/
   app.ts            macOS launcher app (~/Applications/selfguard.app); icon in assets/
   setup.ts, tui.ts  interactive setup wizard
   store.ts, config.ts, paths.ts, fsutil.ts, sanitize.ts, report.ts
+macos/              the Mac app (SwiftUI menu bar + the dashboard in a window); node.lock
+                    pins the Node.js bundled in it; scripts/build-app.sh assembles the app
 test/               node:test suites and fixtures
-docs/               user documentation
+docs/               user documentation; docs/design/ for proposals
 ```
 
 A module that grows past **300 lines** is split by responsibility into a folder next to it,
 keeping the original file as the entry point that re-exports its API. `test/layout.test.ts`
-enforces the limit for everything under `src/`.
+enforces the limit for everything under `src/` and `macos/Sources/`.
+
+### The Mac app
+
+`scripts/build-app.sh` builds `macos/build/selfguard.app` for this Mac's architecture
+(`ARCH=x64` for Intel). It needs the Xcode Command Line Tools; Xcode itself is optional. Try it
+on scratch state:
+
+```sh
+scripts/build-app.sh
+SELFGUARD_HOME=$(mktemp -d) SELFGUARD_NO_NOTIFY=1 macos/build/selfguard.app/Contents/MacOS/selfguard --dashboard
+```
+
+The app adds no logic of its own: it reads `~/.selfguard/menubar.json` (`selfguard menubar`)
+and shows the dashboard. Local builds are ad-hoc signed with the same hardened runtime and
+entitlements as releases; signing for distribution is in
+[docs/releasing-mac-app.md](docs/releasing-mac-app.md). To update
+the bundled Node, change `macos/node.lock` with the checksums from that release's
+`SHASUMS256.txt` (verify its signature first).
 
 ## Ground rules
 

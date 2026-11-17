@@ -1,4 +1,5 @@
 // Settings and local integration: settings, ui, app, schedule.
+import { writeMenuBar } from "../menubar.ts";
 import { parseArgs } from "node:util";
 import * as api from "../api.ts";
 import { appStatus, installApp, uninstallApp } from "../app.ts";
@@ -36,6 +37,18 @@ export function cmdSettings(args: string[]): number {
     out.write(`auto-discover ${s.autoDiscover ? "on" : "off"}${s.lastEverywhere ? paint(out).dim(`  (last search ${s.lastEverywhere})`) : ""}\n`);
     if (s.lastSync) out.write(paint(out).dim(`last sync     ${s.lastSync}\n`));
   }
+  return 0;
+}
+
+/** `selfguard menubar`: rewrite the Mac app's summary (~/.selfguard/menubar.json) and print it. */
+export function cmdMenuBar(args: string[]): number {
+  parseArgs({ args, options: JSON_OPT });
+  const m = writeMenuBar();
+  if (!m) {
+    process.stderr.write("selfguard: could not write the menu bar summary\n");
+    return 1;
+  }
+  emit(m);
   return 0;
 }
 

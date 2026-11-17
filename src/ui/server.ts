@@ -17,7 +17,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import * as api from "../api.ts";
 import { clean } from "../sanitize.ts";
-import { atomicWrite, readJsonFile } from "../fsutil.ts";
+import { atomicWrite, readJsonFile, tryLock } from "../fsutil.ts";
 import { uiFile } from "../paths.ts";
 import { VERSION } from "../version.ts";
 import { CSP, loadAssets, STATIC } from "./assets.ts";
@@ -190,6 +190,21 @@ export async function runUi(opts: { port: number; open: boolean; foreground?: bo
     });
     return;
   }
+  // Two `selfguard ui` at once (the Mac app and a terminal) must not start two servers: the
+  // second one waits, then finds the first one's server.
+  let release: (() => void) | null = null;
+  for (let i = 0; i < 200 && !release; i++) {
+    release = tryLock("ui:start");
+    if (!release) await new Promise((r) => setTimeout(r, 100));
+  }
+  try {
+    await startOrReuse(opts);
+  } finally {
+    release?.();
+  }
+}
+
+async function startOrReuse(opts: { port: number; open: boolean; log: (line: string) => void }): Promise<void> {
   const running = await runningInstance();
   let instance: UiInstance | null = running;
   if (running && shouldReplace(running.version, VERSION)) {

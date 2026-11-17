@@ -17,7 +17,7 @@ const record = (path: string, findings: Finding[]): RepoRecord => ({
   registeredAt: "", scannedAt: new Date().toISOString(), deps: [], skipped: 0, findings, branch: "main",
 });
 
-test("a new worktree of a known repo only reports what no other checkout had", async () => {
+test("only the checkout that represents the repo reports news; worktrees report malicious packages", async () => {
   const { announce } = await import("../src/announce.ts");
   const { readEvents } = await import("../src/events.ts");
   const { saveRepo } = await import("../src/store.ts");
@@ -25,26 +25,25 @@ test("a new worktree of a known repo only reports what no other checkout had", a
   const base = realpathSync(mkdtempSync(join(tmpdir(), "sg-wt-")));
   const main = join(base, "web");
   mkdirSync(join(main, ".git", "worktrees", "feat"), { recursive: true });
+  mkdirSync(join(main, ".git", "refs", "heads"), { recursive: true });
   writeFileSync(join(main, ".git", "config"), '[remote "origin"]\n\turl = git@github.com:acme/web.git\n');
   writeFileSync(join(main, ".git", "HEAD"), "ref: refs/heads/main\n");
+  writeFileSync(join(main, ".git", "refs", "heads", "main"), "0123456789abcdef0123456789abcdef01234567\n");
   const wt = join(base, "web-feat");
   mkdirSync(wt);
   writeFileSync(join(wt, ".git"), `gitdir: ${join(main, ".git", "worktrees", "feat")}\n`);
   writeFileSync(join(main, ".git", "worktrees", "feat", "commondir"), "../..\n");
   writeFileSync(join(main, ".git", "worktrees", "feat", "HEAD"), "ref: refs/heads/feat\n");
 
+  // Records are stored before announce() runs (as scans do).
   const known = f("lodash", "GHSA-known");
   const fresh = f("axios", "GHSA-fresh");
   saveRepo(record(main, [known]));
+  saveRepo(record(wt, [known, fresh]));
   await announce([{ record: record(wt, [known, fresh]), newFindings: [known, fresh], resolvedFindings: [], firstScan: true }], { notify: false });
+  assert.deepEqual(readEvents(), [], "a feature worktree's findings are fixed on main, not news");
 
-  const [e] = readEvents();
-  assert.equal(e?.kind, "new");
-  assert.equal(e?.repo, "acme/web");
-  assert.deepEqual(e?.packages.map((p) => p.name), ["axios"]);
-
-  // A sync scans every checkout in one run: the main clone is in the same batch. What it
-  // already had still isn't news for the new worktree; a fresh advisory for both still is.
+  // A fresh advisory: reported once, by the default branch.
   const advisory = f("qs", "GHSA-today");
   const mainRec = { ...record(main, [known, advisory]), seen: { [`${known.id}|${known.name}@${known.version}`]: new Date().toISOString() } };
   saveRepo(mainRec);
@@ -56,7 +55,17 @@ test("a new worktree of a known repo only reports what no other checkout had", a
     ],
     { notify: false },
   );
-  const [wtEvent, mainEvent] = readEvents(2);
-  assert.deepEqual(wtEvent?.packages.map((p) => p.name), ["qs"], "worktree: only the fresh advisory");
-  assert.deepEqual(mainEvent?.packages.map((p) => p.name), ["qs"]);
+  const events = readEvents();
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.repo, "acme/web");
+  assert.equal(events[0]?.path, main);
+  assert.deepEqual(events[0]?.packages.map((p) => p.name), ["qs"]);
+
+  // A malicious package is news wherever it is.
+  const evil = { ...f("evil-pkg", "MAL-2026-1"), severity: "malicious" as const };
+  saveRepo(record(wt, [known, advisory, evil]));
+  await announce([{ record: record(wt, [known, advisory, evil]), newFindings: [evil], resolvedFindings: [], firstScan: false }], { notify: false });
+  const [latest] = readEvents(1);
+  assert.equal(latest?.path, wt);
+  assert.deepEqual(latest?.packages.map((p) => p.name), ["evil-pkg"]);
 });

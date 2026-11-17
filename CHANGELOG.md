@@ -6,6 +6,46 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-16
+
+### Added
+
+- **Mac app** (DMGs for Apple Silicon and Intel attached to the GitHub release; `macos/`): a
+  menu bar icon that changes for what is **new since you last looked** (and for malicious
+  packages or monitoring that is off), not for the standing backlog; the latest findings and
+  fixes; the repos that need attention, with their branch; "Check Now" and "Sync Everything"
+  with a notification of the result; "Open at Login"; and the dashboard in a window locked to
+  its own `127.0.0.1` address, with a Dock icon while it is open. The menu reads a file, so the
+  dashboard server only runs while the window is used. The app bundles a pinned,
+  checksum-verified Node.js, so it needs nothing installed. See
+  [docs/design/mac-app.md](docs/design/mac-app.md).
+- **Signed and notarized** (Developer ID, see
+  [docs/releasing-mac-app.md](docs/releasing-mac-app.md)): the DMGs come with their SHA-256 and
+  are built in the approval-gated `macos-release` environment. Every binary runs with the
+  hardened runtime; the bundled Node.js keeps only the `allow-jit` entitlement.
+- `selfguard menubar` and `~/.selfguard/menubar.json` (also `GET /api/menubar`): the summary
+  the app shows, rewritten after every scan with news, `sync`, `dismiss` and `forget`.
+
+### Changed
+
+- **Each repo is judged by one checkout: the one on its default branch** (`origin/HEAD`, else
+  `main` or `master`; without one, the active main clone). Its findings are the repo's in
+  `status`, the dashboard, reminders, the menu bar and MCP. Other worktrees and clones are
+  still scanned and listed, but they only alert, and only appear in the activity feed, for
+  malicious packages: the fix is made once, on the default branch.
+- **Copies without git are grouped with the project they copy**: a folder without git whose
+  manifest has the same name as a tracked project and at least 60% of the same dependency
+  names (agents' snapshots, unpacked archives, "evidence" folders). They never represent the
+  repo. On real data: repos needing attention went from 298 to 40, and repo status got faster.
+- The repo page marks the checkout that counts ("default branch"), copies, and packages
+  "only in other checkouts".
+
+### Fixed
+
+- Dashboard: "Copy markdown" works in Safari (and the Mac app). WebKit refuses a clipboard
+  write that starts after the markdown request; the write now starts during the click.
+- Two `selfguard ui` started at the same moment no longer start two dashboard servers.
+
 ## [0.10.1] - 2026-11-16
 
 ### Fixed
@@ -291,7 +331,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/josseed/selfguard/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/josseed/selfguard/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/josseed/selfguard/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/josseed/selfguard/compare/v0.8.2...v0.9.0

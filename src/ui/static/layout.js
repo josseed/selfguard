@@ -5,7 +5,10 @@ import { refresh } from "./app.js";
 
 // ---------- derived data ----------
 
+/** The checkout whose findings are the repo's: chosen by the engine (default branch first). */
 export function representative(g) {
+  const chosen = g.checkouts.find((k) => k.representative);
+  if (chosen) return chosen;
   const active = g.checkouts.filter((k) => k.active);
   const recent = (a, b) => Date.parse(b.lastActivity || 0) - Date.parse(a.lastActivity || 0);
   return active.find((k) => !k.worktree) || [...active].sort(recent)[0] || g.checkouts[0];

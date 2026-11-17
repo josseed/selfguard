@@ -1,3 +1,4 @@
+import type { CheckoutRole } from "../canonical.ts";
 import { loadConfig } from "../config.ts";
 import { ApiError } from "../errors.ts";
 import { packageKey } from "../lockfile/types.ts";
@@ -10,7 +11,7 @@ import { getStatus } from "./status.ts";
 
 export interface RepoPackage extends VulnerablePackage {
   /** Checkouts where this exact version is installed. */
-  checkouts: Array<{ path: string; machine: string | null; branch: string | null; active: boolean }>;
+  checkouts: Array<{ path: string; machine: string | null; branch: string | null; active: boolean; representative: boolean; role: CheckoutRole }>;
 }
 
 export interface RepoDetail {
@@ -37,10 +38,11 @@ export function getRepoDetail(key: string): RepoDetail {
         entry = { ...p, checkouts: [] };
         byPkg.set(id, entry);
       }
-      entry.checkouts.push({ path: k.path, machine: k.machine, branch: k.branch, active: k.active });
+      entry.checkouts.push({ path: k.path, machine: k.machine, branch: k.branch, active: k.active, representative: k.representative, role: k.role });
     }
   }
-  const rank = (p: RepoPackage): number => (p.checkouts.some((c) => c.active) ? 0 : 1);
+  // What the repo has (its representative checkout) first, then other active checkouts.
+  const rank = (p: RepoPackage): number => (p.checkouts.some((c) => c.representative) ? 0 : p.checkouts.some((c) => c.active) ? 1 : 2);
   const packages = [...byPkg.values()].sort(
     (a, b) =>
       rank(a) - rank(b) ||

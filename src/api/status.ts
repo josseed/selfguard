@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { activityOf } from "../activity.ts";
+import { placeCheckouts } from "../canonical.ts";
 import type { AttentionRepo } from "../alerts.ts";
 import { loadConfig } from "../config.ts";
 import { packageKey } from "../lockfile/types.ts";
@@ -9,7 +9,7 @@ import { expandRemote, loadMachineStatus } from "../machines.ts";
 import { severityRank, type Severity } from "../match.ts";
 import { worstSeverity } from "../report.ts";
 import type { RepoIdentity } from "../repoid.ts";
-import { identityOf, listAllRepos, repoKeyOf, type Finding, type RepoRecord } from "../store.ts";
+import { checkoutId, findingKey, identityOf, listAllRepos, repoKeyOf, type Finding } from "../store.ts";
 import { dismissalsFor, summarize } from "./common.ts";
 import type { ProjectSummary, RepoGroup } from "./shapes.ts";
 
@@ -38,21 +38,24 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
   const activeDays = cfg.activeDays;
   const withRepo = records.map((rec) => ({ rec, repo: rec.machine || existsSync(rec.path) ? identityOf(rec) : null }));
   const dismissed = dismissalsFor(cfg, withRepo);
+  const placed = placeCheckouts(withRepo.filter((c) => c.rec.machine || existsSync(c.rec.path)), activeDays, dismissed);
   const summaries = withRepo.map(({ rec, repo }) => summarize(rec, activeDays, dismissed, repo));
-  const groups = new Map<string, { group: RepoGroup; active: Finding[]; all: Finding[] }>();
+  const groups = new Map<string, { group: RepoGroup; rep: Finding[] | null; all: Finding[] }>();
   summaries.forEach((p, i) => {
     const rec = records[i]!;
-    const key = repoKeyOf(p, p.repo);
+    const place = placed.get(checkoutId(rec));
+    const key = place?.key ?? repoKeyOf(p, p.repo);
     let g = groups.get(key);
     if (!g) {
-      const label = p.repo?.label ?? (p.path.split("/").pop() || p.path);
+      const label = place?.label ?? p.repo?.label ?? (p.path.split("/").pop() || p.path);
       g = {
         group: { key, label, machine: p.machine, active: false, dismissedAt: dismissed.get(key) ?? null, worstSeverity: null, vulnerablePackages: 0, inactiveCheckouts: 0, folder: null, checkouts: [] },
-        active: [],
+        rep: null,
         all: [],
       };
       groups.set(key, g);
     }
+    const active = place?.active ?? p.active;
     g.group.checkouts.push({
       path: p.path,
       machine: p.machine,
@@ -60,15 +63,17 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
       worktree: p.repo?.worktree ?? false,
       orphaned: p.repo?.orphaned ?? false,
       exists: p.exists,
-      active: p.active,
+      active,
       lastActivity: p.lastActivity,
       worstSeverity: p.worstSeverity,
       vulnerablePackages: p.vulnerablePackages,
       advisories: p.advisories,
       error: p.error,
+      role: place?.role ?? (p.repo ? "branch" : "folder"),
+      representative: place?.representative ?? false,
     });
-    if (p.active) g.active.push(...rec.findings);
-    else g.group.inactiveCheckouts++;
+    if (!active) g.group.inactiveCheckouts++;
+    if (place?.representative) g.rep = rec.findings;
     g.all.push(...rec.findings);
   });
   const rootsOf = new Map<string | null, string[]>([[null, cfg.roots.map((r) => r.path)]]);
@@ -79,20 +84,23 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
     rootsOf.set(m.name, [...reported, ...m.roots.map((r) => expandRemote(r.path, st.home))]);
   }
   const repos = [...groups.values()]
-    .map(({ group, active, all }) => {
-      group.active = group.checkouts.some((k) => k.active);
-      const counted = group.active ? active : all;
+    .map(({ group, rep, all }) => {
+      group.active = group.checkouts.some((k) => k.active && k.role !== "copy");
+      // The repo's state is its representative's: the fix is made there, once.
+      const counted = rep ?? all;
       group.worstSeverity = worstSeverity(counted);
       group.vulnerablePackages = new Set(counted.map(packageKey)).size;
-      // active first, main checkout first, then riskiest
+      // representative first, then active, main checkout first, then riskiest; copies last
       group.checkouts.sort(
         (a, b) =>
+          Number(b.representative) - Number(a.representative) ||
+          Number(a.role === "copy") - Number(b.role === "copy") ||
           Number(b.active) - Number(a.active) ||
           Number(a.worktree) - Number(b.worktree) ||
           rank(a.worstSeverity) - rank(b.worstSeverity) ||
           a.path.localeCompare(b.path),
       );
-      const home = group.checkouts.find((k) => !k.worktree) ?? group.checkouts[0];
+      const home = group.checkouts.find((k) => !k.worktree && k.role !== "copy") ?? group.checkouts[0];
       const f = home ? folderOf(home.path, rootsOf.get(group.machine) ?? []) : null;
       group.folder = f && group.machine ? { path: `${group.machine}:${f.path}`, label: `${group.machine} › ${f.label}` } : f;
       if (!f && group.machine) group.folder = { path: `${group.machine}:`, label: group.machine };
@@ -113,34 +121,47 @@ export function getStatus(opts: { onlyVulnerable?: boolean } = {}): { repos: Rep
 }
 
 /**
- * Input for reminders: per repo, the findings of the checkout that represents it — the main
- * clone if it is active, otherwise the most recently active checkout. Feature worktrees
- * branched from an old base get fixed when they merge, so they don't count twice.
+ * Input for reminders, the menu bar and the packages view: per active repo, the findings of
+ * its representative checkout (see canonical.ts). Worktrees, other clones and copies share
+ * the repo's vulnerabilities and get fixed with it, so they don't count again.
  */
 export function getAttention(): Array<AttentionRepo & { key: string; path: string; machine: string | null; branch: string | null }> {
   const cfg = loadConfig();
-  const activeDays = cfg.activeDays;
-  const best = new Map<string, { rec: RepoRecord; repo: RepoIdentity | null; main: boolean; at: number }>();
   const present = listAllRepos(cfg.machines.map((m) => m.name))
     .filter((rec) => rec.machine || existsSync(rec.path))
     .map((rec) => ({ rec, repo: identityOf(rec) }));
-  const dismissed = dismissalsFor(cfg, present);
-  for (const { rec, repo } of present) {
-    const key = repoKeyOf(rec, repo);
-    const act = activityOf(repo, activeDays, Date.now(), dismissed.get(key) ?? null);
-    if (!act.active) continue;
-    const cand = { rec, repo, main: !(repo?.worktree ?? false), at: act.lastActivity ? Date.parse(act.lastActivity) : 0 };
-    const cur = best.get(key);
-    if (!cur || (cand.main && !cur.main) || (cand.main === cur.main && cand.at > cur.at)) best.set(key, cand);
+  const placed = placeCheckouts(present, cfg.activeDays, dismissalsFor(cfg, present));
+  const activeKeys = new Set<string>();
+  for (const { rec } of present) {
+    const p = placed.get(checkoutId(rec));
+    if (p?.active && p.role !== "copy") activeKeys.add(p.key);
   }
-  return [...best.entries()]
-    .filter(([, b]) => b.rec.findings.length > 0)
-    .map(([key, b]) => ({
-      key,
-      label: `${b.rec.machine ? `${b.rec.machine} · ` : ""}${b.repo?.label ?? (b.rec.path.split("/").pop() || b.rec.path)}`,
-      path: b.rec.path,
-      machine: b.rec.machine ?? null,
-      branch: b.repo?.branch ?? null,
-      findings: b.rec.findings,
-    }));
+  // A malicious package doesn't wait for a merge: any checkout's (or copy's) counts.
+  const maliciousElsewhere = new Map<string, Finding[]>();
+  for (const { rec } of present) {
+    const p = placed.get(checkoutId(rec));
+    if (!p || p.representative) continue;
+    const bad = rec.findings.filter((f) => f.severity === "malicious");
+    if (bad.length) maliciousElsewhere.set(p.key, [...(maliciousElsewhere.get(p.key) ?? []), ...bad]);
+  }
+  const out: Array<AttentionRepo & { key: string; path: string; machine: string | null; branch: string | null }> = [];
+  for (const { rec, repo } of present) {
+    const p = placed.get(checkoutId(rec));
+    if (!p?.representative) continue;
+    const extra = maliciousElsewhere.get(p.key) ?? [];
+    // Repos nobody works on (or dismissed) aren't nagged about; their malicious packages
+    // still alert when a scan finds them.
+    if (!activeKeys.has(p.key)) continue;
+    const findings = extra.length ? [...rec.findings, ...extra.filter((f) => !rec.findings.some((g) => findingKey(g) === findingKey(f)))] : rec.findings;
+    if (findings.length === 0) continue;
+    out.push({
+      key: p.key,
+      label: `${rec.machine ? `${rec.machine} · ` : ""}${p.label ?? repo?.label ?? (rec.path.split("/").pop() || rec.path)}`,
+      path: rec.path,
+      machine: rec.machine ?? null,
+      branch: repo?.branch ?? null,
+      findings,
+    });
+  }
+  return out;
 }

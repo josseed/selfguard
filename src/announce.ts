@@ -2,10 +2,13 @@
  * Side effects after a scan: record what changed in the activity log and tell the user
  * (new advisories, fixes, periodic reminders). Decisions live in alerts.ts.
  */
+import { existsSync } from "node:fs";
 import { activityOf } from "./activity.ts";
+import { placeCheckouts, type Placement } from "./canonical.ts";
 import { packageKey } from "./lockfile/types.ts";
 import { buildAlert, buildReminder, buildResolvedAlert, deliver, needsAttention, type AttentionRepo, type ProjectNews } from "./alerts.ts";
 import { loadConfig, type RemindEvery } from "./config.ts";
+import { writeMenuBar } from "./menubar.ts";
 import { appendEvents, eventPackages, type SelfguardEvent } from "./events.ts";
 import type { ScanOutcome } from "./scan.ts";
 import type { SourceOutcome } from "./sources/scan.ts";
@@ -48,8 +51,23 @@ function knownElsewhere(outcomes: ScanOutcome[]): (key: string, id: string) => S
   };
 }
 
-function toNews(outcomes: ScanOutcome[], activeDays: number, dismissed: Map<string, string> = new Map()): Array<ProjectNews & { branch: string | null; firstScan: boolean; machine: string | null }> {
+/**
+ * Where each scanned checkout stands in its repo (canonical.ts), computed only when a scan
+ * brought news. Null for checkouts not stored yet.
+ */
+function placementsFor(outcomes: ScanOutcome[], activeDays: number, dismissed: Map<string, string>): (id: string) => Placement | null {
+  const hasNews = outcomes.some((o) => o.newFindings.length || o.resolvedFindings?.length);
+  if (!hasNews) return () => null;
+  const all = listAllRepos(loadConfig().machines.map((m) => m.name))
+    .filter((rec) => rec.machine || existsSync(rec.path))
+    .map((rec) => ({ rec, repo: identityOf(rec) }));
+  const placed = placeCheckouts(all, activeDays, dismissed);
+  return (id) => placed.get(id) ?? null;
+}
+
+function toNews(outcomes: ScanOutcome[], activeDays: number, dismissed: Map<string, string> = new Map()): Array<ProjectNews & { branch: string | null; firstScan: boolean; machine: string | null; representative: boolean }> {
   const known = knownElsewhere(outcomes);
+  const placement = placementsFor(outcomes, activeDays, dismissed);
   return outcomes.map((o) => {
     const identity = identityOf(o.record);
     const key = keyOf(o.record);
@@ -57,6 +75,11 @@ function toNews(outcomes: ScanOutcome[], activeDays: number, dismissed: Map<stri
     // Alerts and the activity feed name the machine: "devbox · acme/api".
     const repo = identity ? { ...identity, label: machine ? `${machine} · ${identity.label}` : identity.label } : machine ? { key, label: `${machine} · ${o.record.path.split("/").pop()}` } : null;
     const elsewhere = o.newFindings.length ? known(key, checkoutId(o.record)) : new Set<string>();
+    // Only the checkout that represents its repo (the default branch) alerts; worktrees,
+    // other clones and copies alert for malicious packages only (as inactive checkouts do).
+    const place = placement(checkoutId(o.record));
+    const representative = place ? place.representative : true;
+    const active = activityOf(identity, activeDays, Date.now(), dismissed.get(key) ?? null).active;
     return {
       machine,
       path: o.record.path,
@@ -64,7 +87,8 @@ function toNews(outcomes: ScanOutcome[], activeDays: number, dismissed: Map<stri
       resolvedFindings: o.resolvedFindings,
       findings: o.record.findings,
       repo,
-      active: activityOf(identity, activeDays, Date.now(), dismissed.get(key) ?? null).active,
+      active: active && representative,
+      representative,
       branch: identity?.branch ?? null,
       firstScan: o.firstScan,
     };
@@ -93,9 +117,13 @@ export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean
       branch: n.branch,
       active: n.active !== false,
     };
-    if (n.newFindings.length) events.push({ ...base, kind: "new", ...(n.firstScan ? { firstScan: true } : {}), ...eventPackages(n.newFindings) });
+    // The feed follows the repo, not every worktree and copy: other checkouts only log
+    // malicious packages.
+    const representative = "representative" in n ? n.representative !== false : true;
+    const newOnes = representative ? n.newFindings : n.newFindings.filter((f) => f.severity === "malicious");
+    if (newOnes.length) events.push({ ...base, kind: "new", ...(n.firstScan ? { firstScan: true } : {}), ...eventPackages(newOnes) });
     const still = new Set((n.findings ?? []).map(packageKey));
-    const fixed = (n.resolvedFindings ?? []).filter((f) => !still.has(packageKey(f)));
+    const fixed = representative ? (n.resolvedFindings ?? []).filter((f) => !still.has(packageKey(f))) : [];
     if (fixed.length) events.push({ ...base, kind: "resolved", ...eventPackages(fixed) });
   }
   try {
@@ -103,6 +131,8 @@ export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean
   } catch {
     /* the log is a convenience; never fail a scan because of it */
   }
+  // The Mac app reads its menu from this file; only rewritten when a scan brought news.
+  if (events.length || news.some((n) => n.newFindings.length || n.resolvedFindings?.length)) writeMenuBar();
   if (opts.notify === false) return false;
   const alerts = [buildAlert(news), buildResolvedAlert(news)].filter((a) => a.kind !== "none");
   for (const a of alerts) await deliver(a);

@@ -1,3 +1,4 @@
+import type { CheckoutRole } from "../canonical.ts";
 import type { Ecosystem, LockfileType } from "../lockfile/types.ts";
 import type { Severity } from "../match.ts";
 import type { RepoIdentity } from "../repoid.ts";
@@ -62,6 +63,10 @@ export interface RepoGroup {
     vulnerablePackages: number;
     advisories: number;
     error: string | null;
+    /** default-branch, branch (git), folder (no git) or copy (a folder copying this repo). */
+    role: CheckoutRole;
+    /** The checkout whose findings are the repo's (see canonical.ts). */
+    representative: boolean;
   }>;
 }
 

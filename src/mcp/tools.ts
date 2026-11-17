@@ -36,7 +36,7 @@ export const TOOLS: Tool[] = [
     name: "selfguard_status",
     title: "List tracked projects",
     description:
-      "Risk overview of everything selfguard tracks. `repos` groups git worktrees and clones of the same repository (each checkout with its branch, counts and whether it is `active`: git activity in the last N days); `projects` is the flat list. Repo counts cover active checkouts. Reads local state only, no network. Start here (or with selfguard_attention for the short list).",
+      "Risk overview of everything selfguard tracks. `repos` groups git worktrees and clones of the same repository (each checkout with its branch, counts and whether it is `active`: git activity in the last N days); `projects` is the flat list. Repo counts are those of the checkout that represents the repo (`representative`: the one on the default branch, else the active main clone); `role` tells default-branch, branch, folder (no git) or copy (a folder copying a tracked project, grouped with it). Reads local state only, no network. Start here (or with selfguard_attention for the short list).",
     inputSchema: obj({ onlyVulnerable: { type: "boolean", description: "Only projects with findings." } }),
     annotations: { readOnlyHint: true, openWorldHint: false },
     run: (a) => api.getStatus({ onlyVulnerable: bool(a, "onlyVulnerable") ?? false }),
@@ -45,7 +45,7 @@ export const TOOLS: Tool[] = [
     name: "selfguard_attention",
     title: "What needs attention",
     description:
-      "The short list the user's reminders are about: per repo, the serious findings (malicious packages, critical vulnerabilities outside dev dependencies, high ones in direct dependencies) on the checkout that represents it (the active main clone, or the most recently active checkout). Inactive checkouts are excluded. No network. Use it to decide what to fix first." +
+      "The short list the user's reminders are about: per repo, the serious findings (malicious packages, critical vulnerabilities outside dev dependencies, high ones in direct dependencies) on the checkout that represents it (the one on the default branch, else the active main clone, else the most recently active checkout). Repos without an active checkout are excluded. No network. Use it to decide what to fix first." +
       UNTRUSTED,
     inputSchema: obj({}),
     annotations: { readOnlyHint: true, openWorldHint: false },

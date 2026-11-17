@@ -19,11 +19,18 @@ export function pageRepo() {
   const scope = many ? state.ui.scope : "all";
   const mdQuery = () => `/api/repo/markdown?key=${encodeURIComponent(d.key)}${scope === "rep" ? `&path=${encodeURIComponent(rep.path)}` : ""}`;
   const copyBtn = h("button", { class: "btn primary", type: "button", title: "Copy the vulnerabilities as markdown" }, icon("copy"), "Copy markdown");
-  copyBtn.addEventListener("click", () => busy(copyBtn, "Copying…", async () => {
-    const md = await call("GET", mdQuery());
-    if (await copyText(md.markdown)) toast(`Copied ${plural(md.packages, "package")} as markdown`);
-    else showMarkdown(d.label, md.markdown);
-  }));
+  copyBtn.addEventListener("click", () => {
+    if (state.busy) return;
+    // Start the clipboard write inside the click (WebKit refuses it after an await); the
+    // text arrives when the request answers.
+    const md = call("GET", mdQuery());
+    const copied = copyText(md.then((m) => m.markdown));
+    busy(copyBtn, "Copying…", async () => {
+      const m = await md;
+      if (await copied) toast(`Copied ${plural(m.packages, "package")} as markdown`);
+      else showMarkdown(d.label, m.markdown);
+    });
+  });
   const previewBtn = h("button", { class: "btn", type: "button" }, "Preview");
   previewBtn.addEventListener("click", () => busy(previewBtn, "…", async () => showMarkdown(d.label, (await call("GET", mdQuery())).markdown)));
   const dismissBtn = d.dismissedAt
@@ -63,11 +70,12 @@ export function pageRepo() {
           const fix = p.worstSeverity === "malicious"
             ? h("span", { class: "fix-remove" }, "Remove it, rotate credentials")
             : p.upgradeTo ? h("span", { class: "fix-ok" }, `→ ${p.upgradeTo}`) : h("span", { class: "fix-none" }, "No fix yet");
-          return h("tr", { class: p.checkouts.some((c) => c.active) ? "" : "dim" },
+          const elsewhere = many && !p.checkouts.some((c) => c.representative);
+          return h("tr", { class: p.checkouts.some((c) => c.active) && !elsewhere ? "" : "dim" },
             h("td", { class: "top" }, sevBadge(p.worstSeverity)),
             h("td", { class: "top" },
               h("div", { class: "mono" }, `${p.name}@${p.version}`, ecoTag(p), isSerious(p.worstSeverity, p.direct, p.dev) ? h("span", { class: "tag serious gap-left" }, "serious") : null),
-              h("div", { class: "small muted" }, kind),
+              h("div", { class: "small muted" }, kind, elsewhere ? h("span", { class: "tag gap-left", title: `Not on ${rep.branch || "the main checkout"}: it goes away when these checkouts merge or are deleted` }, "only in other checkouts") : null),
               h("details", { class: "adv" },
                 h("summary", {}, plural(p.advisories.length, "advisory", "advisories")),
                 h("ul", {}, ...p.advisories.map((a) =>
@@ -90,9 +98,19 @@ export function pageRepo() {
       d.checkouts.length > listed.length ? h("button", { class: "btn small", type: "button", onclick: () => { state.ui.allCheckouts = true; pageRepo(); } }, `Show all ${d.checkouts.length}`) : null)));
 }
 
+/**
+ * Copy text, or a promise of text. Safari and the Mac app (WebKit) only allow a clipboard
+ * write started during the click, so a promise is handed to a ClipboardItem right away
+ * instead of awaiting the text first.
+ */
 export async function copyText(text) {
   try {
-    await navigator.clipboard.writeText(text);
+    if (typeof text !== "string" && typeof ClipboardItem === "function" && navigator.clipboard?.write) {
+      const blob = Promise.resolve(text).then((t) => new Blob([t], { type: "text/plain" }));
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
+      return true;
+    }
+    await navigator.clipboard.writeText(await text);
     return true;
   } catch {
     return false;
@@ -146,7 +164,9 @@ function checkoutRow(k) {
     h("div", { class: "grow" },
       h("div", {},
         h("strong", {}, k.branch || "(no branch)"), " ",
+        k.representative ? h("span", { class: "tag", title: "Its findings are the repo's: fix them here" }, k.role === "default-branch" ? "default branch" : "counts for the repo") : null, " ",
         k.worktree ? h("span", { class: "tag" }, "worktree") : null, " ",
+        k.role === "copy" ? h("span", { class: "tag", title: "A folder without git with the same project: alerts only for malicious packages" }, "copy") : null, " ",
         k.active ? null : h("span", { class: "tag" }, `inactive${k.lastActivity ? ` · ${ago(k.lastActivity)}` : ""}`), " ",
         status),
       h("div", { class: "path mono", title: k.path }, k.machine ? `${k.machine}:${tildify(k.path)}` : tildify(k.path)),

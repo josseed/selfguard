@@ -24,10 +24,12 @@ project code, package managers or language toolchains.
 - severity order: malicious > critical > high > moderate > low > unknown.
 - upgradeTo: lowest version of a package that fixes all of its advisories that have a fix.
 - repo groups: git worktrees and separate clones of the same repo (same remote + same subfolder) are
-  grouped. status returns "repos" (grouped, with each checkout's branch) and "projects" (flat).
-  A finding usually needs fixing once on the main branch; mention branches that are worse.
+  grouped, and so are copies without git (same manifest name, mostly the same dependencies).
+  status returns "repos" (grouped, with each checkout's branch, \`role\` and \`representative\`) and
+  "projects" (flat). Each repo is judged by its representative checkout: the one on the default
+  branch, else the active main clone. Fix there, once; the others get it when they merge or update.
 - active: a checkout with git activity in the last N days (default 30). Inactive checkouts are listed
-  but only alert for malicious packages. Repo-level counts in status cover active checkouts.
+  but only alert for malicious packages; so do non-representative checkouts and copies.
 - dismissed: a repo the user turned off. It stays tracked and scanned but counts as inactive (no reminders,
   alerts only for malicious packages) until any of its checkouts has git activity after the dismissal;
   then it turns back on by itself. status repos carry \`dismissedAt\` (null when not dismissed).
@@ -37,7 +39,7 @@ project code, package managers or language toolchains.
   Their checkouts carry \`machine\` (null = this machine) and their repo keys start with "<machine>|".
   Fix on that machine (in the path shown), then verify with selfguard_machines_sync.
 - attention: what the user's daily reminder is about: malicious packages, critical findings outside dev
-  dependencies, and high findings in direct dependencies, judged on each repo's main checkout.
+  dependencies, and high findings in direct dependencies, judged on each repo's representative checkout.
 
 ## Use it via MCP (preferred) or the CLI with --json
 | Goal | MCP tool | CLI |
