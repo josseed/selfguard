@@ -33,13 +33,15 @@ private struct MenuBarIcon: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Image(systemName: model.icon.symbol)
+        icon
             .accessibilityLabel("selfguard")
             .task {
                 delegate.model = model
                 model.start()
                 LoginItem.enableOnFirstLaunch()
                 if CommandLine.arguments.contains("--dashboard") { model.openWindow() }
+                let args = CommandLine.arguments
+                if let i = args.firstIndex(of: "--mascot-demo"), i + 1 < args.count { model.mascotDemo(args[i + 1]) }
             }
             .onChange(of: model.windowRequests) { _ in
                 openWindow(id: "dashboard")
@@ -48,9 +50,25 @@ private struct MenuBarIcon: View {
     }
 }
 
+private extension MenuBarIcon {
+    /// Bastion's helmet when the app has it (built app), else the SF Symbol.
+    @ViewBuilder var icon: some View {
+        if let image = Mascot.menuBarIcon(model.mascotIcon) {
+            Image(nsImage: image)
+        } else {
+            Image(systemName: model.icon.symbol)
+        }
+    }
+}
+
 /// Opening the app again (Finder, Spotlight, `open`) while it runs shows the dashboard.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
+
+    /// Alerts go back to the engine's macOS banners as soon as the app quits.
+    func applicationWillTerminate(_: Notification) {
+        AppAlerts.stop()
+    }
 
     func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows _: Bool) -> Bool {
         Task { @MainActor in model?.openWindow() }

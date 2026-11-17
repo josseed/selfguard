@@ -74,6 +74,16 @@ input:focus, select:focus, .btn:focus-visible, .nav a:focus-visible { outline: 2
 .banner p { margin: 0; color: var(--muted); }
 .banner .grow { flex: 1; }
 
+/* Bastion, the mascot (mascot.js): a pixel-art sprite strip, scaled by whole pixels. */
+.banner:has(.mascot) { padding-block: 10px; }
+.mascot { position: relative; flex: none; cursor: pointer; }
+.mascot-sprite { position: absolute; background-repeat: no-repeat; image-rendering: pixelated; --glow: rgb(56 225 255 / .28); filter: drop-shadow(0 0 6px var(--glow)); }
+.mascot[data-scene="high"] .mascot-sprite { --glow: rgb(251 191 36 / .4); }
+.mascot[data-scene="crit"] .mascot-sprite { --glow: rgb(255 77 94 / .45); }
+.mascot[data-scene="mal"] .mascot-sprite { --glow: rgb(225 92 255 / .45); }
+.mascot[data-scene="fixed"] .mascot-sprite { --glow: rgb(74 222 128 / .4); }
+@media (max-width: 700px) { .banner .mascot { display: none; } }
+
 .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
 @media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
 .tile { padding: 14px 16px; position: relative; }

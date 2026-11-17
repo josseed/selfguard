@@ -31,6 +31,10 @@ HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
 - **A dashboard, not just a terminal.** `selfguard ui` opens a local page with every repo, what
   needs attention, how to fix it, and a feed of what changed. On macOS, `selfguard app install`
   puts it in Spotlight and the Dock.
+- **Bastion, a guard who tells you.** A 16-bit castle guard, brought up to date, acts out what
+  changed on the dashboard and, in the Mac app, in a small panel: he sounds the horn for a
+  critical vulnerability, fights off a malicious package and celebrates your fixes. With the
+  app open, each alert arrives once, from him.
 - **Your other machines too.** Your other Macs connect over Tailscale with selfguard sharing.
   You press Connect, check that both screens show the same code and approve it over there: no
   SSH, no Remote Login, nothing listening outside your tailnet. Servers without selfguard use

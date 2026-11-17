@@ -24,6 +24,7 @@ final class AppModel: ObservableObject {
     private var starting: Task<DashboardInstance?, Never>?
     private var tasks: [Task<Void, Never>] = []
     private var fileStamp: Date?
+    private var lastBeat = Date.distantPast
     private static let lastSeenKey = "lastSeen"
     private var summaryURL: URL { Engine.stateRoot.appendingPathComponent("menubar.json") }
 
@@ -42,11 +43,15 @@ final class AppModel: ObservableObject {
         NotificationCenter.default.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.markSeen() }
         }
-        // Watch the file (cheap: one stat every 3 s).
+        // Tell the engine the app shows its alerts, then watch the summary and the alerts
+        // queue (cheap: a stat and a directory listing every 3 s).
+        heartbeat(force: true)
         tasks.append(Task { [weak self] in
             while !Task.isCancelled {
+                self?.showQueuedAlerts()
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 self?.loadSummaryIfChanged()
+                self?.heartbeat()
             }
         })
         // Refresh what the file can't know by itself (services, last sync) every 15 minutes.
@@ -72,6 +77,35 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Alerts (shown by Bastion instead of the engine's banners)
+
+    /// Keep `app.json` fresh so the engine hands its alerts to the app (AppAlerts).
+    private func heartbeat(force: Bool = false) {
+        guard force || Date().timeIntervalSince(lastBeat) >= AppAlerts.heartbeatEvery else { return }
+        lastBeat = Date()
+        AppAlerts.beat(alerts: MascotPanel.enabled)
+    }
+
+    /// "Bastion Alerts" changed: tell the engine at once who shows the next alert.
+    func setMascotAlerts(_ on: Bool) {
+        MascotPanel.enabled = on
+        heartbeat(force: true)
+    }
+
+    private func showQueuedAlerts() {
+        for alert in AppAlerts.take() {
+            MascotPanel.shared.enqueue(alert, engine: engine) { [weak self] repo in self?.openWindow(repo: repo) }
+        }
+    }
+
+    /// `--mascot-demo <scene>`: show Bastion's alert with made-up data (to see the art).
+    func mascotDemo(_ scene: String) {
+        guard let s = Mascot.Scene(rawValue: scene) else { return }
+        let titles: [Mascot.Scene: String] = [.idle: "All clear", .high: "acme/payments-api", .crit: "acme/storefront", .mal: "⛔ Malicious package in acme/storefront", .fixed: "acme/payments-api ✓"]
+        let alert = MascotPanel.Alert(scene: s, title: titles[s]!, subtitle: "Demo", body: "This is a demo of Bastion's alerts.", repoKey: nil, advisory: nil)
+        MascotPanel.shared.enqueue(alert, engine: engine) { [weak self] _ in self?.openWindow() }
+    }
+
     // MARK: - What the icon and the menu show
 
     /// New findings (not fixes) since the menu was last opened.
@@ -91,6 +125,17 @@ final class AppModel: ObservableObject {
         if !unseen.isEmpty { return .news }
         if let svc = s.services, !svc.sync || !svc.watcher { return .degraded }
         return s.attentionRepos > 0 ? .backlog : .clean
+    }
+
+    /// Bastion's helmet for the menu bar: watching, asleep when monitoring is off, and in the
+    /// alert's color for news (amber, red for a critical one) and malicious packages.
+    var mascotIcon: String {
+        switch icon {
+        case .starting, .clean, .backlog: return "watch"
+        case .degraded, .unavailable: return "sleep"
+        case .malicious: return "mal"
+        case .news: return unseen.contains { $0.severity == "malicious" || $0.severity == "critical" } ? "crit" : "high"
+        }
     }
 
     /// The menu was closed: what it showed has been seen.

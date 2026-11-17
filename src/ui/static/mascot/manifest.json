@@ -1,0 +1,45 @@
+{
+  "fps": 12,
+  "scenes": {
+    "idle": {
+      "frames": 96,
+      "x": 11,
+      "y": 14,
+      "width": 94,
+      "height": 43,
+      "durationMs": 8000
+    },
+    "high": {
+      "frames": 72,
+      "x": 17,
+      "y": 0,
+      "width": 33,
+      "height": 57,
+      "durationMs": 6000
+    },
+    "crit": {
+      "frames": 72,
+      "x": 17,
+      "y": 12,
+      "width": 43,
+      "height": 45,
+      "durationMs": 6000
+    },
+    "mal": {
+      "frames": 90,
+      "x": 13,
+      "y": 14,
+      "width": 107,
+      "height": 54,
+      "durationMs": 7500
+    },
+    "fixed": {
+      "frames": 66,
+      "x": 0,
+      "y": 0,
+      "width": 117,
+      "height": 58,
+      "durationMs": 5500
+    }
+  }
+}

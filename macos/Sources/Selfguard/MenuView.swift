@@ -5,6 +5,7 @@ import SwiftUI
 struct MenuView: View {
     @ObservedObject var model: AppModel
     @State private var loginItem = LoginItem.enabled
+    @State private var mascotAlerts = MascotPanel.enabled
 
     var body: some View {
         Text(headline)
@@ -48,6 +49,8 @@ struct MenuView: View {
         Divider()
         Toggle("Open at Login", isOn: $loginItem)
             .onChange(of: loginItem) { LoginItem.set($0) }
+        Toggle("Bastion Alerts", isOn: $mascotAlerts)
+            .onChange(of: mascotAlerts) { model.setMascotAlerts($0) }
         Text("selfguard \(model.summary?.version ?? Bundle.main.shortVersion)")
         Button("Quit selfguard") { NSApp.terminate(nil) }
             .keyboardShortcut("q")

@@ -62,6 +62,8 @@ ENGINE="$APP/Contents/Resources/engine"
 mkdir -p "$APP/Contents/MacOS" "$ENGINE/bin"
 cp "$BIN" "$APP/Contents/MacOS/selfguard"
 cp "$ROOT/src/assets/selfguard.icns" "$APP/Contents/Resources/selfguard.icns"
+# Bastion's menu bar helmets (his scenes ship with the engine, in dist/ui/static/mascot).
+cp -R "$MAC/Resources/mascot" "$APP/Contents/Resources/mascot"
 cp "$EXTRACT/$NODE_DIR/bin/node" "$ENGINE/node"
 cp "$EXTRACT/$NODE_DIR/LICENSE" "$ENGINE/NODE-LICENSE"
 cp -R "$ROOT/dist" "$ENGINE/dist"

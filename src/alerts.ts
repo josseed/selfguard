@@ -1,6 +1,7 @@
 /** Decide what to tell the user (and how) after a scan or sync. Pure: easy to test. */
 import { basename } from "node:path";
 import type { Severity } from "./match.ts";
+import { queueForApp } from "./appalerts.ts";
 import { criticalDialog, notify } from "./notify.ts";
 import { groupByPackage, worstSeverity } from "./report.ts";
 import { packageKey } from "./lockfile/types.ts";
@@ -19,10 +20,19 @@ export interface ProjectNews {
   active?: boolean;
 }
 
+/** What the Mac app's mascot acts out for an alert (see appalerts.ts). */
+export type AlertScene = "mal" | "crit" | "high" | "fixed";
+
+/** `repoKey`: the one repo the alert is about, so the app can open it (absent: several). */
 export type Alert =
   | { kind: "none" }
-  | { kind: "banner"; title: string; subtitle: string; body: string }
-  | { kind: "critical"; title: string; subtitle: string; body: string; dialogTitle: string; dialogMessage: string; url: string };
+  | { kind: "banner"; title: string; subtitle: string; body: string; scene: AlertScene; repoKey?: string }
+  | { kind: "critical"; title: string; subtitle: string; body: string; dialogTitle: string; dialogMessage: string; url: string; scene: "mal"; repoKey?: string };
+
+const sceneOf = (findings: Finding[]): AlertScene => {
+  const worst = worstSeverity(findings);
+  return worst === "malicious" ? "mal" : worst === "critical" ? "crit" : "high";
+};
 
 const LABEL: Record<Severity, string> = {
   malicious: "MALICIOUS",
@@ -44,14 +54,14 @@ function listFixes(findings: Finding[], max = 3): string {
 }
 
 /** Merge checkouts of the same repo into one entry, de-duplicating findings. */
-function byRepo(news: ProjectNews[]): Array<ProjectNews & { label: string; checkouts: number }> {
-  const groups = new Map<string, ProjectNews & { label: string; checkouts: number; seen: Set<string> }>();
+function byRepo(news: ProjectNews[]): Array<ProjectNews & { key: string; label: string; checkouts: number }> {
+  const groups = new Map<string, ProjectNews & { key: string; label: string; checkouts: number; seen: Set<string> }>();
   for (const n of news) {
     if (n.newFindings.length === 0) continue;
     const key = n.repo?.key ?? `path:${n.path}`;
     let g = groups.get(key);
     if (!g) {
-      g = { path: n.path, newFindings: [], label: n.repo?.label ?? name(n.path), checkouts: 0, seen: new Set() };
+      g = { path: n.path, key, newFindings: [], label: n.repo?.label ?? name(n.path), checkouts: 0, seen: new Set() };
       groups.set(key, g);
     }
     g.checkouts++;
@@ -92,6 +102,8 @@ export function buildAlert(news: ProjectNews[]): Alert {
         "2. Rotate credentials this machine or CI could reach: npm tokens, cloud keys, SSH keys, .env secrets.\n" +
         "3. Check the advisory for what the payload does.",
       url: `https://osv.dev/vulnerability/${encodeURIComponent(f.id)}`,
+      scene: "mal",
+      ...(affected.length === 1 ? { repoKey: group.key } : {}),
     };
   }
 
@@ -104,6 +116,8 @@ export function buildAlert(news: ProjectNews[]): Alert {
       title: `selfguard: ${n.label}${n.checkouts > 1 ? ` (${n.checkouts} checkouts)` : ""}`,
       subtitle: `${plural(pkgs, "vulnerable package")} · worst: ${worst}`,
       body: listFixes(n.newFindings),
+      scene: sceneOf(n.newFindings),
+      repoKey: n.key,
     };
   }
   const pkgs = affected.reduce((sum, n) => sum + groupByPackage(n.newFindings).length, 0);
@@ -113,6 +127,7 @@ export function buildAlert(news: ProjectNews[]): Alert {
     title: `selfguard: ${affected.length} projects affected`,
     subtitle: `${plural(pkgs, "vulnerable package")} · worst: ${worst}`,
     body: `${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3} more` : ""}. Run: selfguard status`,
+    scene: sceneOf(all),
   };
 }
 
@@ -120,7 +135,7 @@ const pkgKey = (f: Finding): string => packageKey(f);
 
 /** "datahub ✓ 17 vulnerable packages fixed": only for active checkouts, grouped by repo. */
 export function buildResolvedAlert(news: ProjectNews[]): Alert {
-  const groups = new Map<string, { label: string; fixed: Set<string>; left: Map<string, Finding> }>();
+  const groups = new Map<string, { key: string; label: string; fixed: Set<string>; left: Map<string, Finding> }>();
   for (const n of news) {
     if (n.active === false || !n.resolvedFindings?.length) continue;
     const still = new Set((n.findings ?? []).map(pkgKey));
@@ -129,7 +144,7 @@ export function buildResolvedAlert(news: ProjectNews[]): Alert {
     const key = n.repo?.key ?? `path:${n.path}`;
     let g = groups.get(key);
     if (!g) {
-      g = { label: n.repo?.label ?? name(n.path), fixed: new Set(), left: new Map() };
+      g = { key, label: n.repo?.label ?? name(n.path), fixed: new Set(), left: new Map() };
       groups.set(key, g);
     }
     for (const k of fixed) g.fixed.add(k);
@@ -149,6 +164,8 @@ export function buildResolvedAlert(news: ProjectNews[]): Alert {
       body: leftPkgs
         ? `${leftPkgs} still vulnerable · worst: ${LABEL[worstSeverity(left) ?? "unknown"]}`
         : "No known vulnerabilities left.",
+      scene: "fixed",
+      repoKey: g.key,
     };
   }
   const names = list.map((g) => g.label);
@@ -157,6 +174,7 @@ export function buildResolvedAlert(news: ProjectNews[]): Alert {
     title: `selfguard: fixes in ${list.length} repos`,
     subtitle: `${plural(total, "vulnerable package")} fixed`,
     body: `${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3} more` : ""}`,
+    scene: "fixed",
   };
 }
 
@@ -203,6 +221,7 @@ export function buildReminder(repos: AttentionRepo[]): Alert {
       title: `selfguard: ${r.label} needs attention`,
       subtitle: `${severityCounts(r.findings)} · open: selfguard ui`,
       body: listFixes(r.findings),
+      scene: sceneOf(r.findings),
     };
   }
   const parts = serious.slice(0, 3).map((r) => `${r.label} (${severityCounts(r.findings)})`);
@@ -212,11 +231,17 @@ export function buildReminder(repos: AttentionRepo[]): Alert {
     title: `selfguard: ${serious.length} repos need attention`,
     subtitle: `worst: ${LABEL[worstSeverity(all) ?? "unknown"]} · open: selfguard ui`,
     body: parts.join(", "),
+    scene: sceneOf(all),
   };
 }
 
+/**
+ * Tell the user. While the Mac app runs with its mascot alerts on, it shows the alert (once,
+ * with Bastion); otherwise macOS banners and, for malicious packages, the blocking dialog.
+ */
 export async function deliver(alert: Alert): Promise<void> {
   if (alert.kind === "none") return;
+  if (queueForApp(alert)) return;
   await notify(alert.title, alert.body, alert.subtitle);
   if (alert.kind === "critical") await criticalDialog(alert.dialogTitle, alert.dialogMessage, alert.url);
 }
