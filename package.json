@@ -1,6 +1,6 @@
 {
   "name": "selfguard",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Local-first guard that watches every JavaScript, Python, Rust and Go repo you work on and alerts you about vulnerable or malicious dependencies.",
   "license": "MIT",
   "repository": {

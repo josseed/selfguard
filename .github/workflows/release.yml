@@ -93,14 +93,35 @@ jobs:
           printf '%s' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY_PATH"
           scripts/notarize-app.sh
           rm -f "$APPLE_API_KEY_PATH"
-      - name: Attach the DMG and its checksum to the release
+      # Sparkle: the DMG's EdDSA signature goes into this architecture's appcast, and the feed
+      # itself is signed too (the app requires both, plus Apple's signature of the new app).
+      - name: Sign the update and write the appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          key="$RUNNER_TEMP/sparkle.key"
+          trap 'rm -f "$key"' EXIT
+          (umask 077 && printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$key")
+          test -s "$key" || { echo "SPARKLE_ED_PRIVATE_KEY is missing"; exit 1; }
+          su=macos/.build/artifacts/sparkle/Sparkle/bin/sign_update
+          dmg="$(ls macos/build/selfguard-*-"$ARCH".dmg)"
+          out="$("$su" --ed-key-file "$key" "$dmg")"
+          sig="$(sed -E 's/.*edSignature="([^"]+)".*/\1/' <<<"$out")"
+          len="$(sed -E 's/.*length="([0-9]+)".*/\1/' <<<"$out")"
+          node scripts/appcast.mjs "$dmg" "$ARCH" "$sig" "$len"
+          "$su" --ed-key-file "$key" "macos/build/appcast-$ARCH.xml"
+          "$su" --ed-key-file "$key" --verify "macos/build/appcast-$ARCH.xml"
+          "$su" --ed-key-file "$key" --verify "$dmg" "$sig"
+      - name: Attach the DMG, its checksum and the appcast to the release
         env:
           GH_TOKEN: ${{ github.token }}
+          ARCH: ${{ matrix.arch }}
         run: |
           cd macos/build
           dmg="$(ls selfguard-*.dmg)"
           shasum -a 256 "$dmg" > "$dmg.sha256"
-          gh release upload "$GITHUB_REF_NAME" "$dmg" "$dmg.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$GITHUB_REF_NAME" "$dmg" "$dmg.sha256" "appcast-$ARCH.xml" --repo "$GITHUB_REPOSITORY" --clobber
       - name: Remove the temporary keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

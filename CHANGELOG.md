@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-16
+
+### Added
+
+- **The Mac app updates itself** ([Sparkle 2](https://sparkle-project.org)): it checks once a
+  day and offers the new version with its release notes; "Check for Updates…" in the menu
+  checks now. An update installs only if the feed and the DMG carry valid EdDSA signatures
+  (the feed is signed too, and the DMG is verified before it is opened) and the new app is
+  signed with the same Developer ID. Each release attaches `appcast-arm64.xml` and
+  `appcast-x64.xml`. Macs on 0.12.0 or earlier install 0.13.0 by hand once.
+
+### Changed
+
+- Inside the Mac app, "a new version is available" (menu, dashboard banner, notification) points
+  to "Check for Updates…" instead of an `npm i -g` command, which updated a different copy.
+
+### Fixed
+
+- Two alerts handed to the Mac app in the same millisecond could be shown out of order.
+
 ## [0.12.0] - 2026-11-16
 
 ### Added
@@ -347,7 +367,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/josseed/selfguard/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/josseed/selfguard/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/josseed/selfguard/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/josseed/selfguard/compare/v0.10.0...v0.10.1

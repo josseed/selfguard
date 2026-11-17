@@ -7,10 +7,11 @@ import SwiftUI
 struct SelfguardApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
+    @StateObject private var updates = Updates()
 
     var body: some Scene {
         MenuBarExtra {
-            MenuView(model: model)
+            MenuView(model: model, updates: updates)
         } label: {
             MenuBarIcon(model: model, delegate: delegate)
         }

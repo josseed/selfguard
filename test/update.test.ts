@@ -80,3 +80,22 @@ test("can be turned off (settings or env)", async () => {
 test("knows the version installed on disk", () => {
   assert.match(u.installedVersion(), /^\d+\.\d+\.\d+/);
 });
+
+test("inside the Mac app the app updates itself: no npm command, the menu instead", async () => {
+  latest = { name: "selfguard", version: "99.0.0" };
+  await u.checkForUpdate({ force: true });
+  process.env.SELFGUARD_RUNTIME = "app";
+  try {
+    const info = u.cachedUpdate();
+    assert.equal(info.available, true);
+    assert.equal(info.via, "app");
+    assert.equal(info.command, null);
+    const sent: string[] = [];
+    await u.notifyUpdateOnce({ ...info, latest: "99.1.0" }, async (_t, body) => void sent.push(body));
+    assert.match(sent[0] ?? "", /Check for Updates/);
+    assert.doesNotMatch(sent[0] ?? "", /npm/);
+  } finally {
+    delete process.env.SELFGUARD_RUNTIME;
+  }
+  assert.equal(u.cachedUpdate().via, "npm");
+});

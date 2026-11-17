@@ -6,6 +6,25 @@ and Intel), signed with a **Developer ID Application** certificate, **notarized*
 `.github/workflows/release.yml`) runs in the `macos-release` environment, which needs a
 maintainer's approval, like the npm release.
 
+## Updates (Sparkle)
+
+The app updates itself with [Sparkle 2](https://sparkle-project.org) (pinned in
+`macos/Package.swift` and `Package.resolved`). For each architecture the job also writes
+`appcast-<arch>.xml` (`scripts/appcast.mjs`, release notes from the CHANGELOG) and attaches it
+to the release; the app reads `releases/latest/download/appcast-<arch>.xml`. An update is
+installed only if all three hold:
+
+- the **feed** is signed with the Sparkle EdDSA key (`SURequireSignedFeed`);
+- the **DMG** carries a valid EdDSA signature in the feed, checked before it is opened
+  (`SUVerifyUpdateBeforeExtraction`);
+- the new app is signed with the **same Developer ID** as the running one (Sparkle checks it).
+
+The public key is `macos/sparkle-public-key.txt`, baked into `Info.plist` by
+`scripts/build-app.sh` (a build without it has no updater). The private key is the
+`SPARKLE_ED_PRIVATE_KEY` secret of `macos-release` and the maintainer's login Keychain.
+
+The first version with the updater is 0.13.0: Macs on 0.12.0 or earlier install it by hand once.
+
 ## What is signed, and how
 
 - `Contents/Resources/engine/node`: the Node.js from `macos/node.lock` (checksum-verified),
@@ -61,6 +80,12 @@ APPLE_API_ISSUER=<issuer-uuid> SIGN_IDENTITY="Developer ID Application: <team> (
 a few minutes; `xcrun notarytool log <id> --key … --key-id … --issuer …` explains a rejection.
 
 ## Rotating or revoking
+
+- Sparkle key: **back it up** (`generate_keys -x sparkle-private.key` from
+  `macos/.build/artifacts/sparkle/Sparkle/bin`, into a password manager, then delete the file).
+  If it is lost or leaked, generate a new pair, update `macos/sparkle-public-key.txt` and the
+  secret, and release: apps already installed trust only the old key, so the release that
+  switches keys must still be signed with the old one (or users reinstall by hand).
 
 - Certificate: create a new one, update `MACOS_CERT_P12` and `MACOS_CERT_PASSWORD`, then revoke
   the old one. Revoking it doesn't break apps already notarized with it.

@@ -50,8 +50,9 @@ function renderUpdate() {
       restart, later));
     return;
   }
-  const copy = h("button", { class: "btn small primary", type: "button" }, icon("copy"), "Copy update command");
-  copy.addEventListener("click", async () => {
+  // Inside the Mac app the app updates itself (and this engine with it).
+  const copy = u.via === "app" ? null : h("button", { class: "btn small primary", type: "button" }, icon("copy"), "Copy update command");
+  if (copy) copy.addEventListener("click", async () => {
     if (await copyText(u.command)) toast("Copied. Run it in a terminal, then restart the dashboard from here.");
     else toast(u.command);
   });
@@ -60,7 +61,9 @@ function renderUpdate() {
     h("div", { class: "grow" },
       h("strong", {}, `selfguard ${u.latest} is available`), h("span", { class: "muted" }, ` (you have ${u.current}). `),
       h("a", { href: u.releaseNotes, target: "_blank", rel: "noopener noreferrer" }, "What's new"),
-      h("div", { class: "small muted mono" }, u.command),
+      u.via === "app"
+        ? h("div", { class: "small muted" }, "Update it from the selfguard menu: Check for Updates… (signed and verified; the app restarts).")
+        : h("div", { class: "small muted mono" }, u.command),
       u.provenance === false
         ? h("div", { class: "small warn-text" }, "This release has no npm provenance attestation: check it before installing.")
         : u.provenance ? h("div", { class: "small muted" }, "Built and signed by GitHub Actions (npm provenance). selfguard never installs anything by itself.") : null),

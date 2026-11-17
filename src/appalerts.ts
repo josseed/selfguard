@@ -16,6 +16,7 @@ import { appAlertsDir, appFile } from "./paths.ts";
 
 /** Twice the app's heartbeat period, plus slack: a stuck or killed app stops getting alerts. */
 const FRESH_MS = 75_000;
+let seq = 0;
 
 export interface AppHeartbeat {
   pid: number;
@@ -51,8 +52,9 @@ export function queueForApp(alert: Alert): boolean {
   try {
     const dir = appAlertsDir();
     ensureDir(dir);
-    // Sorted by name = by time; the random part keeps two alerts of one scan apart.
-    const name = `${Date.now().toString().padStart(14, "0")}-${randomBytes(4).toString("hex")}.json`;
+    // Sorted by name = by time, then by order within this process (two alerts of one scan
+    // can share a millisecond); the random part keeps processes apart.
+    const name = `${Date.now().toString().padStart(14, "0")}-${String(seq++).padStart(6, "0")}-${randomBytes(4).toString("hex")}.json`;
     atomicWrite(join(dir, name), JSON.stringify(appAlert(alert)));
     return true;
   } catch {
