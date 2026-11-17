@@ -43,7 +43,7 @@ export interface MenuBar {
   moreRepos: number;
   trackedProjects: number;
   /** null: not macOS, or the schedule couldn't be read. */
-  services: { sync: boolean; watcher: boolean } | null;
+  services: { sync: boolean; watcher: boolean; owner: "app" | "cli" | null } | null;
   lastSync: string | null;
   lastCheck: string | null;
   update: { available: boolean; latest: string | null };
@@ -93,7 +93,7 @@ export function getMenuBar(): MenuBar {
   if (process.platform === "darwin") {
     try {
       const s = scheduleStatus();
-      services = { sync: s.loaded, watcher: s.watcher.loaded };
+      services = { sync: s.loaded, watcher: s.watcher.loaded, owner: s.owner };
     } catch {
       services = null;
     }

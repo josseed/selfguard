@@ -12,10 +12,10 @@ process.env.SELFGUARD_NO_UPDATE_CHECK = "1";
 test("menu bar state: malicious, then serious findings, then a service down", async () => {
   const { menuBarState } = await import("../src/menubar.ts");
   const zero = { malicious: 0, critical: 0, high: 0, moderate: 0, low: 0, unknown: 0 };
-  const up = { sync: true, watcher: true };
-  assert.equal(menuBarState({ ...zero, malicious: 1 }, 0, { sync: false, watcher: false }), "malicious");
-  assert.equal(menuBarState({ ...zero, high: 2 }, 1, { sync: false, watcher: true }), "attention");
-  assert.equal(menuBarState({ ...zero, moderate: 3 }, 0, { sync: true, watcher: false }), "degraded");
+  const up = { sync: true, watcher: true, owner: null };
+  assert.equal(menuBarState({ ...zero, malicious: 1 }, 0, { sync: false, watcher: false, owner: null }), "malicious");
+  assert.equal(menuBarState({ ...zero, high: 2 }, 1, { sync: false, watcher: true, owner: null }), "attention");
+  assert.equal(menuBarState({ ...zero, moderate: 3 }, 0, { sync: true, watcher: false, owner: null }), "degraded");
   assert.equal(menuBarState({ ...zero, low: 3 }, 0, up), "clean");
   assert.equal(menuBarState(zero, 0, null), "clean", "unknown services (not macOS) aren't a problem");
 });

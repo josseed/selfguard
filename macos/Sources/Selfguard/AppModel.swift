@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
     func start() {
         guard tasks.isEmpty, let engine else { return }
         loadSummary()
+        offerBackground(engine)
         // Closing the menu means what it showed has been seen.
         NotificationCenter.default.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.markSeen() }
@@ -63,6 +64,17 @@ final class AppModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: 15 * 60 * 1_000_000_000)
             }
         })
+    }
+
+    /// First run (or first run after adopting): ask about the background agents once.
+    private func offerBackground(_ engine: Engine) {
+        Task { [weak self] in
+            // Let the menu bar icon settle, and don't pop a dialog over a launch at login.
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard let self, await Background.offerIfNeeded(self.summary?.services, engine: engine) else { return }
+            await engine.run(["menubar"], timeout: 120)
+            self.loadSummary()
+        }
     }
 
     private func loadSummaryIfChanged() {

@@ -83,10 +83,19 @@ export function pageSettings() {
       toast(on ? "Background watching off" : "Background watching on");
       await refresh();
     }));
+    // Set up by a command-line install (npm): offer to move it to the app, so it keeps working
+    // on its own if that install is removed.
+    const adopt = on && o.inApp && o.schedule.owner === "cli" ? h("button", { class: "btn small", type: "button" }, "Move to the app") : null;
+    if (adopt) adopt.addEventListener("click", () => busy(adopt, "…", async () => {
+      await call("POST", "/api/schedule", { enabled: true });
+      toast("Background watching now runs with the app");
+      await refresh();
+    }));
+    const owner = on && o.schedule.owner ? (o.schedule.owner === "app" ? " It runs with the app." : o.inApp ? " It runs with the command-line install (npm); move it to the app to use it on its own." : " It runs with the command-line install.") : "";
     rows.push(settingRow("Background watching",
-      on ? `On: full sync every 6 h, and a lockfile watcher on ${o.schedule.watchedPaths} paths so pulls and installs are checked within seconds.`
-        : "Off: selfguard only checks when you run it. Turn it on to get alerts on your own.",
-      [h("span", { class: "small" }, h("span", { class: `status-dot ${on ? "on" : "off"}` }), on ? "On" : "Off"), toggle]));
+      (on ? `On: full sync every 6 h, and a lockfile watcher on ${o.schedule.watchedPaths} paths so pulls and installs are checked within seconds.`
+        : "Off: selfguard only checks when you run it. Turn it on to get alerts on your own.") + owner,
+      [h("span", { class: "small" }, h("span", { class: `status-dot ${on ? "on" : "off"}` }), on ? "On" : "Off"), ...(adopt ? [adopt] : []), toggle]));
   }
 
   $("page").replaceChildren(h("div", { class: "stack" },

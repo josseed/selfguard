@@ -7,6 +7,7 @@ struct MenuView: View {
     @ObservedObject var updates: Updates
     @State private var loginItem = LoginItem.enabled
     @State private var mascotAlerts = MascotPanel.enabled
+    @State private var commandLine = CommandLineTool.installed
 
     var body: some View {
         Text(headline)
@@ -55,6 +56,12 @@ struct MenuView: View {
             .onChange(of: loginItem) { LoginItem.set($0) }
         Toggle("Bastion Alerts", isOn: $mascotAlerts)
             .onChange(of: mascotAlerts) { model.setMascotAlerts($0) }
+        if CommandLineTool.available {
+            Button(commandLine ? "Remove Terminal Command…" : "Install Terminal Command…") {
+                CommandLineTool.toggle()
+                commandLine = CommandLineTool.installed
+            }
+        }
         Text("selfguard \(Bundle.main.shortVersion)")
         Button(updates.enabled ? "Check for Updates…" : "Download Updates…") { updates.check() }
         Button("Quit selfguard") { NSApp.terminate(nil) }

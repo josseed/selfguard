@@ -54,16 +54,19 @@ export function cmdSchedule(args: string[]): number {
   const { values, positionals } = parseArgs({
     args,
     allowPositionals: true,
-    options: { ...JSON_OPT, every: { type: "string", default: "6h" } },
+    options: { ...JSON_OPT, every: { type: "string" } },
   });
   switch (positionals[0]) {
     case "on": {
-      const seconds = parseInterval(values.every ?? "6h");
+      // Without --every, keep the interval already installed (moving the agents to this engine
+      // shouldn't change it).
+      const seconds = values.every ? parseInterval(values.every) : (scheduleStatus().intervalSeconds ?? 6 * 3600);
+      const label = values.every ?? (seconds % 3600 === 0 ? `${seconds / 3600}h` : `${Math.round(seconds / 60)}m`);
       const targets = api.watchTargets();
       const plist = scheduleOn(seconds, targets, { machines: api.hasMachines(), autoDiscover: api.getSettings().autoDiscover });
       if (values.json) emit({ enabled: true, intervalSeconds: seconds, plist, node: process.execPath, watchedPaths: targets.length });
       else {
-        out.write(`Background sync every ${values.every}, plus instant checks when a lockfile changes. (${tildify(plist)})\n`);
+        out.write(`Background sync every ${label}, plus instant checks when a lockfile changes. (${tildify(plist)})\n`);
         out.write(`Note: it runs with ${process.execPath}; re-run this if you change Node versions.\n`);
       }
       return 0;

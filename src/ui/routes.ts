@@ -2,7 +2,7 @@
 import { maybeRemind } from "../announce.ts";
 import * as api from "../api.ts";
 import { isObject } from "../fsutil.ts";
-import { scheduleOff, scheduleOn, updateDiscoverAgent, updateRemoteAgent, updateWatcher } from "../schedule.ts";
+import { scheduleOff, scheduleOn, scheduleStatus, shareAgentStatus, updateDiscoverAgent, updateRemoteAgent, updateShareAgent, updateWatcher } from "../schedule.ts";
 import { loadRepo } from "../store.ts";
 import { checkForUpdate } from "../update.ts";
 import { VERSION } from "../version.ts";
@@ -204,7 +204,13 @@ export async function route(method: string, url: URL, body: Record<string, unkno
     }
     if (p === "/api/schedule") {
       if (process.platform !== "darwin") throw new api.ApiError("unsupported", "background watching is macOS-only for now");
-      if (body.enabled === true) scheduleOn(6 * 3600, api.watchTargets(), { machines: api.hasMachines(), autoDiscover: api.getSettings().autoDiscover });
+      if (body.enabled === true) {
+        // Turning it on from here makes this engine the owner (the app's, when run by the app): the
+        // same call "adopts" agents an npm install set up, keeping their interval.
+        const every = scheduleStatus().intervalSeconds ?? 6 * 3600;
+        scheduleOn(every, api.watchTargets(), { machines: api.hasMachines(), autoDiscover: api.getSettings().autoDiscover });
+        if (shareAgentStatus().installed) updateShareAgent(true);
+      }
       else if (body.enabled === false) scheduleOff();
       else throw new api.ApiError("invalid", "enabled must be true or false");
       return getOverview().schedule;

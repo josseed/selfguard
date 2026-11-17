@@ -122,9 +122,22 @@ export function scheduleOff(): boolean {
   return existed;
 }
 
+/** Who runs the background agents: the Mac app's bundled engine, or a command-line install (npm). */
+export type ScheduleOwner = "app" | "cli";
+
+/** The owner of the agents, from the program the sync agent runs (null when it isn't installed). */
+export function scheduleOwner(plist: string): ScheduleOwner | null {
+  const program = /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>/.exec(plist)?.[1];
+  if (!program) return null;
+  return program.includes(".app/Contents/Resources/engine/") ? "app" : "cli";
+}
+
 export interface ScheduleStatus {
   installed: boolean;
   loaded: boolean;
+  owner: ScheduleOwner | null;
+  /** Seconds between full syncs (kept when the agents move to another engine). */
+  intervalSeconds: number | null;
   plist: string;
   watcher: { installed: boolean; loaded: boolean; paths: number };
   remote: { installed: boolean; loaded: boolean };
@@ -134,6 +147,16 @@ export interface ScheduleStatus {
 export function scheduleStatus(): ScheduleStatus {
   assertMac();
   let paths = 0;
+  let owner: ScheduleOwner | null = null;
+  let intervalSeconds: number | null = null;
+  try {
+    const sync = readFileSync(plistPath(SYNC_LABEL), "utf8");
+    owner = scheduleOwner(sync);
+    const every = /<key>StartInterval<\/key>\s*<integer>(\d+)<\/integer>/.exec(sync)?.[1];
+    intervalSeconds = every ? Number(every) : null;
+  } catch {
+    /* not installed */
+  }
   try {
     const section = /<key>WatchPaths<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(readFileSync(plistPath(WATCH_LABEL), "utf8"));
     paths = section?.[1]?.match(/<string>/g)?.length ?? 0;
@@ -143,6 +166,8 @@ export function scheduleStatus(): ScheduleStatus {
   return {
     installed: existsSync(plistPath(SYNC_LABEL)),
     loaded: isLoaded(SYNC_LABEL),
+    owner,
+    intervalSeconds,
     plist: plistPath(SYNC_LABEL),
     watcher: { installed: existsSync(plistPath(WATCH_LABEL)), loaded: isLoaded(WATCH_LABEL), paths },
     remote: { installed: existsSync(plistPath(REMOTE_LABEL)), loaded: isLoaded(REMOTE_LABEL) },
