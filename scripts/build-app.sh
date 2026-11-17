@@ -54,13 +54,17 @@ echo "Building the engine…"
 (cd "$ROOT" && npm run build --silent)
 echo "Building the app ($SWIFT_ARCH)…"
 (cd "$MAC" && swift build -c release --arch "$SWIFT_ARCH" >/dev/null)
-BIN="$(cd "$MAC" && swift build -c release --arch "$SWIFT_ARCH" --show-bin-path)/Selfguard"
+BIN_DIR="$(cd "$MAC" && swift build -c release --arch "$SWIFT_ARCH" --show-bin-path)"
+BIN="$BIN_DIR/Selfguard"
 
 # 3. Assemble the bundle.
 rm -rf "$APP"
 ENGINE="$APP/Contents/Resources/engine"
-mkdir -p "$APP/Contents/MacOS" "$ENGINE/bin"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$ENGINE/bin"
 cp "$BIN" "$APP/Contents/MacOS/selfguard"
+# Sparkle (auto-update). Its XPC services are only for sandboxed apps; this one isn't.
+ditto "$BIN_DIR/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
+rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" "$APP/Contents/Frameworks/Sparkle.framework/XPCServices"
 cp "$ROOT/src/assets/selfguard.icns" "$APP/Contents/Resources/selfguard.icns"
 # Bastion's menu bar helmets (his scenes ship with the engine, in dist/ui/static/mascot).
 cp -R "$MAC/Resources/mascot" "$APP/Contents/Resources/mascot"
@@ -76,14 +80,42 @@ exec "$here/node" "$here/dist/cli.js" "$@"
 SH
 chmod 755 "$ENGINE/bin/selfguard" "$ENGINE/node"
 sed -e "s/@VERSION@/$VERSION/g" "$MAC/Info.plist.in" > "$APP/Contents/Info.plist"
+# Updates: the latest release's appcast for this architecture, signed with the EdDSA key whose
+# public half is macos/sparkle-public-key.txt (no key: no updater, e.g. a fork's build).
+ED_KEY="$(tr -d '[:space:]' < "$MAC/sparkle-public-key.txt" 2>/dev/null || true)"
+if [[ "$ED_KEY" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
+  PLIST="$APP/Contents/Info.plist"
+  plutil -insert SUFeedURL -string "https://github.com/josseed/selfguard/releases/latest/download/appcast-$ARCH.xml" "$PLIST"
+  plutil -insert SUPublicEDKey -string "$ED_KEY" "$PLIST"
+  plutil -insert SURequireSignedFeed -bool true "$PLIST"
+  plutil -insert SUVerifyUpdateBeforeExtraction -bool true "$PLIST"
+  plutil -insert SUEnableAutomaticChecks -bool true "$PLIST"
+fi
 plutil -lint -s "$APP/Contents/Info.plist"
 
-# 4. Signature, inside-out: the Node binary (only allow-jit), then the bundle.
+# 4. Signature, inside-out: the Node binary (only allow-jit), Sparkle's helpers and framework,
+# then the bundle.
 IDENTITY="${SIGN_IDENTITY:--}"
 SIGN=(codesign --force --options runtime --sign "$IDENTITY")
 [[ "$IDENTITY" != "-" ]] && SIGN+=(--timestamp)
 "${SIGN[@]}" --entitlements "$MAC/node.entitlements" "$ENGINE/node"
-"${SIGN[@]}" "$APP"
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+"${SIGN[@]}" "$SPARKLE/Versions/B/Autoupdate"
+"${SIGN[@]}" "$SPARKLE/Versions/B/Updater.app"
+"${SIGN[@]}" "$SPARKLE"
+if [[ "$IDENTITY" == "-" ]]; then
+  # Ad-hoc signatures carry no Team ID, so the hardened runtime's library validation would
+  # refuse to load Sparkle.framework. Local builds only: Developer ID builds keep it on.
+  ADHOC_ENT="$EXTRACT/adhoc.entitlements"
+  cat > "$ADHOC_ENT" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>com.apple.security.cs.disable-library-validation</key><true/></dict></plist>
+PLIST
+  "${SIGN[@]}" --entitlements "$ADHOC_ENT" "$APP"
+else
+  "${SIGN[@]}" "$APP"
+fi
 codesign --verify --strict --deep "$APP"
 # The signed engine must still run (it can't on another architecture without Rosetta).
 if [[ "$SWIFT_ARCH" == "$(uname -m)" ]]; then

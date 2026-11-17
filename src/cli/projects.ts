@@ -141,7 +141,7 @@ export function cmdStatus(args: string[]): number {
   if (hiddenRepos) out.write(c.dim(`${hiddenRepos} inactive repo(s) hidden (no git activity in ${api.getSettings().activeDays} days). Show them with --all.\n`));
   if (hiddenDismissed) out.write(c.dim(`${hiddenDismissed} dismissed repo(s) hidden until their next git activity. List them with selfguard dismiss --list.\n`));
   const upd = cachedUpdate();
-  if (upd.available) out.write(c.yellow(`selfguard ${upd.latest} is available (you have ${upd.current}): ${upd.command}\n`));
+  if (upd.available) out.write(c.yellow(`selfguard ${upd.latest} is available (you have ${upd.current}): ${upd.command ?? "selfguard menu → Check for Updates…"}\n`));
   return 0;
 }
 

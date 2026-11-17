@@ -4,6 +4,7 @@ import SwiftUI
 /// The menu under the menu bar icon.
 struct MenuView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var updates: Updates
     @State private var loginItem = LoginItem.enabled
     @State private var mascotAlerts = MascotPanel.enabled
 
@@ -28,9 +29,12 @@ struct MenuView: View {
                 Divider()
                 Button(servicesWarning(services)) { model.openWindow(page: "settings") }
             }
-            if s.update.available, let latest = s.update.latest {
+            if let pending = updates.pending {
                 Divider()
-                Button("selfguard \(latest) is available…") { model.openWindow(page: "settings") }
+                Button("Install selfguard \(pending)…") { updates.check() }
+            } else if s.update.available, let latest = s.update.latest {
+                Divider()
+                Button("selfguard \(latest) is available…") { updates.check() }
             }
         }
         Divider()
@@ -51,7 +55,8 @@ struct MenuView: View {
             .onChange(of: loginItem) { LoginItem.set($0) }
         Toggle("Bastion Alerts", isOn: $mascotAlerts)
             .onChange(of: mascotAlerts) { model.setMascotAlerts($0) }
-        Text("selfguard \(model.summary?.version ?? Bundle.main.shortVersion)")
+        Text("selfguard \(Bundle.main.shortVersion)")
+        Button(updates.enabled ? "Check for Updates…" : "Download Updates…") { updates.check() }
         Button("Quit selfguard") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }

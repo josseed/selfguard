@@ -3,7 +3,8 @@
 Status (2026-11-16): phase 1 done, and from phase 2 the summary file, "new since you looked",
 the login item, the Dock icon while the window is open and Check/Sync result notifications.
 Phase 3 (signing and notarization in CI) is done: releases from v0.11.0 attach notarized
-DMGs (docs/releasing-mac-app.md). Pending: native notifications for findings, adopting the services,
+DMGs (docs/releasing-mac-app.md). Phase 4's auto-update is done from v0.13.0 (Sparkle 2, signed
+feed per architecture on the GitHub release); the Homebrew cask is still pending. Pending: native notifications for findings, adopting the services,
 the CLI link, phases 4–5.
 
 ## Goal

@@ -3,8 +3,10 @@
  * than the code running (the dashboard after `npm i -g selfguard@…`)?
  *
  * One GET to the npm registry for selfguard's own "latest" document, at most once a day,
- * with no redirects, a timeout and a size cap. Only the package name is sent. selfguard
- * never installs anything itself: it shows the command (with --ignore-scripts) to run.
+ * with no redirects, a timeout and a size cap. Only the package name is sent. The npm CLI
+ * never installs anything itself: it shows the command (with --ignore-scripts) to run. The
+ * engine inside the Mac app (SELFGUARD_RUNTIME=app) is updated with the app, by Sparkle: there
+ * the way to update is the app's "Check for Updates…", never an npm command.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -27,9 +29,15 @@ export interface UpdateInfo {
   checkedAt: string | null;
   /** Off in settings or with SELFGUARD_NO_UPDATE_CHECK=1. */
   enabled: boolean;
+  /** npm command to update (null inside the Mac app, which updates itself). */
   command: string | null;
   releaseNotes: string | null;
+  /** Who updates this copy: npm (the CLI) or the Mac app (Sparkle). */
+  via: "npm" | "app";
 }
+
+/** This engine runs inside selfguard.app (set by the app for every command it runs). */
+export const inApp = (): boolean => process.env.SELFGUARD_RUNTIME === "app";
 
 export function updateCheckEnabled(): boolean {
   return process.env.SELFGUARD_NO_UPDATE_CHECK !== "1" && loadConfig().updateCheck;
@@ -49,8 +57,9 @@ export function cachedUpdate(): UpdateInfo {
     provenance: st.latestProvenance ?? null,
     checkedAt: st.lastUpdateCheck ?? null,
     enabled: updateCheckEnabled(),
-    command: available ? `npm i -g selfguard@${latest} --ignore-scripts` : null,
+    command: available && !inApp() ? `npm i -g selfguard@${latest} --ignore-scripts` : null,
     releaseNotes: available ? `https://github.com/josseed/selfguard/releases/tag/v${latest}` : null,
+    via: inApp() ? "app" : "npm",
   };
 }
 
@@ -98,6 +107,7 @@ export async function notifyUpdateOnce(info: UpdateInfo, send: (title: string, b
   if (!info.available || !info.latest) return null;
   if (loadState().notifiedVersion === info.latest) return null;
   updateState({ notifiedVersion: info.latest });
-  await send(`selfguard ${info.latest} is available`, `You have ${info.current}. Update: ${info.command}`);
+  const how = info.via === "app" ? "selfguard menu → Check for Updates…" : info.command;
+  await send(`selfguard ${info.latest} is available`, `You have ${info.current}. Update: ${how}`);
   return info.latest;
 }
