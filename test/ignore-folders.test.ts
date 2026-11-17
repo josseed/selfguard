@@ -1,7 +1,7 @@
 // Ignore a whole folder from the Repos page (POST /api/folders/ignore) and include it again.
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { createServer, request, type IncomingMessage, type Server } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,9 +26,7 @@ const osv = createServer(async (req, res) => {
   res.end("{}");
 });
 
-const TOKEN = "test-token-0123456789";
-let server: Server;
-let port: number;
+let handleLine: typeof import("../src/bridge.ts").handleLine;
 let api: typeof import("../src/api.ts");
 let code: string;
 let remoteCode: string;
@@ -43,10 +41,7 @@ before(async () => {
   process.env.SELFGUARD_NO_NOTIFY = "1";
   process.env.SELFGUARD_NO_LAUNCHD = "1";
   api = await import("../src/api.ts");
-  const { createUiServer } = await import("../src/ui/server.ts");
-  server = createUiServer(TOKEN);
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  port = (server.address() as AddressInfo).port;
+  ({ handleLine } = await import("../src/bridge.ts"));
 
   // ~/code/old/{a,b} (ignorable folder), ~/code/keep and a project directly in the root.
   code = join(process.env.HOME, "code");
@@ -66,22 +61,12 @@ before(async () => {
 });
 after(() => {
   osv.close();
-  server.close();
 });
 
-function post(path: string, body: unknown): Promise<{ status: number; json: any }> {
-  return new Promise((resolve, reject) => {
-    const req = request(
-      { host: "127.0.0.1", port, path, method: "POST", headers: { host: `127.0.0.1:${port}`, "x-selfguard-token": TOKEN, "content-type": "application/json" } },
-      (res) => {
-        let b = "";
-        res.on("data", (c) => (b += c));
-        res.on("end", () => resolve({ status: res.statusCode!, json: JSON.parse(b || "{}") }));
-      },
-    );
-    req.on("error", reject);
-    req.end(JSON.stringify(body));
-  });
+/** The dashboard's API as the Mac app calls it: one bridge request. */
+async function post(path: string, body: unknown): Promise<{ status: number; json: any }> {
+  const r = await handleLine(JSON.stringify({ id: 1, method: "POST", path, body }));
+  return { status: r.status, json: r.data ?? { error: r.error } };
 }
 
 const tracked = (machine?: string): number => api.getStatus().projects.filter((p) => (machine ? p.machine === machine : !p.machine)).length;
