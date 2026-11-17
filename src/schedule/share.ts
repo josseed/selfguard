@@ -3,7 +3,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { atomicWrite } from "../fsutil.ts";
-import { cliEntry } from "../hook.ts";
+import { cliEntry, engineCommand, NODE_FLAGS } from "../hook.ts";
 import { logFile } from "../paths.ts";
 import { agentPlist, install, isLoaded, plistPath, unload } from "./launchd.ts";
 
@@ -12,14 +12,14 @@ const SYSTEMD_UNIT = "selfguard-share.service";
 const systemdUnitPath = (): string => join(homedir(), ".config", "systemd", "user", SYSTEMD_UNIT);
 
 /** The systemd user unit for Linux (pure: tested directly). */
-export function shareUnit(node: string, cli: string): string {
+export function shareUnit(node: string, cli: string, flags: readonly string[] = []): string {
   const q = (s: string): string => `"${s.replace(/(["\\$`])/g, "\\$1")}"`;
   return `[Unit]
 Description=selfguard sharing (lets your other machines read lockfiles over the tailnet)
 After=network-online.target tailscaled.service
 
 [Service]
-ExecStart=${q(node)} ${q(cli)} share serve
+ExecStart=${[node, ...flags, cli].map(q).join(" ")} share serve
 Restart=on-failure
 RestartSec=30
 NoNewPrivileges=yes
@@ -44,7 +44,7 @@ export function updateShareAgent(enabled: boolean): { manager: "launchd" | "syst
       rmSync(plistPath(SHARE_LABEL), { force: true });
       return { manager: "launchd", changed: true };
     }
-    const plist = agentPlist(SHARE_LABEL, [process.execPath, cliEntry(), "share", "serve"], { keepAlive: true }, logFile());
+    const plist = agentPlist(SHARE_LABEL, engineCommand("share", "serve"), { keepAlive: true }, logFile());
     let current = "";
     try {
       current = readFileSync(plistPath(SHARE_LABEL), "utf8");
@@ -69,7 +69,7 @@ export function updateShareAgent(enabled: boolean): { manager: "launchd" | "syst
       rmSync(systemdUnitPath(), { force: true });
       return { manager: "systemd", changed: true };
     }
-    atomicWrite(systemdUnitPath(), shareUnit(process.execPath, cliEntry()));
+    atomicWrite(systemdUnitPath(), shareUnit(process.execPath, cliEntry(), NODE_FLAGS));
     systemctl("daemon-reload");
     systemctl("enable", "--now", SYSTEMD_UNIT);
     systemctl("restart", SYSTEMD_UNIT);

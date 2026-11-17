@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
     func start() {
         guard tasks.isEmpty, let engine else { return }
         loadSummary()
+        Task { await refreshLive() }
         offerBackground(engine)
         // Closing the menu means what it showed has been seen.
         NotificationCenter.default.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] _ in
@@ -56,12 +57,19 @@ final class AppModel: ObservableObject {
                 self?.heartbeat()
             }
         })
-        // Refresh what the file can't know by itself (services, last sync) every 15 minutes.
-        tasks.append(Task { [weak self] in
-            while !Task.isCancelled {
+        // No summary yet (first launch): ask the engine for one, once. After that the engine
+        // rewrites it when something changes, and the app reads the rest itself (LiveStatus).
+        if summary == nil {
+            tasks.append(Task { [weak self] in
                 await engine.run(["menubar"], timeout: 120)
                 self?.loadSummary()
-                try? await Task.sleep(nanoseconds: 15 * 60 * 1_000_000_000)
+            })
+        }
+        // What the file can't know (agents running, last check and sync), every 5 minutes.
+        tasks.append(Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5 * 60 * 1_000_000_000)
+                await self?.refreshLive()
             }
         })
     }
@@ -84,9 +92,23 @@ final class AppModel: ObservableObject {
 
     private func loadSummary() {
         fileStamp = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path))?[.modificationDate] as? Date
-        if let s = MenuBarSummary.load(from: summaryURL) {
+        if var s = MenuBarSummary.load(from: summaryURL) {
+            s.apply(live)
             summary = s
             problem = nil
+        }
+    }
+
+    /// Latest agents status and times read by the app (nil until the first read).
+    private var live: LiveStatus.Snapshot?
+
+    /// Read the agents' status off the main thread, then show it.
+    private func refreshLive() async {
+        let snapshot = await Task.detached(priority: .utility) { LiveStatus.snapshot() }.value
+        live = snapshot
+        if var s = summary {
+            s.apply(snapshot)
+            summary = s
         }
     }
 

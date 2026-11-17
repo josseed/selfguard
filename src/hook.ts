@@ -63,6 +63,16 @@ if (( $+commands[selfguard] )); then
 fi
 `;
 
+/**
+ * V8 options for every engine process selfguard starts (agents, background scans, the app).
+ * A small young generation keeps the peak memory of a run that reads many records low (about a
+ * third less), at no measurable cost in time.
+ */
+export const NODE_FLAGS: readonly string[] = ["--max-semi-space-size=2"];
+
+/** The command line of `selfguard <args>` with this Node: [node, ...flags, cli.js, ...args]. */
+export const engineCommand = (...args: string[]): string[] => [process.execPath, ...NODE_FLAGS, cliEntry(), ...args];
+
 export function cliEntry(): string {
   // dist/hook.js -> dist/cli.js (same directory)
   return join(fileURLToPath(new URL(".", import.meta.url)), "cli.js");
@@ -72,7 +82,7 @@ export function cliEntry(): string {
 export function spawnBackgroundScan(dir: string): void {
   ensureDir(stateRoot());
   const out = openSync(logFile(), "a", 0o600);
-  const child = spawn(process.execPath, [cliEntry(), "scan", dir, "--background"], {
+  const child = spawn(process.execPath, engineCommand("scan", dir, "--background").slice(1), {
     detached: true,
     stdio: ["ignore", out, out],
     env: process.env,

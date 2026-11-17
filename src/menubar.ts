@@ -12,6 +12,7 @@ import { atomicWrite, ensureDir } from "./fsutil.ts";
 import { packageKey } from "./lockfile/types.ts";
 import { severityRank, type Severity } from "./match.ts";
 import { machineReposDir, menuBarFile, reposDir, stateRoot } from "./paths.ts";
+import { recordFiles } from "./store.ts";
 import { groupByPackage, worstSeverity } from "./report.ts";
 import { scheduleStatus } from "./schedule.ts";
 import { loadState } from "./state.ts";
@@ -64,7 +65,7 @@ export function menuBarState(totals: Record<Severity, number>, attention: number
 function countRecords(): number {
   const count = (dir: string): number => {
     try {
-      return readdirSync(dir).filter((f) => f.endsWith(".json")).length;
+      return recordFiles(readdirSync(dir)).length;
     } catch {
       return 0;
     }

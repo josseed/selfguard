@@ -18,3 +18,13 @@ test("the owner of the agents is told from the program they run", () => {
   assert.equal(scheduleOwner(npm), "cli");
   assert.equal(scheduleOwner("not a plist"), null);
 });
+
+test("every agent runs the engine with the low-memory V8 options", async () => {
+  const { engineCommand, NODE_FLAGS } = await import("../src/hook.ts");
+  const cmd = engineCommand("check", "--background");
+  assert.equal(cmd[0], process.execPath);
+  assert.deepEqual(cmd.slice(1, 1 + NODE_FLAGS.length), [...NODE_FLAGS]);
+  assert.match(cmd[1 + NODE_FLAGS.length]!, /cli\.(js|ts)$/);
+  assert.deepEqual(cmd.slice(-2), ["check", "--background"]);
+  assert.equal(scheduleOwner(agentPlist("dev.selfguard.sync", cmd, { interval: 60 }, "/l")), "cli");
+});

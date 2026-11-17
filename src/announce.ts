@@ -29,23 +29,29 @@ const HOUR_MS = 60 * 60 * 1000;
  */
 function knownElsewhere(outcomes: ScanOutcome[]): (key: string, id: string) => Set<string> {
   const newIn = new Map(outcomes.map((o) => [checkoutId(o.record), new Set(o.newFindings.map(findingKey))]));
-  let byRepo: Map<string, Array<{ id: string; keys: Set<string> }>> | null = null;
+  let byRepo: Map<string, RepoRecord[]> | null = null;
+  const keysOf = new Map<string, Set<string>>();
   return (key, id) => {
     if (!byRepo) {
       byRepo = new Map();
       for (const rec of listAllRepos(loadConfig().machines.map((m) => m.name))) {
-        const k = keyOf(rec);
-        const fresh = newIn.get(checkoutId(rec));
-        const keys = new Set([...Object.keys(rec.seen ?? {}), ...rec.findings.map(findingKey)].filter((x) => !fresh?.has(x)));
-        const list = byRepo.get(k) ?? [];
-        list.push({ id: checkoutId(rec), keys });
-        byRepo.set(k, list);
+        const list = byRepo.get(keyOf(rec)) ?? [];
+        list.push(rec);
+        byRepo.set(keyOf(rec), list);
       }
     }
     const out = new Set<string>();
     for (const other of byRepo.get(key) ?? []) {
-      if (other.id === id) continue;
-      for (const k of other.keys) out.add(k);
+      const oid = checkoutId(other);
+      if (oid === id) continue;
+      // Only the other checkouts of this repo read their seen-findings memory (a separate file).
+      let keys = keysOf.get(oid);
+      if (!keys) {
+        const fresh = newIn.get(oid);
+        keys = new Set([...Object.keys(other.seen ?? {}), ...other.findings.map(findingKey)].filter((x) => !fresh?.has(x)));
+        keysOf.set(oid, keys);
+      }
+      for (const k of keys) out.add(k);
     }
     return out;
   };

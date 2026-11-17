@@ -76,7 +76,7 @@ cat > "$ENGINE/bin/selfguard" <<'SH'
 #!/bin/sh
 # The selfguard CLI of selfguard.app, with the Node bundled in the app.
 here="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-exec "$here/node" "$here/dist/cli.js" "$@"
+exec "$here/node" --max-semi-space-size=2 "$here/dist/cli.js" "$@"
 SH
 chmod 755 "$ENGINE/bin/selfguard" "$ENGINE/node"
 sed -e "s/@VERSION@/$VERSION/g" "$MAC/Info.plist.in" > "$APP/Contents/Info.plist"

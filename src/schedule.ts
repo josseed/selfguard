@@ -11,7 +11,7 @@
  *   this one" is on (on Linux, a systemd user unit: selfguard-share.service).
  */
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { cliEntry } from "./hook.ts";
+import { engineCommand } from "./hook.ts";
 import { logFile } from "./paths.ts";
 import {
   agentPlist,
@@ -34,7 +34,7 @@ export { shareAgentStatus, shareUnit, updateShareAgent } from "./schedule/share.
 
 export function scheduleOn(seconds: number, watchPaths: string[], opts: { machines?: boolean; autoDiscover?: boolean } = {}): string {
   assertMac();
-  install(SYNC_LABEL, agentPlist(SYNC_LABEL, [process.execPath, cliEntry(), "sync", "--background"], { interval: seconds }, logFile()));
+  install(SYNC_LABEL, agentPlist(SYNC_LABEL, engineCommand("sync", "--background"), { interval: seconds }, logFile()));
   updateWatcher(watchPaths, { force: true });
   updateRemoteAgent(opts.machines ?? false);
   updateDiscoverAgent(opts.autoDiscover ?? true);
@@ -51,7 +51,7 @@ export function updateDiscoverAgent(enabled: boolean): { changed: boolean } {
     rmSync(plistPath(DISCOVER_LABEL), { force: true });
     return { changed: true };
   }
-  const plist = agentPlist(DISCOVER_LABEL, [process.execPath, cliEntry(), "discover", "--everywhere", "--background"], { interval: DISCOVER_INTERVAL }, logFile());
+  const plist = agentPlist(DISCOVER_LABEL, engineCommand("discover", "--everywhere", "--background"), { interval: DISCOVER_INTERVAL }, logFile());
   let current = "";
   try {
     current = readFileSync(plistPath(DISCOVER_LABEL), "utf8");
@@ -73,7 +73,7 @@ export function updateRemoteAgent(enabled: boolean): { changed: boolean } {
     rmSync(plistPath(REMOTE_LABEL), { force: true });
     return { changed: true };
   }
-  const plist = agentPlist(REMOTE_LABEL, [process.execPath, cliEntry(), "machines", "check", "--background"], { interval: REMOTE_INTERVAL }, logFile());
+  const plist = agentPlist(REMOTE_LABEL, engineCommand("machines", "check", "--background"), { interval: REMOTE_INTERVAL }, logFile());
   let current = "";
   try {
     current = readFileSync(plistPath(REMOTE_LABEL), "utf8");
@@ -99,7 +99,7 @@ export function updateWatcher(paths: string[], opts: { force?: boolean } = {}): 
     rmSync(plistPath(WATCH_LABEL), { force: true });
     return { watching: 0, changed: had };
   }
-  const plist = agentPlist(WATCH_LABEL, [process.execPath, cliEntry(), "check", "--background"], { watch: list }, logFile());
+  const plist = agentPlist(WATCH_LABEL, engineCommand("check", "--background"), { watch: list }, logFile());
   let current = "";
   try {
     current = readFileSync(plistPath(WATCH_LABEL), "utf8");

@@ -17,6 +17,20 @@ All notable changes to this project are documented here. The format is based on
   Settings → Background watching says which one runs the agents. `selfguard schedule on`
   without `--every` now keeps the installed interval.
 
+### Changed
+
+- **Much less memory.** A repo's record is now two files: a small one with what listings
+  need (findings, lockfile fingerprint, package count) and `<id>.deps.json` with the full
+  dependency list, read only when rescanning it or on the Packages page. Old records keep
+  working and split on their next save (the next sync). Every engine process runs with a
+  smaller V8 young generation. With ~900 tracked repos, the peak of the menu summary and of the
+  dashboard's status went from ~340 MB to ~165 MB, and they take half the time. Older
+  versions can't read the new records: if you also have selfguard from npm, update it to this
+  version too (or let the app run the background agents).
+- **The Mac app no longer starts the engine every 15 minutes.** It reads the background agents'
+  status (`launchctl print`) and the last check and sync times itself; the engine still rewrites
+  the menu summary whenever something changes.
+
 ## [0.15.0] - 2026-11-17
 
 ### Changed
