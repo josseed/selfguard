@@ -21,7 +21,9 @@ installed only if all three hold:
 
 The public key is `macos/sparkle-public-key.txt`, baked into `Info.plist` by
 `scripts/build-app.sh` (a build without it has no updater). The private key is the
-`SPARKLE_ED_PRIVATE_KEY` secret of `macos-release` and the maintainer's login Keychain.
+`SPARKLE_ED_PRIVATE_KEY` secret of `macos-release`, with a backup in the maintainer's
+password manager (GitHub secrets can't be read back, so that backup is the only recoverable
+copy). The login Keychain may hold it too, for signing locally.
 
 The first version with the updater is 0.13.0: Macs on 0.12.0 or earlier install it by hand once.
 
@@ -81,8 +83,13 @@ a few minutes; `xcrun notarytool log <id> --key … --key-id … --issuer …` e
 
 ## Rotating or revoking
 
-- Sparkle key: **back it up** (`generate_keys -x sparkle-private.key` from
-  `macos/.build/artifacts/sparkle/Sparkle/bin`, into a password manager, then delete the file).
+- Sparkle key: **back it up**. With the key in the login Keychain (Sparkle's `generate_keys`,
+  in `macos/.build/artifacts/sparkle/Sparkle/bin`) and the Bitwarden CLI logged in,
+  `scripts/backup-sparkle-key.sh` exports it, checks it matches `macos/sparkle-public-key.txt`,
+  saves it as a secure note and reads it back to verify. The key is never printed and only
+  touches disk for a moment in a private temporary folder. (`generate_keys -x` needs a path to
+  a new file: `/dev/stdout` doesn't work.) To sign locally again, import it with
+  `generate_keys -f <file>`.
   If it is lost or leaked, generate a new pair, update `macos/sparkle-public-key.txt` and the
   secret, and release: apps already installed trust only the old key, so the release that
   switches keys must still be signed with the old one (or users reinstall by hand).
