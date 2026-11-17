@@ -44,9 +44,9 @@ struct MenuBarSummary: Decodable, Equatable {
     let attentionRepos: Int
     let moreRepos: Int
     let trackedProjects: Int
-    let services: Services?
-    let lastSync: String?
-    let lastCheck: String?
+    var services: Services?
+    var lastSync: String?
+    var lastCheck: String?
     let update: Update
     let events: [Event]
 

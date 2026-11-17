@@ -94,7 +94,7 @@ actor Bridge {
         let stdin = Pipe()
         let stdout = Pipe()
         p.executableURL = engine.node
-        p.arguments = [engine.cli.path, "bridge"]
+        p.arguments = engine.arguments(["bridge"])
         p.standardInput = stdin
         p.standardOutput = stdout
         p.standardError = FileHandle.nullDevice

@@ -8,7 +8,7 @@ import { findProject, type Project } from "../lockfile/detect.ts";
 import { liveDismissals } from "../dismiss.ts";
 import { countBySeverity, groupByPackage, worstSeverity } from "../report.ts";
 import type { RepoIdentity } from "../repoid.ts";
-import { identityOf, repoKeyOf, type RepoRecord } from "../store.ts";
+import { identityOf, packagesOf, repoKeyOf, type RepoRecord } from "../store.ts";
 import type { ProjectReport, ProjectSummary } from "./shapes.ts";
 
 export const advisoryUrl = (id: string): string => `https://osv.dev/vulnerability/${encodeURIComponent(id)}`;
@@ -36,7 +36,7 @@ export function summarize(rec: RepoRecord, activeDays = loadConfig().activeDays,
     exists,
     lockfile: rec.lockfile,
     lockType: rec.lockType,
-    packages: rec.deps.length,
+    packages: packagesOf(rec),
     skippedEntries: rec.skipped,
     scannedAt: rec.scannedAt,
     error: rec.error ?? null,

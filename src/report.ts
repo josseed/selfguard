@@ -3,7 +3,7 @@ import { severityRank, type Severity } from "./match.ts";
 import { ecosystemOf, packageKey, type Ecosystem } from "./lockfile/types.ts";
 import { compareVersions, isValidVersion } from "./versions.ts";
 import { clean } from "./sanitize.ts";
-import type { Finding, RepoRecord } from "./store.ts";
+import { packagesOf, type Finding, type RepoRecord } from "./store.ts";
 
 function useColor(stream: NodeJS.WriteStream): boolean {
   return Boolean(stream.isTTY) && !process.env.NO_COLOR && process.env.TERM !== "dumb";
@@ -66,7 +66,7 @@ export function summarizeCounts(findings: Finding[]): string {
 export function renderFindings(rec: RepoRecord, stream: NodeJS.WriteStream, verbose = false): string {
   const c = paint(stream);
   const lines: string[] = [];
-  const title = `${c.bold(tildify(rec.path))}  ${c.dim(`${rec.deps.length} packages`)}`;
+  const title = `${c.bold(tildify(rec.path))}  ${c.dim(`${packagesOf(rec)} packages`)}`;
   lines.push(title);
   if (rec.error) lines.push(`  ${c.yellow("!")} ${clean(rec.error)}`);
   if (rec.skipped > 0) lines.push(c.dim(`  ${rec.skipped} entries skipped (git, path, local or non-registry deps)`));
