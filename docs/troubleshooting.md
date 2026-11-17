@@ -37,10 +37,16 @@ Malicious-package alerts also open a dialog that stays on screen, so they can't 
 
 ## The dashboard doesn't open
 
-- Run `selfguard ui --no-open` and open the printed URL yourself.
-- selfguard.app does nothing after switching Node versions: `selfguard app status` says
-  "outdated". Run `selfguard app install` again.
-- "Not connected": the dashboard stopped after 30 idle minutes. Run `selfguard ui` again.
+The dashboard is the selfguard Mac app's window ([download](https://github.com/josseed/selfguard/releases/latest));
+there is no browser page.
+
+- `selfguard ui` says the app isn't installed: install it, or use `selfguard status` / `report`.
+- Open it from the menu bar icon ("Open Dashboard") if `selfguard ui` doesn't.
+- "Not connected" or an error in the window: the app talks to the engine through a background
+  process (`selfguard bridge`) that it restarts on the next request. Quit selfguard from the
+  menu bar and open it again.
+- An old `~/Applications/selfguard.app` that is a script launcher (from `selfguard app install`
+  before 0.14): `selfguard app uninstall` removes it.
 - Errors are logged to `~/.selfguard/selfguard.log`.
 
 ## The shell hook doesn't do anything
@@ -127,17 +133,6 @@ reported as safe.
 Desktop apps don't load your shell profile, so they may not find Node or selfguard. Use absolute
 paths in the client config. See
 [AI and automation](ai-and-automation.md#mcp-server).
-
-## The dashboard says "no such endpoint" after updating
-
-A dashboard from the previous version was still running. With 0.8.1 or later, `selfguard ui`
-(or selfguard.app) replaces it automatically. With 0.8.0, stop it once and open it again:
-
-```sh
-f="${SELFGUARD_HOME:-$HOME/.selfguard}/ui.json"
-[ -f "$f" ] && kill "$(node -p "require('$f').pid")"
-selfguard ui
-```
 
 ## My other Mac doesn't show "Connect"
 

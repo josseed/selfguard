@@ -2,6 +2,7 @@
 import { parseArgs } from "node:util";
 import * as api from "./api.ts";
 import { GUIDE } from "./guide.ts";
+import { runBridge } from "./bridge.ts";
 import { hookEnter, ZSH_HOOK } from "./hook.ts";
 import { runMcpServer } from "./mcp.ts";
 import { clean } from "./sanitize.ts";
@@ -12,8 +13,9 @@ import { cmdDiscover, cmdDismiss, cmdForget, cmdRoots, cmdUndismiss, cmdUnexclud
 import { cmdMachines } from "./cli/machines.ts";
 import { emit, err, jsonMode, out, usage, UsageError } from "./cli/output.ts";
 import { cmdReport, cmdScan, cmdStatus, cmdVuln, cmdWhere } from "./cli/projects.ts";
-import { cmdApp, cmdMenuBar, cmdSchedule, cmdSettings, cmdUi } from "./cli/settings.ts";
+import { cmdMenuBar, cmdSchedule, cmdSettings } from "./cli/settings.ts";
 import { cmdShare } from "./cli/share.ts";
+import { cmdApp, cmdUi } from "./cli/ui.ts";
 import { cmdCheck, cmdRemind, cmdSync, cmdUpdate } from "./cli/sync.ts";
 import { cmdTools } from "./cli/tools.ts";
 
@@ -27,12 +29,13 @@ Setup:
                                      lockfile changes right away, full sync every 6h
 
 Dashboard and alerts:
-  selfguard ui [--no-open] [--port N]
-                                     local dashboard in your browser (127.0.0.1 only)
+  selfguard ui [--repo KEY] [--page NAME]
+                                     open the dashboard: it lives in the selfguard Mac app
+                                     (no server, no browser); elsewhere use status/report
   selfguard menubar                  summary for the Mac app (rewrites ~/.selfguard/menubar.json)
-  selfguard app install | uninstall | status
-                                     macOS: ~/Applications/selfguard.app opens the dashboard
-                                     (Spotlight, Launchpad, Dock)
+  selfguard app [install | uninstall | status]
+                                     where to get the Mac app; uninstall removes the old
+                                     script launcher (~/Applications/selfguard.app, pre-0.14)
   selfguard remind                   send the reminder of serious open issues now
   selfguard settings [--remind daily|weekly|off] [--active-days N] [--auto-discover on|off]
                      [--update-check on|off]
@@ -146,6 +149,9 @@ async function main(argv: string[]): Promise<number> {
       return cmdApp(rest);
     case "menubar":
       return cmdMenuBar(rest);
+    case "bridge": // internal: the dashboard's API over stdio, spawned by the Mac app
+      await runBridge();
+      process.exit(0);
     case "discover":
       return cmdDiscover(rest);
     case "machines":

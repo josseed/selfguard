@@ -14,6 +14,29 @@ All notable changes to this project are documented here. The format is based on
   is the same exclusion as `selfguard forget <folder>`. "Include again" under Folders or
   Machines now brings the projects back right away instead of waiting for the next discovery.
 
+### Changed
+
+- **The dashboard no longer has a web server.** There are now two things: the CLI (the engine)
+  and the Mac app, the only visual part. The dashboard page is shown only inside the app's
+  window: it is served from a custom `selfguard://dashboard/` scheme and its API goes through
+  the app to a new internal command, `selfguard bridge` (newline-delimited JSON over stdio).
+  Nothing listens on `127.0.0.1` anymore, and there is no session token or `ui.json`. The CSP is
+  now `connect-src 'none'`. See the [security model](docs/security-model.md#dashboard).
+- `selfguard ui` opens the Mac app's dashboard (`--repo` and `--page` pick where). Without the
+  app it says where to download it. **On Linux there is no visual dashboard**; the CLI is
+  complete there (`status`, `report`, `--json`).
+- `selfguard app install` no longer generates a script launcher: it points to the Mac app.
+  `setup` no longer offers it. The Mac app's dashboard checks for updates through the app only
+  (no "restart the dashboard" banner).
+
+### Removed
+
+- `selfguard ui --no-open`, `--port` and `--serve`, the `/api/restart` and `/api/app`
+  endpoints, and the dashboard's Settings entry for the launcher.
+- `selfguard app uninstall` still removes the old script launcher (it checks the bundle id, so
+  it never deletes the real app). A dashboard server left running from an older version is
+  not stopped by this version: quit it (`pkill -f "selfguard.*ui --serve"`).
+
 ### Fixed
 
 - Excluding a folder with `forget` now refreshes the menu bar summary even when the folder

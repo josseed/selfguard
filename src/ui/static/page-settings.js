@@ -1,5 +1,5 @@
 // Settings page.
-import { $, ago, h, state, toast } from "./core.js";
+import { $, ago, h, state, store, toast } from "./core.js";
 import { busy, call } from "./api.js";
 import { card, setHead } from "./layout.js";
 import { statRow } from "./pages-repos.js";
@@ -52,7 +52,7 @@ export function pageSettings() {
       const r = await call("POST", "/api/update/check", {});
       toast(r.available ? `selfguard ${r.latest} is available` : r.latest ? `You have the latest version (${r.current})` : "Couldn't reach the npm registry");
       state.ui.updateHidden = null;
-      sessionStorage.removeItem("selfguard-update-hidden");
+      store.remove("selfguard-update-hidden");
       await refresh();
     }));
     const sh = o.share || { enabled: false, requests: 0 };
@@ -87,18 +87,6 @@ export function pageSettings() {
       on ? `On: full sync every 6 h, and a lockfile watcher on ${o.schedule.watchedPaths} paths so pulls and installs are checked within seconds.`
         : "Off: selfguard only checks when you run it. Turn it on to get alerts on your own.",
       [h("span", { class: "small" }, h("span", { class: `status-dot ${on ? "on" : "off"}` }), on ? "On" : "Off"), toggle]));
-  }
-  if (o.app) {
-    const installed = o.app.installed;
-    const btn = h("button", { class: "btn small", type: "button" }, installed ? (o.app.upToDate ? "Remove" : "Update") : "Install");
-    btn.addEventListener("click", () => busy(btn, "…", async () => {
-      await call("POST", "/api/app", { installed: !(installed && o.app.upToDate) });
-      toast(installed && o.app.upToDate ? "selfguard.app removed" : "selfguard.app installed in ~/Applications");
-      await refresh();
-    }));
-    rows.push(settingRow("selfguard.app", installed
-      ? (o.app.upToDate ? "Installed in ~/Applications. Open this dashboard with ⌘+Space → selfguard, or keep it in the Dock." : "Installed, but it points to another Node.js version. Update it.")
-      : "Open this dashboard from Spotlight or the Dock instead of the terminal.", [btn]));
   }
 
   $("page").replaceChildren(h("div", { class: "stack" },

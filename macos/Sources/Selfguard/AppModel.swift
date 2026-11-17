@@ -3,7 +3,7 @@ import Foundation
 
 /// State shared by the menu and the dashboard window. Everything comes from the engine: the
 /// menu reads `~/.selfguard/menubar.json`, which the engine rewrites after every scan with
-/// news; the dashboard server only runs while the window is used.
+/// news; the dashboard reaches the engine through the Bridge, which only runs while it is used.
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var summary: MenuBarSummary?
@@ -20,8 +20,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastSeen: Date
 
     let engine: Engine?
-    private var instance: DashboardInstance?
-    private var starting: Task<DashboardInstance?, Never>?
+    /// The dashboard's connection to the engine (nil if the engine is missing).
+    let bridge: Bridge?
     private var tasks: [Task<Void, Never>] = []
     private var fileStamp: Date?
     private var lastBeat = Date.distantPast
@@ -30,6 +30,7 @@ final class AppModel: ObservableObject {
 
     init() {
         engine = Engine.locate()
+        bridge = engine.map { Bridge(engine: $0) }
         let stored = UserDefaults.standard.object(forKey: Self.lastSeenKey) as? Date
         lastSeen = stored ?? Date()
         if stored == nil { UserDefaults.standard.set(lastSeen, forKey: Self.lastSeenKey) }
@@ -179,36 +180,15 @@ final class AppModel: ObservableObject {
 
     // MARK: - Dashboard window
 
-    private func startDashboard(_ engine: Engine) async -> DashboardInstance? {
-        if let starting { return await starting.value }
-        let task = Task { await engine.ensureDashboard() }
-        starting = task
-        let result = await task.value
-        starting = nil
-        return result
-    }
-
-    /// Point the window at the dashboard (optionally a repo or a page), starting the server
-    /// if needed. False if it can't be started.
-    func showDashboard(repo: String? = nil, page: String? = nil) async -> Bool {
-        var alive = false
-        if let current = instance { alive = await current.ping() != nil }
-        if !alive, let engine { instance = await startDashboard(engine) }
-        guard let instance else {
-            problem = "The dashboard didn't start. See ~/.selfguard/selfguard.log."
-            return false
-        }
-        pageURL = instance.pageURL(repo: repo, page: page)
-        return true
-    }
-
-    /// Show the dashboard window (optionally on a repo or a page).
+    /// Show the dashboard window (optionally on a repo or a page). The page is served by the
+    /// app itself, so there is nothing to start: only the address changes.
     func openWindow(repo: String? = nil, page: String? = nil) {
-        Task {
-            if await showDashboard(repo: repo, page: page) { windowRequests += 1 }
-        }
+        pageURL = DashboardRoute.url(repo: repo, page: page)
+        windowRequests += 1
     }
 
-    /// The only origin the window may load.
-    var dashboardOrigin: URL? { instance?.origin }
+    /// The window appeared or went away: the bridge process lives while it is open.
+    func dashboardWindow(visible: Bool) {
+        Task { await (visible ? bridge?.windowOpened() : bridge?.windowClosed()) }
+    }
 }

@@ -29,11 +29,11 @@ can't read repos across the disk), Windows and Linux.
 | Piece | Today | In the app |
 |---|---|---|
 | Engine | `dist/cli.js` on the user's Node | same code, run by the bundled Node |
-| Dashboard | `selfguard ui`: 127.0.0.1, random port, per-session token, `ui.json` | loaded in a WKWebView |
+| Dashboard | the page of `src/ui/static`, once served by `selfguard ui` on 127.0.0.1 | in a WKWebView under `selfguard://dashboard/`; API over `selfguard bridge` (stdio); no server |
 | Services | launchd agents (`watch`, `sync`, `discover`, `share`, `remote`) built from `process.execPath` + `cliEntry()` | the same agents, pointing to the bundled engine |
 | Alerts | `osascript` banners and a blocking dialog | `UNUserNotificationCenter` and an `NSAlert` from the app |
 | Updates | daily npm check, shows `npm i -g …` | Sparkle |
-| Launcher | `selfguard app install` generates a script-only `.app` | replaced by the real app |
+| Launcher | `selfguard app install` generated a script-only `.app` | removed; `selfguard ui` opens the real app |
 
 ## Architecture
 
@@ -51,17 +51,29 @@ selfguard.app/Contents/
 - **Menu bar** (`MenuBarExtra`): status icon in four states, last check and sync times, the
   repos with findings, "Open dashboard", "Check now", "Sync now", service health, "Check for
   updates", "Quit".
-- **Window**: a `WKWebView` on `http://127.0.0.1:<port>/#t=<token>`. Navigation outside that
-  origin is blocked; osv.dev and GitHub links open in the default browser. No other content is
-  ever loaded.
-- **Dashboard process**: reuses the running instance from `ui.json` if it answers `/api/ping`
-  with the same version, otherwise starts `engine/node dist/cli.js ui --serve --no-open` as a
-  child process and restarts it if it dies.
+- **Window**: a `WKWebView` that loads `selfguard://dashboard/` (the route goes in the hash:
+  `#/repo/<key>`, `#/<page>`). A `WKURLSchemeHandler` (`DashboardScheme.swift`) serves only the
+  files listed in `dist/ui/static/files.json`, by exact path lookup, with the listed type and
+  the CSP; anything else is a 404. `files.json` is generated at build time from
+  `src/ui/assets.ts`, which stays the single source of the allowlist and the CSP (`connect-src
+  'none'`: the page never fetches). Navigation outside `selfguard://dashboard/` is blocked;
+  https links (osv.dev, GitHub) open in the default browser.
+- **API**: the page calls `window.webkit.messageHandlers.selfguard.postMessage({method, path,
+  body})` and gets a Promise. The app (`DashboardMessages.swift`, a
+  `WKScriptMessageHandlerWithReply` in the page world only) validates it (GET/POST, `/api/…`,
+  JSON object body) and hands it to the `Bridge` (`Bridge.swift`), which runs
+  `engine/node dist/cli.js bridge` and speaks newline-delimited JSON with it (protocol in
+  `src/bridge.ts` and docs/cli.md). It starts with the first request, restarts on the next one
+  if it dies (failing the ones in flight), and stops 60 s after the window closes and when the
+  app quits. No dashboard server, port, token or `ui.json` exist.
+- **`selfguard ui`** launches the app with `open -b dev.selfguard.mac --args --dashboard
+  [--repo K] [--page P]`; without the app it says where to get it. On Linux there is no
+  dashboard.
 - **State for the menu**: `~/.selfguard/menubar.json`, rewritten by the engine after every scan
   with news, `sync`, `dismiss` and `forget`, and by `selfguard menubar` (the app runs it at
   launch, after Check Now / Sync and every 15 minutes for service health). The app checks the
-  file's date every 3 s. No server is needed for the menu: polling one kept a ~700 MB dashboard
-  process alive for good (measured), so the server only runs while the window is used.
+  file's date every 3 s. No engine process is needed for the menu: polling one kept a ~700 MB
+  dashboard process alive for good (measured), so the bridge only runs while the window is used.
 - **Icon**: changes for findings that are new since the menu was last opened, a malicious
   package, or a service that is off. The backlog (repos that need attention) is listed in the
   menu but doesn't change the icon: with real data it never empties, and an icon that never
@@ -117,8 +129,10 @@ selfguard is a security tool, so the app must not widen its attack surface:
 - **Signing**: Developer ID Application certificate. The bundled `node` binary, the Swift app,
   Sparkle and the bundle are signed inside-out. Then the app is notarized with `notarytool`
   and stapled.
-- **WebView**: one origin only (127.0.0.1:port), the token check and Host check stay as today,
-  no JavaScript bridge to Swift. The menu uses the HTTP API with the token, like the browser.
+- **WebView**: one origin only (`selfguard://dashboard`), no network listener at all (so no
+  token, Host check or DNS rebinding to worry about). The only way from the page to the engine
+  is the `selfguard` message handler, in the page world, accepting requests from that origin's
+  main frame and validating them; the engine side validates again as the HTTP API did.
 - **Sparkle 2**: EdDSA-signed appcast over HTTPS, and the update must also pass Apple's code
   signature check, so a stolen EdDSA key alone can't ship an update.
 - **Releases need approval, like npm**: the macOS job runs in a GitHub environment
@@ -150,7 +164,7 @@ Same GitHub release `vX.Y.Z` as npm, with one more job in `release.yml`:
 | 2. Engine integration | Native notifications, adoption of the services, CLI tool link, `SELFGUARD_RUNTIME=app` | — |
 | 3. Signed releases | CI signs, notarizes and publishes the DMG on every release | Add the secrets to the `macos-release` environment |
 | 4. Auto-update | Sparkle appcast, "Check for updates", Homebrew cask | Create the tap repo |
-| 5. Docs and migration | `docs/mac-app.md`, README, the old `selfguard app install` points to the real app | — |
+| 5. Docs and migration | `docs/mac-app.md`, README (the old `selfguard app install` now points to the real app: done) | — |
 
 Phases 1 and 2 can start right away and don't depend on the Apple account.
 

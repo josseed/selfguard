@@ -5,7 +5,6 @@ import { readEvents } from "../events.ts";
 import { loadConfig } from "../config.ts";
 import { severityRank, type Severity } from "../match.ts";
 import { groupByPackage } from "../report.ts";
-import { appStatus } from "../app.ts";
 import { scheduleStatus } from "../schedule.ts";
 import { cachedUpdate, checkForUpdate, installedVersion } from "../update.ts";
 import { VERSION } from "../version.ts";
@@ -16,14 +15,12 @@ export interface Overview {
   generatedAt: string;
   settings: api.Settings;
   schedule: { enabled: boolean; watcher: boolean; watchedPaths: number; remote: boolean } | null;
-  /** Newer version on npm / newer code on disk than this running dashboard. */
+  /** Newer version available (the Mac app updates itself; see update.ts). */
   update: unknown;
   /** Sharing on this machine, and pairing requests waiting for approval. */
   share: { enabled: boolean; requests: number };
   /** Other machines and how their last sync went. */
   machines: Array<{ name: string; host: string; os: string | null; lastSync: string | null; error: string | null; trackedProjects: number; roots: number }>;
-  /** macOS launcher app (null elsewhere). */
-  app: { installed: boolean; upToDate: boolean } | null;
   roots: number;
   /** Distinct vulnerable packages in active checkouts, by worst severity. */
   totals: Record<Severity, number>;
@@ -59,17 +56,11 @@ export function getOverview(): Overview {
       schedule = null;
     }
   }
-  let app: Overview["app"] = null;
-  if (process.platform === "darwin") {
-    const a = appStatus();
-    app = { installed: a.installed, upToDate: a.upToDate };
-  }
   return {
     version: VERSION,
     generatedAt: new Date().toISOString(),
     settings: api.getSettings(),
     schedule,
-    app,
     roots: api.listRoots().roots.length,
     update: updateStatus(),
     share: (() => {
@@ -108,7 +99,5 @@ export function updateStatus(): unknown {
       updateCheckRunning = false;
     });
   }
-  // After `npm i -g selfguard@…` the code on disk is newer than this running dashboard.
-  const restartNeeded = installed !== VERSION;
-  return { ...info, installed, restartNeeded, available: info.available && !(info.latest && installed === info.latest) };
+  return { ...info, installed, available: info.available && !(info.latest && installed === info.latest) };
 }

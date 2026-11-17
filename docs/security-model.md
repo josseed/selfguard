@@ -13,7 +13,7 @@ what it sends, and how it is built and released. To report a vulnerability, see
 | A crafted lockfile crashes or abuses the parser | Lockfiles over 100 MB are refused. The YAML reader supports only the subset lockfiles use: no anchors, aliases or tags, so no "billion laughs". The TOML reader (Cargo.lock, uv.lock, poetry.lock, pyproject.toml) has no evaluation features either. Nesting depth is bounded and objects have no prototype, so keys like `__proto__` are plain data. |
 | Package names or advisory text inject terminal escape sequences | Everything printed is stripped of C0/C1 control characters and bidirectional overrides ("Trojan Source"), and truncated. |
 | Notification text injects AppleScript | Text is passed to `osascript` as arguments to an `on run` handler, never interpolated into script source. The dialog's button only opens `https://osv.dev/vulnerability/<id>` URLs built by selfguard. |
-| A website talks to the local dashboard | It listens on `127.0.0.1` only and checks the `Host` header (DNS rebinding). Every API call needs a random per-session token sent in a custom header, which other sites can't send without a CORS preflight that is never answered. POSTs must be same-origin JSON. See [Dashboard](#dashboard). |
+| A website talks to the local dashboard | There is nothing to talk to: the dashboard has no HTTP server, no port and no token. The page runs inside the Mac app's WKWebView under a custom scheme, and its API is reachable only through the app's message handler. See [Dashboard](#dashboard). |
 | Prompt injection through the MCP server | Tool descriptions and the agent guide label advisory text and package names as third-party data. No MCP tool can run commands, install packages or edit files. |
 | selfguard's own dependencies get compromised | Zero runtime dependencies, enforced in CI. Dev tooling updates go through Dependabot with a 7-day cooldown and review. |
 | A compromised CI or stolen token publishes a malicious selfguard | See [Releases](#releases). |
@@ -74,9 +74,7 @@ carries an npm provenance attestation, meaning it was built and signed by the pr
 Actions. Turn the check off with `selfguard settings --update-check off` or
 `SELFGUARD_NO_UPDATE_CHECK=1`.
 
-After you update, the dashboard notices that the code on disk is newer than the code it runs and
-offers to restart. It restarts itself on the same address, handing its session token to the new
-process through the environment (never on the command line or in the log).
+Inside the Mac app, updates are installed by the app itself (Sparkle, see [Releases](#releases)), not by this check.
 
 ## Local state
 
@@ -207,16 +205,31 @@ selfguard on this Mac would have your full shell access there. Prefer the restri
 
 ## Dashboard
 
-`selfguard ui` starts a small HTTP server from Node's standard library:
+selfguard has no HTTP server for the dashboard: **no listening socket, no port on localhost, no
+token, no `ui.json`**. (The only network listener in selfguard is the opt-in
+[tailnet sharing](#other-machines) service, which is a different thing.) The dashboard exists only
+inside the selfguard Mac app:
 
-- bound to `127.0.0.1`, on a random port by default;
-- requests whose `Host` isn't `127.0.0.1:<port>` or `localhost:<port>` are refused;
-- the API requires a 192-bit random token, created per server and passed to the browser in the
-  URL fragment (which browsers don't send to servers or put in `Referer`). The page moves it to
-  `sessionStorage` and removes it from the address bar;
-- POSTs must be `application/json` and same-origin;
-- a strict Content-Security-Policy (`default-src 'none'`, scripts and styles only from the
-  server itself), `X-Frame-Options: DENY`, no caching, no referrers, no third-party resources;
+- **The page** (`src/ui/static`, shipped in the engine) is served to the app's WKWebView by a
+  `WKURLSchemeHandler` for the custom scheme `selfguard://dashboard/`. It serves only files
+  named in `dist/ui/static/files.json`, generated at build time from the allowlist in
+  `src/ui/assets.ts`; the lookup is an exact match on the URL path, never a path join, so
+  there is no traversal. Everything else is a 404.
+- **Navigation** is limited to `selfguard://dashboard/…`. https links (osv.dev advisories,
+  GitHub) open in your default browser; any other scheme is cancelled. Website data is kept in
+  memory only.
+- **CSP** on every response: `default-src 'none'`, scripts, styles and images only from the
+  page's own origin, `connect-src 'none'` (the page cannot make requests at all),
+  `form-action 'none'`, `frame-ancestors 'none'`. No inline scripts or styles, no third-party
+  resources.
+- **The API** is reachable only through a script message handler (`selfguard`, page world
+  only) that the app registers. It accepts calls from the dashboard's own main frame, checks
+  that the method is GET or POST, the path starts with `/api/` and the body is a JSON object,
+  and forwards them to `selfguard bridge`, a child process of the app that speaks
+  newline-delimited JSON over stdio. The bridge validates again (and refuses lines over 1 MB),
+  then runs the same code the CLI uses. The bridge's stdout carries only the protocol. It starts
+  with the first request, stops a minute after the window closes, and exits if the app dies
+  (its stdin closes).
 - untrusted text (package names, advisory summaries, paths) is inserted with `textContent`,
   never as HTML;
 - actions (re-scan, ignore) only accept projects selfguard already tracks; links only go to
@@ -225,18 +238,19 @@ selfguard on this Mac would have your full shell access there. Prefer the restri
   adding a folder only changes `config.json`. Discovery still reads lockfiles as data and never
   runs anything.
 
-The token is written to `~/.selfguard/ui.json` (mode `0600`) so `selfguard ui` can reopen a
-running dashboard, and passed to `open` to launch your browser. Other users of the same Mac can
-see process arguments for a moment; on shared machines, close the dashboard when you're done
-(it also stops after 30 idle minutes).
+Compared with the previous local web server, other users of the Mac and other websites have
+nothing to connect to or guess (no port, no token in process arguments or on disk), and a
+compromised web page cannot reach the engine except through requests the app validates. Any
+process running as you could still start `selfguard bridge` itself, but it could just as well
+run the CLI, which exposes the same operations.
 
-## Launcher app
+On Linux and on machines without the app there is no dashboard; the CLI is complete there.
 
-`selfguard app install` writes `~/Applications/selfguard.app` itself: an `Info.plist`, an icon
-shipped in the npm package, and a shell script whose only command is
-`exec '<node>' '<selfguard>' ui`, with both paths single-quoted. It is created locally, so it
-isn't quarantined and needs no code signature; it has no network access of its own and no
-permissions beyond what `selfguard ui` already has.
+## Old launcher app
+
+Before 0.14, `selfguard app install` generated a script-only `~/Applications/selfguard.app`
+that started the dashboard server. It no longer exists; `selfguard app uninstall` removes it
+if present, after checking its bundle id so that the real Mac app is never deleted.
 
 ## Releases
 

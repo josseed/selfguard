@@ -3,7 +3,8 @@
 // malicious package and celebrates a fix. Frames are strips in /mascot/ (drawn by
 // scripts/mascot/bastion.html, exported by scripts/mascot/export.mjs) played with the Web
 // Animations API: no per-frame JavaScript, and a still frame under reduced motion.
-import { h, RANK } from "./core.js";
+import { call } from "./api.js";
+import { h, RANK, store } from "./core.js";
 
 const SCALE = 2; // whole CSS pixels per art pixel keeps the pixel art sharp
 const SEEN_KEY = "selfguard-mascot-seen";
@@ -26,8 +27,7 @@ let anim = null;
 let showing = null; // { scene, rest }
 
 export function loadMascot() {
-  loading ||= fetch("/mascot/manifest.json")
-    .then((r) => (r.ok ? r.json() : null))
+  loading ||= call("GET", "/api/mascot")
     .catch(() => null)
     .then((m) => (manifest = m && m.scenes ? m : null));
   return loading;
@@ -117,10 +117,10 @@ export function mascot(o) {
   const rest = restScene(o);
   const events = o.events || [];
   const newest = Math.max(0, ...events.map((e) => Date.parse(e.at) || 0));
-  const stored = Number(localStorage.getItem(SEEN_KEY));
+  const stored = Number(store.get(SEEN_KEY));
   // The first visit has no "since": what is there already isn't news.
   const news = stored ? newsScene(events, stored) : null;
-  if (newest) localStorage.setItem(SEEN_KEY, String(newest));
+  if (newest) store.set(SEEN_KEY, String(newest));
   if (news) {
     showing = { scene: news, rest };
     play(news, ALERT_LOOPS, () => settle(showing.rest));

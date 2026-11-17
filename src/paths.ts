@@ -21,7 +21,6 @@ export const locksDir = (): string => join(stateRoot(), "locks");
 export const logFile = (): string => join(stateRoot(), "selfguard.log");
 export const eventsFile = (): string => join(stateRoot(), "events.jsonl");
 export const stateFile = (): string => join(stateRoot(), "state.json");
-export const uiFile = (): string => join(stateRoot(), "ui.json");
 /** Summary for the macOS menu bar app (menubar.ts). */
 export const menuBarFile = (): string => join(stateRoot(), "menubar.json");
 /** Heartbeat of the Mac app, and the alerts it shows instead of osascript (appalerts.ts). */

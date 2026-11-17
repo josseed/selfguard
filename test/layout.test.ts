@@ -23,7 +23,7 @@ test(`source files stay under ${MAX_LINES} lines (split modules by responsibilit
   assert.deepEqual(long, []);
 });
 
-test("every dashboard file is in the server's allowlist (anything else is a 404)", () => {
+test("every dashboard file is in the allowlist the Mac app serves from (anything else is a 404)", () => {
   const served = new Set(Object.values(STATIC).map((a) => a.file));
   const onDisk = files(join(SRC, "ui", "static")).map((f) => relative(join(SRC, "ui", "static"), f));
   assert.deepEqual(onDisk.filter((f) => !served.has(f)), []);
