@@ -15,6 +15,8 @@ struct MenuBarSummary: Decodable, Equatable {
     struct Services: Decodable, Equatable {
         let sync: Bool
         let watcher: Bool
+        /// Who runs the agents: "app" (this app's engine) or "cli" (an npm install).
+        let owner: String?
     }
 
     struct Update: Decodable, Equatable {

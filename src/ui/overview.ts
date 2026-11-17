@@ -14,7 +14,9 @@ export interface Overview {
   version: string;
   generatedAt: string;
   settings: api.Settings;
-  schedule: { enabled: boolean; watcher: boolean; watchedPaths: number; remote: boolean } | null;
+  schedule: { enabled: boolean; owner: "app" | "cli" | null; watcher: boolean; watchedPaths: number; remote: boolean } | null;
+  /** This engine runs inside the Mac app (not from npm). */
+  inApp: boolean;
   /** Newer version available (the Mac app updates itself; see update.ts). */
   update: unknown;
   /** Sharing on this machine, and pairing requests waiting for approval. */
@@ -51,7 +53,7 @@ export function getOverview(): Overview {
   if (process.platform === "darwin") {
     try {
       const s = scheduleStatus();
-      schedule = { enabled: s.loaded, watcher: s.watcher.loaded, watchedPaths: s.watcher.paths, remote: s.remote.loaded };
+      schedule = { enabled: s.loaded, owner: s.owner, watcher: s.watcher.loaded, watchedPaths: s.watcher.paths, remote: s.remote.loaded };
     } catch {
       schedule = null;
     }
@@ -61,6 +63,7 @@ export function getOverview(): Overview {
     generatedAt: new Date().toISOString(),
     settings: api.getSettings(),
     schedule,
+    inApp: process.env.SELFGUARD_RUNTIME === "app",
     roots: api.listRoots().roots.length,
     update: updateStatus(),
     share: (() => {

@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The Mac app works on its own; the command line is optional.** On first launch the app asks
+  once whether to watch your projects in the background (the launchd agents, run by the engine
+  inside the app), so nothing else needs installing. If the agents were set up by an npm
+  install, it offers to move them to the app (same folders, settings and results; the sync
+  interval is kept). The menu has "Install Terminal Command…", which links `selfguard` in
+  `~/.local/bin` to the app's engine (and never replaces a command that isn't the app's).
+  Settings → Background watching says which one runs the agents. `selfguard schedule on`
+  without `--every` now keeps the installed interval.
+
 ## [0.15.0] - 2026-11-17
 
 ### Changed
