@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-16
+
+### Added
+
+- **Bastion, the mascot**: a 16-bit castle guard brought up to date (his visor is a screen that
+  shows his eyes in the color of the alert). On the dashboard's Overview he patrols when all is
+  clear and acts out what is new since you last looked: he jumps at a high finding, sounds the
+  horn for a critical one, fights off a malicious package and celebrates a fix (once, then he
+  settles; still frames under reduced motion). In the Mac app his helmet is the menu bar icon,
+  and a small floating panel plays the scene when serious findings or fixes arrive (malicious
+  packages stay until dismissed; "Bastion Alerts" in the menu turns it off). While the app runs
+  it shows the engine's alerts itself instead of the macOS banner and dialog, so a finding is
+  announced **once**; when the app isn't running, alerts are banners as before. The art is drawn
+  once in `scripts/mascot/bastion.html` and exported as indexed-PNG sprite strips (about 25 KB
+  for every scene) by `scripts/mascot/export.mjs`.
+
 ## [0.11.0] - 2026-11-16
 
 ### Added
@@ -331,7 +347,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/josseed/selfguard/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/josseed/selfguard/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/josseed/selfguard/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/josseed/selfguard/compare/v0.9.0...v0.10.0

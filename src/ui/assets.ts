@@ -25,10 +25,18 @@ export const STATIC: Record<string, { file: string; type: string }> = {
   "/tailnet.js": { file: "tailnet.js", type: JS },
   "/page-settings.js": { file: "page-settings.js", type: JS },
   "/sources.js": { file: "sources.js", type: JS },
+  "/mascot.js": { file: "mascot.js", type: JS },
   "/app.css": { file: "app.css", type: CSS },
   "/components.css": { file: "components.css", type: CSS },
   "/pages.css": { file: "pages.css", type: CSS },
   "/favicon.svg": { file: "favicon.svg", type: "image/svg+xml" },
+  // Bastion, the mascot: sprite strips made by scripts/mascot/export.mjs.
+  "/mascot/manifest.json": { file: "mascot/manifest.json", type: "application/json; charset=utf-8" },
+  "/mascot/idle.png": { file: "mascot/idle.png", type: "image/png" },
+  "/mascot/high.png": { file: "mascot/high.png", type: "image/png" },
+  "/mascot/crit.png": { file: "mascot/crit.png", type: "image/png" },
+  "/mascot/mal.png": { file: "mascot/mal.png", type: "image/png" },
+  "/mascot/fixed.png": { file: "mascot/fixed.png", type: "image/png" },
 };
 
 export const CSP = [

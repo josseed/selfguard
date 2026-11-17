@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>selfguard · Bastión, prototipos de mascota</title>
+<style>
+  :root{--bg:#0a0d17;--card:#121727;--line:#222a40;--txt:#e8ebf4;--mut:#8b93ab}
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--txt);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+    background:radial-gradient(1100px 520px at 15% -10%,#1f2650 0,transparent 70%),radial-gradient(900px 500px at 100% 0,#2a1840 0,transparent 60%),var(--bg);min-height:100vh}
+  header{padding:34px 40px 6px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+  header h1{margin:0;font-size:26px;letter-spacing:-.01em}
+  header h1 span{font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--mut);font-weight:500;margin-left:10px}
+  header p{margin:4px 0 0;color:var(--mut);max-width:760px}
+  .spacer{flex:1}
+  button{font:600 12px/1 ui-monospace,Menlo,monospace;color:var(--txt);background:#1a2136;border:1px solid #2c3552;border-radius:10px;padding:9px 12px;cursor:pointer}
+  button:hover{background:#222b45}
+  button.on{border-color:#6d5cff;box-shadow:0 0 0 3px #6d5cff33}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--mut);margin:26px 40px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(460px,1fr));gap:20px;padding:16px 40px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 20px 50px -30px #000}
+  .card canvas{display:block;width:100%;height:auto;image-rendering:pixelated}
+  .meta{padding:14px 18px 16px;display:flex;gap:14px;align-items:flex-start}
+  .meta h3{margin:0 0 2px;font-size:15px}
+  .meta p{margin:0;color:var(--mut);font-size:13px}
+  .badge{flex:none;font:700 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.08em;padding:6px 8px;border-radius:999px;margin-top:2px}
+  .meta button{margin-left:auto;flex:none}
+  /* toast mock */
+  .desk{margin:16px 40px 40px;border:1px solid var(--line);border-radius:18px;overflow:hidden;
+    background:linear-gradient(135deg,#2b3a6b 0,#5b3a78 45%,#c26a5a 100%);position:relative;min-height:330px}
+  .menubar{height:30px;background:rgba(20,22,35,.55);backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:0 16px;font-size:13px;color:#fff}
+  .mb-icon{position:relative;width:22px;height:22px}
+  .mb-icon canvas{width:22px;height:22px;image-rendering:pixelated}
+  .mb-dot{position:absolute;right:-2px;top:0;width:7px;height:7px;border-radius:50%;border:1.5px solid #1b1d2b}
+  .toast{position:absolute;right:16px;top:44px;width:380px;display:flex;gap:12px;padding:12px 14px;border-radius:18px;
+    background:rgba(240,242,250,.78);backdrop-filter:blur(30px) saturate(1.6);color:#14161f;box-shadow:0 18px 40px -12px rgba(0,0,0,.45);
+    transform-origin:top right;animation:in .5s cubic-bezier(.2,1.4,.4,1)}
+  @keyframes in{from{transform:translateX(30px) scale(.96);opacity:0}}
+  .toast .av{flex:none;width:56px;height:56px;border-radius:13px;overflow:hidden;background:#141a2e}
+  .toast .av canvas{width:56px;height:56px;image-rendering:pixelated;display:block}
+  .toast b{display:block;font-size:13px}
+  .toast small{color:#6b7085;font-size:11px;float:right;margin-left:8px}
+  .toast p{margin:2px 0 0;font-size:13px;line-height:1.35}
+  .toast .acts{display:flex;gap:6px;margin-top:8px}
+  .toast .acts span{font-size:12px;padding:4px 10px;border-radius:8px;background:rgba(0,0,0,.08)}
+  .toast .acts span:first-child{background:#14161f;color:#fff}
+  .ctrl{position:absolute;left:18px;bottom:18px;display:flex;gap:8px;flex-wrap:wrap}
+  .notes{margin:0 40px 50px;color:var(--mut);font-size:13px;columns:2 360px;column-gap:40px}
+  .notes b{color:var(--txt)}
+  .notes p{margin:0 0 10px;break-inside:avoid}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Bastión <span>selfguard · mascota v0</span></h1>
+    <p>Un guardia de castillo en pixel art de 16 bits, puesto al día: el visor es una pantalla que muestra sus ojos y cambia de color según la alerta, tiene antena, auricular y zapatillas. Cada escena corresponde a un estado real de selfguard.</p>
+  </div>
+  <div class="spacer"></div>
+  <button id="snd">🔇 Sonido chiptune: off</button>
+</header>
+
+<h2>Escenas de alerta</h2>
+<div class="grid" id="grid"></div>
+
+<h2>En contexto: notificación de macOS + menubar</h2>
+<div class="desk">
+  <div class="menubar"><span>🔋</span><span>Wi‑Fi</span><div class="mb-icon"><canvas id="mb" width="22" height="22"></canvas><div class="mb-dot" id="mbdot"></div></div><span id="clock">lun 16 nov 22:14</span></div>
+  <div class="toast" id="toast"></div>
+  <div class="ctrl" id="ctrl"></div>
+</div>
+
+<div class="notes">
+  <p><b>Lenguaje visual.</b> Sprite de 1 bit de contorno automático, paleta corta (acero, índigo de marca, oro) y un único color de estado que tiñe el visor, el filo de la alabarda, el emblema del escudo y el resplandor. Así la severidad se lee incluso a 22 px.</p>
+  <p><b>Retro + actual.</b> El sprite y el escenario van en pixel art real (120×68, escalado sin suavizar). Los resplandores, haces de la baliza, ondas de sonido y globos de texto se dibujan en alta resolución encima: esa mezcla es la parte "actual".</p>
+  <p><b>Escalada.</b> Todo en orden: patrulla. HIGH: salta y aparece un "!". CRÍTICA: baliza roja y cuerno, la pantalla tiembla. Maliciosa: lucha contra un gusano (guiño a Shai‑Hulud), coherente con el diálogo que no se cierra solo. Arreglado: pulgar arriba y confeti.</p>
+  <p><b>Siguientes pasos posibles.</b> Exportar las escenas como sprite sheets PNG/APNG para la app de macOS y el dashboard, una versión de 16×16 para el ícono del menubar y decidir si el sonido entra (opcional, desactivado por defecto).</p>
+</div>
+
+<script>
+// ---------- setup ----------
+const DPR = Math.min(2, Math.round(window.devicePixelRatio || 1));
+const S = 4 * DPR, LW = 120, LH = 68, FLOOR = 56;
+const P = {
+  steel:'#c3ccdd', steelL:'#eef2f9', steelM:'#8c98b2', steelD:'#56617c', glass:'#0a101d',
+  tab:'#5b4bff', tabL:'#8a7dff', tabD:'#3a2ec2', gold:'#ffc94a', goldL:'#ffe9a3', goldD:'#c98a1b',
+  pants:'#2a3252', pantsL:'#3a4470', shoe:'#f3f5fb', sole:'#262b40', belt:'#3a2a22',
+  plume:'#ff5a6e', plumeD:'#c43651', wood:'#8a5a34', glove:'#56617c', K:'#0d101c'
+};
+const ST = {
+  idle:{c:'#38e1ff', label:'TODO EN ORDEN', bg:'#38e1ff22'},
+  high:{c:'#fbbf24', label:'HIGH', bg:'#fbbf2422'},
+  crit:{c:'#ff4d5e', label:'CRÍTICA', bg:'#ff4d5e22'},
+  mal:{c:'#e15cff', label:'MALICIOSO', bg:'#e15cff22'},
+  fixed:{c:'#4ade80', label:'ARREGLADO', bg:'#4ade8022'},
+};
+const scratches = {};
+function scratch(key, w, h){
+  let s = scratches[key];
+  if(!s){ const cv=document.createElement('canvas'); cv.width=w; cv.height=h; s=scratches[key]={cv, c:cv.getContext('2d',{willReadFrequently:true})}; }
+  s.c.setTransform(1,0,0,1,0,0); s.c.clearRect(0,0,w,h); s.c.globalAlpha=1; return s;
+}
+const hex = h => [1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+function outline(c, w, h, col=P.K){
+  const id=c.getImageData(0,0,w,h), d=id.data, a=new Uint8Array(w*h), [cr,cg,cb]=hex(col);
+  for(let i=0;i<w*h;i++) a[i]=d[i*4+3]>40?1:0;
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const i=y*w+x; if(a[i]) continue;
+    if((x>0&&a[i-1])||(x<w-1&&a[i+1])||(y>0&&a[i-w])||(y<h-1&&a[i+w])){const j=i*4;d[j]=cr;d[j+1]=cg;d[j+2]=cb;d[j+3]=255;}
+  }
+  c.putImageData(id,0,0);
+}
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const ease=t=>1-Math.pow(1-clamp(t,0,1),3);
+function rand(seed){ let s=seed; return ()=>((s=Math.imul(s^s>>>15,1|s)+0x6D2B79F5|0)>>>0)/4294967296; }
+
+// ---------- the guard sprite ----------
+const GW=56, GH=54, PAD=7; // feet bottom at y = PAD+40
+function guard(o){
+  const {cv, c} = scratch('guard', GW, GH);
+  const r=(x,y,w,h,col)=>{c.fillStyle=col; c.fillRect(x,y,w,h);};
+  const vc=o.visor, lift=o.lift||0, bob=o.bob||0;
+  c.translate(0, PAD+lift);
+  // halberd behind when leaning
+  const halberd=(x,y)=>{ r(x,y,1,5,P.steelL); r(x,y+5,1,34,P.wood); r(x+1,y+4,3,6,P.steel); r(x+1,y+4,3,1,P.steelL); r(x+4,y+5,1,4,vc); r(x-2,y+6,2,2,P.steelM); };
+  const body=!o.headOnly; // headOnly: just the helmet (menu bar icon)
+  if(body&&(o.arm==='horn'||o.arm==='thumb')) halberd(40,1);
+  // legs
+  if(body){
+  const ll=o.walk===1?-1:0, rl=o.walk===-1?-1:0;
+  r(16,30+ll,4,8,P.pants); r(16,30+ll,1,8,P.pantsL); r(16,33+ll,4,2,P.steelM);
+  r(14,38+ll,6,2,P.shoe); r(14,40+ll,6,1,P.sole); r(17,38+ll,2,1,P.tab);
+  r(22,30+rl,4,8,P.pants); r(22,33+rl,4,2,P.steelM);
+  r(22,38+rl,6,2,P.shoe); r(22,40+rl,6,1,P.sole); r(24,38+rl,2,1,P.tab);
+  }
+  c.translate(0,bob);
+  if(body){
+  // halberd held (behind hand)
+  if(o.arm==='hold'||!o.arm) halberd(30,1);
+  if(o.arm==='up') halberd(30,-6);
+  // torso
+  r(14,18,12,12,P.steel); r(14,18,2,12,P.steelL); r(24,18,2,12,P.steelD);
+  r(16,19,8,12,P.tab); r(16,19,1,12,P.tabL); r(22,19,2,12,P.tabD);
+  r(18,21,4,3,P.gold); r(19,24,2,1,P.gold); r(19,22,2,1,P.goldD);
+  r(14,28,12,2,P.belt); r(19,28,2,2,P.gold);
+  r(16,16,8,2,P.steelD);
+  r(11,17,4,4,P.steel); r(11,17,4,1,P.steelL); r(25,17,4,4,P.steel); r(25,17,4,1,P.steelL);
+  }
+  // helmet
+  r(17,3,6,1,P.steel); r(15,4,10,1,P.steel); r(14,5,12,11,P.steel);
+  r(15,5,2,6,P.steelL); r(24,5,2,11,P.steelM); r(14,15,12,1,P.steelD); r(20,3,1,5,P.steelL);
+  r(15,8,10,4,P.glass);
+  for(let x=17;x<24;x+=2) r(x,13,1,1,P.steelD);
+  // antenna + LED
+  r(26,7,1,4,P.steelD); r(26,6,1,1,o.led||vc);
+  // plume or beacon
+  if(o.beacon){ r(17,2,6,1,P.steelD); r(18,-1,4,3,'#ff3347'); r(19,-1,1,1,'#ffd3d8'); }
+  else { const w=o.plume||0; r(19,0,4,1,P.plume); r(18,1,7,1,P.plume); r(18,2,5,1,P.plumeD); r(25+w,1,1,1,P.plume); r(23,0,2+w,1,P.plumeD); }
+  // visor eyes
+  const lx=o.look||0, e=o.eyes||'normal';
+  c.fillStyle=vc;
+  const px=(x,y)=>c.fillRect(x+lx,y,1,1);
+  if(e==='normal'){ c.fillRect(17+lx,9,2,2); c.fillRect(21+lx,9,2,2); }
+  else if(e==='blink'){ c.fillRect(17+lx,10,2,1); c.fillRect(21+lx,10,2,1); }
+  else if(e==='alert'){ c.fillRect(16,8,3,3); c.fillRect(21,8,3,3); r(17,9,1,1,'#ffffff'); r(22,9,1,1,'#ffffff'); }
+  else if(e==='angry'){ c.fillStyle=vc; [[16,9],[17,9],[17,10],[18,10],[23,9],[22,9],[22,10],[21,10]].forEach(([x,y])=>c.fillRect(x,y,1,1)); }
+  else if(e==='happy'){ [[16,10],[17,9],[18,10],[21,10],[22,9],[23,10]].forEach(([x,y])=>px(x,y)); }
+  if(o.scan!=null){ c.globalAlpha=.35; c.fillRect(15+o.scan,8,1,4); c.globalAlpha=1; }
+  // shield
+  const shield=(x,y)=>{
+    const rows=[[0,10],[0,10],[0,10],[0,10],[0,10],[0,10],[0,10],[0,10],[1,8],[2,6],[3,4],[4,2]];
+    rows.forEach(([s,w],i)=>r(x+s,y+i,w,1,P.steel));
+    rows.forEach(([s,w],i)=>{ if(i>0&&i<11){ const ss=Math.max(1,s+(i>7?0:0)), ww=i<=7?8:w-2; if(ww>0) r(x+(i<=7?1:s+1),y+i,ww,1,P.tab);} });
+    r(x+1,y+1,1,7,P.tabL);
+    [[2,5],[3,6],[4,7],[5,6],[6,5],[7,4]].forEach(([dx,dy])=>r(x+dx,y+dy,1,1,vc));
+  };
+  if(body){
+  if(o.shieldUp) shield(4,11); else { r(12,21,3,7,P.steelM); shield(4,19); }
+  // right arm
+  const arm=o.arm||'hold';
+  if(arm==='hold'){ r(26,21,3,6,P.steelM); r(27,26,4,3,P.glove); }
+  if(arm==='up'){ r(26,12,3,8,P.steelM); r(28,10,3,3,P.glove); }
+  if(arm==='horn'){ r(26,16,3,3,P.steelM);
+    r(23,10,3,3,P.goldD); r(26,9,3,5,P.gold); r(29,8,3,7,P.gold); r(32,7,3,9,P.goldL); r(26,9,6,1,P.goldL); r(25,13,3,3,P.glove); }
+  if(arm==='thumb'){ r(27,14,3,6,P.steelM); r(28,10,5,4,P.glove); r(28,10,5,1,P.steelM); r(31,6,2,4,P.glove); r(31,6,1,1,P.steelM); }
+  if(arm==='strike'){ r(26,21,3,5,P.steelM); r(28,25,4,3,P.steelM); r(22,31,22,1,P.wood); r(44,31,5,1,P.steelL); r(39,32,5,3,P.steel); r(40,35,4,1,vc); r(31,29,3,4,P.glove); }
+  }
+  c.setTransform(1,0,0,1,0,0);
+  outline(c,GW,GH);
+  return cv;
+}
+function drawGuard(lo, ox, o){
+  const spr=guard(o), oy=FLOOR-(PAD+41);
+  if(o.flip){ lo.save(); lo.translate(ox+GW,oy); lo.scale(-1,1); lo.drawImage(spr,0,0); lo.restore(); }
+  else lo.drawImage(spr,ox,oy);
+  const vx = o.flip ? ox+GW-20 : ox+20;
+  return { visor:[vx, oy+PAD+(o.lift||0)+(o.bob||0)+10], head:[vx, oy+PAD+(o.lift||0)], oy };
+}
+
+// ---------- props ----------
+function bang(lo, x, y, col){
+  const {cv,c}=scratch('bang',7,13); c.fillStyle=col; c.fillRect(2,1,3,7); c.fillRect(2,9,3,3); c.fillStyle='#fff'; c.fillRect(2,1,1,3);
+  outline(c,7,13); lo.drawImage(cv,x-3,y);
+}
+function worm(lo, x, y, t, hurt){
+  const {cv,c}=scratch('worm',44,16);
+  const body=hurt?'#ffffff':'#b23be0', dark=hurt?'#ddd':'#6d1f9c', light=hurt?'#fff':'#e59bff';
+  for(let i=5;i>=1;i--){ const sx=4+i*6, sy=5+Math.round(Math.sin(t*12+i*1.1)*1.5);
+    c.fillStyle=i%2?body:dark; c.fillRect(sx,sy,6,6); c.fillStyle=light; c.fillRect(sx+1,sy+1,2,1); }
+  const hy=4+Math.round(Math.sin(t*12)*1);
+  c.fillStyle=body; c.fillRect(1,hy,8,8); c.fillStyle=light; c.fillRect(2,hy+1,3,1);
+  c.fillStyle='#fff'; c.fillRect(2,hy+2,2,2); c.fillRect(5,hy+2,2,2); c.fillStyle='#ff2d55'; c.fillRect(2,hy+3,1,1); c.fillRect(5,hy+3,1,1);
+  c.fillStyle='#fff'; c.fillRect(1,hy+6,1,1); c.fillRect(3,hy+6,1,1); c.fillRect(5,hy+6,1,1);
+  c.fillStyle=dark; c.fillRect(3,hy-3,1,3); c.fillRect(6,hy-2,1,2);
+  outline(c,44,16); lo.drawImage(cv,x,y);
+}
+const STARS=(()=>{const R=rand(7);return Array.from({length:34},()=>[Math.floor(R()*LW),Math.floor(R()*28),R()*6]);})();
+let NOBG=false;
+function backdrop(lo, t, opts={}){
+  lo.clearRect(0,0,LW,LH);
+  if(NOBG) return;
+  for(const [x,y,ph] of STARS){ const on=Math.sin(t*2+ph)>-.4; lo.fillStyle=on?'#dfe6ff':'#5a6490'; lo.fillRect(x,y,1,1); }
+  // moon
+  lo.fillStyle='#eef1ff'; lo.fillRect(12,5,6,8); lo.fillRect(11,6,8,6); lo.fillStyle='#c6cdf0'; lo.fillRect(14,8,2,2); lo.fillRect(16,6,1,1);
+  // far wall + tower
+  lo.fillStyle='#1a2040'; lo.fillRect(0,34,LW,22);
+  for(let x=0;x<LW;x+=12) lo.fillRect(x,30,6,4);
+  lo.fillStyle='#161b36'; lo.fillRect(86,12,24,44); for(let x=86;x<110;x+=6) lo.fillRect(x,8,3,4);
+  lo.fillStyle=opts.window||'#ffb347'; lo.fillRect(96,20,4,6); lo.fillRect(97,19,2,1);
+  lo.fillStyle='#232a50'; [[8,40],[30,44],[52,38],[70,46],[40,50],[112,42]].forEach(([x,y])=>lo.fillRect(x,y,6,2));
+  // floor
+  lo.fillStyle='#2a3152'; lo.fillRect(0,FLOOR,LW,LH-FLOOR); lo.fillStyle='#3a4370'; lo.fillRect(0,FLOOR,LW,1);
+  lo.fillStyle='#232948'; for(let x=0;x<LW;x+=10) lo.fillRect(x+((x/10)%2?5:0),FLOOR+5,1,4); lo.fillRect(0,FLOOR+4,LW,1);
+}
+
+// ---------- hi-res overlays ----------
+function glow(c, x, y, rad, col, a=.5){
+  const g=c.createRadialGradient(x*S,y*S,0,x*S,y*S,rad*S); const [R,G,B]=hex(col);
+  g.addColorStop(0,`rgba(${R},${G},${B},${a})`); g.addColorStop(1,`rgba(${R},${G},${B},0)`);
+  c.save(); c.globalCompositeOperation='lighter'; c.fillStyle=g; c.fillRect((x-rad)*S,(y-rad)*S,rad*2*S,rad*2*S); c.restore();
+}
+function bubble(c, x, y, w, h, col, title, body, k){
+  if(k<=0) return;
+  const X=x*S, Y=y*S, W=Math.max(8,w*ease(k))*S, H=h*S, u=S;
+  c.save(); c.globalAlpha=clamp(k*2,0,1);
+  c.fillStyle=P.K; c.fillRect(X+u,Y,W-2*u,H); c.fillRect(X,Y+u,W,H-2*u);
+  c.fillStyle='#151b30'; c.fillRect(X+u,Y+u,W-2*u,H-2*u);
+  c.fillStyle=col; c.fillRect(X+u,Y+u,u,H-2*u); c.fillRect(X+u,Y+u,W-2*u,u/2);
+  c.beginPath(); c.rect(X,Y,W,H); c.clip();
+  if(k>.45){ c.globalAlpha=clamp((k-.45)*3,0,1);
+    c.fillStyle=col; c.font=`700 ${12*DPR}px ui-monospace,Menlo,monospace`; c.fillText(title,X+3.5*u,Y+4.6*u);
+    c.fillStyle='#d5dbec'; c.font=`500 ${11.5*DPR}px -apple-system,system-ui,sans-serif`;
+    body.forEach((l,i)=>c.fillText(l,X+3.5*u,Y+(8.6+i*3.6)*u)); }
+  c.restore();
+}
+function chip(c, text, col){
+  c.save(); c.font=`600 ${11*DPR}px ui-monospace,Menlo,monospace`; const w=c.measureText(text).width+26*DPR;
+  c.fillStyle='rgba(10,13,24,.72)'; c.beginPath(); c.roundRect(10*DPR,LH*S-34*DPR,w,24*DPR,12*DPR); c.fill();
+  c.fillStyle=col; c.beginPath(); c.arc(22*DPR,LH*S-22*DPR,4*DPR,0,7); c.fill();
+  c.fillStyle='#e8ebf4'; c.fillText(text,32*DPR,LH*S-18*DPR); c.restore();
+}
+
+// ---------- scenes ----------
+const SCENES = [
+ { key:'idle', P:8, title:'Todo en orden', desc:'Patrulla la muralla. Visor cian escaneando, parpadea y mira a los lados. Estado de reposo para el dashboard.',
+   draw(lo,t){
+     backdrop(lo,t);
+     const ph=t/8; let x, walking=true, flip=false, look=0;
+     if(ph<.38){ x=18+44*ease(ph/.38*1.0); x=18+44*(ph/.38); }
+     else if(ph<.5){ x=62; walking=false; look=Math.floor(t*1.5)%2?1:-1; }
+     else if(ph<.88){ x=62-44*((ph-.5)/.38); flip=true; }
+     else { x=18; walking=false; flip=true; look=Math.floor(t*1.5)%2?1:-1; }
+     const f=Math.floor(t*6)%2;
+     const g=drawGuard(lo, Math.round(x-10), {visor:ST.idle.c, flip, walk:walking?(f?1:-1):0, bob:walking?f:(Math.floor(t*1.2)%2), eyes:(t%3.1)<.14?'blink':'normal', look, scan:walking?null:Math.floor(t*14)%10, plume:f, led:Math.floor(t*2)%2?'#4ade80':'#14532d'});
+     return g;
+   },
+   over(c,t,g){ glow(c,g.visor[0],g.visor[1],8,ST.idle.c,.22); chip(c,'Todo en orden · 24 repos vigilados',ST.idle.c); } },
+
+ { key:'high', P:6, title:'Nueva vulnerabilidad (HIGH)', desc:'Se sobresalta, aparece un "!" y levanta la alabarda señalando el pergamino con el paquete afectado y la versión a la que subir.',
+   sound:[[880,.07],[0,.03],[1175,.12]],
+   draw(lo,t){
+     backdrop(lo,t);
+     const hit=t>1, jump=t>1&&t<1.3?-Math.round(Math.sin((t-1)/.3*Math.PI)*4):0;
+     const g=drawGuard(lo,14,{visor:hit?ST.high.c:ST.idle.c, eyes:!hit?((t%2.5)<.12?'blink':'normal'):(t<2.2?'alert':'normal'), lift:jump, arm:t>1.6?'up':'hold', bob:Math.floor(t*1.5)%2, plume:Math.floor(t*4)%2, led:hit?(Math.floor(t*5)%2?ST.high.c:'#5a3d00'):'#4ade80'});
+     if(hit){ const k=t-1, b=k<.35?-Math.round(Math.sin(k/.35*Math.PI)*5):Math.round(Math.sin(t*5)); bang(lo,g.head[0]+1,g.head[1]-14+b,ST.high.c); }
+     return g;
+   },
+   over(c,t,g){ const hit=t>1; glow(c,g.visor[0],g.visor[1],hit?11:8,hit?ST.high.c:ST.idle.c,hit?.3:.2);
+     if(hit) glow(c,g.head[0],g.head[1]-12,10,ST.high.c,.25*(1+Math.sin(t*8))/2+.1);
+     bubble(c,60,10,56,18,ST.high.c,'¡NUEVA · HIGH!',['acme/payments-api','lodash 4.17.20 → 4.18.0'],(t-1.7)/.6);
+     chip(c,hit?'1 vulnerabilidad nueva':'Todo en orden · 24 repos vigilados',hit?ST.high.c:ST.idle.c); } },
+
+ { key:'crit', P:6, title:'Vulnerabilidad CRÍTICA', desc:'Baliza roja girando sobre el yelmo y toque de cuerno. La escena tiembla con cada toque. Para alertas que no deberían esperar.',
+   sound:'horn',
+   draw(lo,t){
+     backdrop(lo,t,{window:Math.floor(t*4)%2?'#ff4d5e':'#ffb347'});
+     const blowing=t>.8&&((t-.8)%1.4)<.9;
+     const g=drawGuard(lo,14,{visor:ST.crit.c, eyes:'angry', beacon:true, arm:t>.6?'horn':'hold', bob:blowing?0:1, lift:blowing?-1:0, led:Math.floor(t*6)%2?ST.crit.c:'#3a0a10'});
+     return Object.assign(g,{blowing});
+   },
+   shake(t){ const b=t>.8&&((t-.8)%1.4)<.9; return b?[Math.round(Math.sin(t*90))*.5,Math.round(Math.cos(t*70))*.5]:[0,0]; },
+   over(c,t,g){
+     const [bx,by]=[g.head[0],g.head[1]-6];
+     // rotating beacon beams
+     c.save(); c.globalCompositeOperation='lighter'; c.translate(bx*S,by*S); c.rotate(t*5);
+     for(const a of [0,Math.PI]){ const gr=c.createLinearGradient(0,0,Math.cos(a)*90*S,Math.sin(a)*90*S); gr.addColorStop(0,'rgba(255,60,80,.55)'); gr.addColorStop(1,'rgba(255,60,80,0)');
+       c.fillStyle=gr; c.beginPath(); c.moveTo(0,0); c.arc(0,0,90*S,a-.22,a+.22); c.closePath(); c.fill(); }
+     c.restore();
+     glow(c,bx,by,8,'#ff3347',.8); glow(c,g.visor[0],g.visor[1],10,ST.crit.c,.3);
+     // horn sound waves
+     if(t>.8){ const k=((t-.8)%1.4); if(k<.9){ c.save(); c.strokeStyle=ST.crit.c; c.lineWidth=S*.75;
+       for(let i=0;i<3;i++){ const rr=((k*30+i*8)%24)+3; c.globalAlpha=1-rr/27; c.beginPath(); c.arc((g.visor[0]+16)*S,(g.visor[1]+1)*S,rr*S,-.7,.7); c.stroke(); } c.restore(); } }
+     // vignette
+     const a=.18+.14*Math.sin(t*10); const v=c.createRadialGradient(LW*S/2,LH*S/2,LH*S*.3,LW*S/2,LH*S/2,LW*S*.7);
+     v.addColorStop(0,'rgba(255,40,60,0)'); v.addColorStop(1,`rgba(255,40,60,${a})`); c.fillStyle=v; c.fillRect(0,0,LW*S,LH*S);
+     bubble(c,66,8,50,18,ST.crit.c,'CRÍTICO',['acme/storefront','31 paquetes en main'],(t-1.2)/.6);
+     chip(c,'Alerta crítica',ST.crit.c); } },
+
+ { key:'mal', P:7.5, title:'Paquete malicioso', desc:'Un gusano trepa por la muralla (guiño a Shai‑Hulud). Bastión lo frena con el escudo y lo despacha. El aviso se queda en pantalla, igual que el diálogo real.',
+   sound:'mal',
+   draw(lo,t){
+     backdrop(lo,t);
+     const block=t>2.3&&t<3.1, strike=t>=3.1&&t<3.7, done=t>=3.5;
+     // worm path
+     let wx=122-((t/2.3)*50), wy=FLOOR-12;
+     if(t>2.3){ const k=(t-2.3)/.4; wx=k<1?72-Math.sin(k*Math.PI)*26:72-clamp((t-2.7)/.45,0,1)*13; wy=FLOOR-12-Math.round(Math.sin(clamp(k,0,1)*Math.PI)*12); }
+     const g=drawGuard(lo,10,{visor:t>1?ST.mal.c:ST.idle.c, eyes:t<1?'normal':(done?'angry':(block?'alert':'angry')), shieldUp:block, arm:strike?'strike':'hold', lift:strike?0:0, bob:Math.floor(t*2)%2, plume:Math.floor(t*4)%2, led:t>1?(Math.floor(t*6)%2?ST.mal.c:'#3a0b44'):'#4ade80'});
+     if(t<3.5) worm(lo,Math.round(wx),wy,t,t>3.35);
+     else { const R=rand(3), k=t-3.5; for(let i=0;i<22;i++){ const a=R()*Math.PI*2, sp=10+R()*28; const x=63+Math.cos(a)*sp*k, y=FLOOR-8+Math.sin(a)*sp*k+30*k*k;
+       if(k<1.4){ lo.fillStyle=[ '#b23be0','#e59bff','#ffffff','#6d1f9c'][i%4]; lo.fillRect(Math.round(x),Math.round(y),i%3?1:2,i%3?1:2);} } }
+     return Object.assign(g,{block,strike,t});
+   },
+   shake(t){ return (t>2.55&&t<2.75)||(t>3.3&&t<3.5)?[Math.sin(t*120),0]:[0,0]; },
+   over(c,t,g){
+     glow(c,g.visor[0],g.visor[1],t>1?11:8,t>1?ST.mal.c:ST.idle.c,.28);
+     if(t>2.5&&t<2.8) glow(c,20,28,16,'#ffffff',.9*(1-(t-2.5)/.3));
+     if(t>3.3&&t<3.6) glow(c,62,FLOOR-6,14,ST.mal.c,.7);
+     if(t>1&&t<2.3){ c.save(); c.fillStyle=ST.mal.c; c.font=`700 ${11*DPR}px ui-monospace,Menlo,monospace`; c.globalAlpha=.5+.5*Math.sin(t*12); c.fillText('⚠ MAL-2025-4821 detectado',62*S,22*S); c.restore(); }
+     bubble(c,58,8,58,18,ST.mal.c,'PAQUETE MALICIOSO',['@ctrl/tinycolor 4.1.1','acme/storefront · revísalo ya'],(t-3.9)/.6);
+     chip(c,t>1?'Paquete malicioso':'Todo en orden · 24 repos vigilados',t>1?ST.mal.c:ST.idle.c); } },
+
+ { key:'fixed', P:5.5, title:'Arreglado', desc:'Pulgar arriba, ojos felices y confeti pixelado. Es el refuerzo positivo del "✓ fixed" que ya manda selfguard.',
+   sound:[[523,.07],[659,.07],[784,.07],[1047,.22]],
+   draw(lo,t){
+     backdrop(lo,t);
+     const on=t>.6, jump=t>.6&&t<1?-Math.round(Math.sin((t-.6)/.4*Math.PI)*5):0;
+     if(on){ const R=rand(11); for(let i=0;i<46;i++){ const x0=R()*LW, sp=14+R()*18, ph=R()*3, col=['#ffc94a','#4ade80','#8a7dff','#ff5a6e','#38e1ff'][i%5];
+       const y=-4+(t-.6)*sp-ph*6; if(y>-4&&y<FLOOR){ lo.fillStyle=col; lo.fillRect(Math.round(x0+Math.sin(t*4+i)*2),Math.round(y),(i%3?1:2),1+(Math.floor(t*8+i)%2)); } } }
+     const g=drawGuard(lo,22,{visor:on?ST.fixed.c:ST.high.c, eyes:on?'happy':'normal', arm:on?'thumb':'hold', lift:jump, bob:Math.floor(t*2)%2, plume:Math.floor(t*4)%2, led:'#4ade80'});
+     if(on){ [[12,14,0],[50,8,1.1],[46,30,.5],[16,34,1.7]].forEach(([x,y,p])=>{ if(Math.sin(t*5+p*3)>0){ lo.fillStyle='#fff'; lo.fillRect(x,y-1,1,3); lo.fillRect(x-1,y,3,1);} }); }
+     return g;
+   },
+   over(c,t,g){ const on=t>.6; glow(c,g.visor[0],g.visor[1],on?11:8,on?ST.fixed.c:ST.high.c,.28);
+     bubble(c,66,10,50,18,ST.fixed.c,'✓ ARREGLADO',['lodash 4.18.0','acme/payments-api'],(t-1.1)/.6);
+     chip(c,on?'0 abiertas · ¡bien hecho!':'1 vulnerabilidad abierta',on?ST.fixed.c:ST.high.c); } },
+];
+
+// ---------- sound ----------
+let soundOn=false, AC=null;
+document.getElementById('snd').onclick=e=>{ soundOn=!soundOn; e.target.textContent=soundOn?'🔊 Sonido chiptune: on':'🔇 Sonido chiptune: off'; e.target.classList.toggle('on',soundOn); };
+function play(seq){
+  if(!soundOn||!seq) return; AC=AC||new AudioContext(); const t0=AC.currentTime+.02;
+  const note=(f,s,d,type='square',v=.08,f2)=>{ const o=AC.createOscillator(), g=AC.createGain(); o.type=type; o.frequency.setValueAtTime(f,t0+s); if(f2) o.frequency.linearRampToValueAtTime(f2,t0+s+d);
+    g.gain.setValueAtTime(v,t0+s); g.gain.exponentialRampToValueAtTime(.001,t0+s+d); o.connect(g).connect(AC.destination); o.start(t0+s); o.stop(t0+s+d+.02); };
+  if(seq==='horn'){ for(const s of [.8,2.2,3.6]){ note(196,s,.8,'sawtooth',.06,262); note(294,s+.05,.75,'square',.03,392);} return; }
+  if(seq==='mal'){ note(196,0,.12); note(147,.14,.12); note(110,.28,.25); note(880,2.5,.08,'square',.06,220); note(1200,3.3,.15,'sawtooth',.05,60); note(147,3.9,.18); note(147,4.1,.3); return; }
+  let s=0; for(const [f,d] of seq){ if(f) note(f,s,d); s+=d; }
+}
+
+// ---------- mount scenes ----------
+const grid=document.getElementById('grid'), live=[];
+for(const sc of SCENES){
+  const card=document.createElement('div'); card.className='card';
+  const cv=document.createElement('canvas'); cv.width=LW*S; cv.height=LH*S;
+  const lo=document.createElement('canvas'); lo.width=LW; lo.height=LH;
+  const st=ST[sc.key];
+  card.innerHTML=`<div class="meta"><span class="badge" style="color:${st.c};background:${st.bg}">${st.label}</span><div><h3>${sc.title}</h3><p>${sc.desc}</p></div><button>▶ Repetir</button></div>`;
+  card.prepend(cv); grid.append(card);
+  const L={sc,cv,c:cv.getContext('2d'),lo,l:lo.getContext('2d'),t0:performance.now()};
+  card.querySelector('button').onclick=()=>{ L.t0=performance.now(); play(sc.sound); };
+  live.push(L);
+}
+
+// ---------- toast + menubar ----------
+const TOASTS={
+  high:{t:'selfguard',b:'Nueva vulnerabilidad HIGH',p:'acme/payments-api · lodash 4.17.20 → sube a 4.18.0',a:['Ver','Más tarde']},
+  crit:{t:'selfguard',b:'CRÍTICO en acme/storefront',p:'31 paquetes vulnerables en main. Bastión está tocando el cuerno.',a:['Abrir dashboard','Posponer']},
+  mal:{t:'selfguard',b:'Paquete malicioso detenido',p:'@ctrl/tinycolor 4.1.1 (MAL-2025-4821) en acme/storefront. Revísalo ahora.',a:['Revisar ahora']},
+  fixed:{t:'selfguard',b:'✓ Arreglado',p:'lodash 4.18.0 en acme/payments-api. ¡Bien hecho!',a:['Genial']},
+};
+let toastState='crit', toastT0=performance.now();
+const toastEl=document.getElementById('toast'), ctrl=document.getElementById('ctrl');
+let avCtx=null;
+function renderToast(){
+  const d=TOASTS[toastState];
+  toastEl.style.animation='none'; toastEl.offsetHeight; toastEl.style.animation='';
+  toastEl.innerHTML=`<div class="av"><canvas width="${28*S/2}" height="${28*S/2}"></canvas></div><div style="flex:1"><small>ahora</small><b>${d.b}</b><p>${d.p}</p><div class="acts">${d.a.map(x=>`<span>${x}</span>`).join('')}</div></div>`;
+  avCtx=toastEl.querySelector('canvas').getContext('2d');
+  document.getElementById('mbdot').style.background=ST[toastState].c;
+  [...ctrl.children].forEach(b=>b.classList.toggle('on',b.dataset.s===toastState));
+}
+for(const k of Object.keys(TOASTS)){ const b=document.createElement('button'); b.dataset.s=k; b.textContent=ST[k].label; b.onclick=()=>{toastState=k; toastT0=performance.now(); renderToast(); play(SCENES.find(s=>s.key===k).sound);}; ctrl.append(b); }
+renderToast();
+const mb=document.getElementById('mb').getContext('2d');
+
+function headOpts(state,t){
+  const c=ST[state].c;
+  return {
+    high:{visor:c,eyes:Math.floor(t*2)%4===0?'blink':'alert',lift:-Math.abs(Math.round(Math.sin(t*6)*2))},
+    crit:{visor:c,eyes:'angry',beacon:true,lift:Math.floor(t*8)%2?-1:0},
+    mal:{visor:c,eyes:Math.floor(t*3)%3===0?'alert':'angry',shieldUp:true},
+    fixed:{visor:c,eyes:'happy',lift:-Math.abs(Math.round(Math.sin(t*5)*2))},
+  }[state];
+}
+
+// ---------- loop ----------
+const Q=new URLSearchParams(location.search), FREEZE=Q.get('t');
+function renderScene(L,t){
+  const g=L.sc.draw(L.l,t);
+  const c=L.c; c.setTransform(1,0,0,1,0,0);
+  const sky=c.createLinearGradient(0,0,0,LH*S); sky.addColorStop(0,'#0b1026'); sky.addColorStop(1,'#1d2350');
+  c.fillStyle=sky; c.fillRect(0,0,LW*S,LH*S);
+  const [sx,sy]=L.sc.shake?L.sc.shake(t):[0,0];
+  c.translate(Math.round(sx)*S/2,Math.round(sy)*S/2);
+  c.imageSmoothingEnabled=false; c.drawImage(L.lo,0,0,LW*S,LH*S);
+  L.sc.over(c,t,g);
+}
+function frame(now){
+  for(const L of live) renderScene(L, FREEZE!=null?(+FREEZE)%L.sc.P:((now-L.t0)/1000)%L.sc.P);
+  // toast avatar: crop the head
+  const tt=FREEZE!=null?+FREEZE:(now-toastT0)/1000;
+  const o=headOpts(toastState,tt);
+  const spr=guard(o);
+  if(avCtx){ const w=avCtx.canvas.width; avCtx.imageSmoothingEnabled=false;
+    const bg=avCtx.createRadialGradient(w/2,w*.45,0,w/2,w/2,w*.7); bg.addColorStop(0,ST[toastState].c+'55'); bg.addColorStop(1,'#141a2e');
+    avCtx.fillStyle=bg; avCtx.fillRect(0,0,w,w);
+    avCtx.drawImage(spr,9,PAD-3,22,22,0,0,w,w); }
+  // menubar: tiny helmet
+  mb.clearRect(0,0,22,22); mb.imageSmoothingEnabled=false;
+  const ms=guard({visor:ST[toastState].c,eyes:(tt%2.4)<.15?'blink':'normal',beacon:toastState==='crit'&&Math.floor(tt*3)%2});
+  mb.drawImage(ms,12,PAD-2,16,16,1,2,20,20);
+  requestAnimationFrame(frame);
+}
+
+// ---------- export (?export=1), read by export.mjs ----------
+// Each scene: a horizontal strip of character-only frames (no backdrop, no hi-res overlays),
+// cropped to the area any frame uses. Icons: the helmet alone, for the Mac menu bar.
+function exportAll(){
+  const FPS=12, out={fps:FPS,scenes:{},icons:{}};
+  const raw=(c,w,h)=>{ const d=c.getImageData(0,0,w,h).data; let s=''; for(let i=0;i<d.length;i+=8192) s+=String.fromCharCode.apply(null,d.subarray(i,i+8192)); return btoa(s); };
+  for(const L of live){
+    const n=Math.round(L.sc.P*FPS), frames=[]; let x0=LW,y0=LH,x1=0,y1=0;
+    for(let i=0;i<n;i++){
+      NOBG=true; L.sc.draw(L.l,i/FPS); NOBG=false;
+      const d=L.l.getImageData(0,0,LW,LH); frames.push(d);
+      for(let y=0;y<LH;y++) for(let x=0;x<LW;x++) if(d.data[(y*LW+x)*4+3]){ x0=Math.min(x0,x); x1=Math.max(x1,x); y0=Math.min(y0,y); y1=Math.max(y1,y); }
+    }
+    const w=x1-x0+1, h=y1-y0+1, st=document.createElement('canvas'); st.width=w*n; st.height=h;
+    const c=st.getContext('2d'); frames.forEach((d,i)=>c.putImageData(d,i*w-x0,-y0,x0,y0,w,h));
+    out.scenes[L.sc.key]={frames:n,x:x0,y:y0,width:w,height:h,durationMs:Math.round(n*1000/FPS),rgba:raw(c,w*n,h)};
+  }
+  // Template icons (black + alpha, macOS tints them) for calm states; color when it matters.
+  const ICONS={watch:{eyes:'normal',template:true}, sleep:{eyes:'blink',template:true},
+    high:{visor:ST.high.c,eyes:'alert'}, crit:{visor:ST.crit.c,eyes:'angry',beacon:true}, mal:{visor:ST.mal.c,eyes:'angry'}};
+  const Z=20;
+  for(const [k,o] of Object.entries(ICONS)){
+    const spr=guard({visor:o.visor||ST.idle.c,led:o.visor||ST.idle.c,eyes:o.eyes,beacon:o.beacon,headOnly:true});
+    const cv=document.createElement('canvas'); cv.width=Z; cv.height=Z; const c=cv.getContext('2d');
+    c.drawImage(spr,10,PAD-2,Z,Z,0,0,Z,Z);
+    if(o.template){ const id=c.getImageData(0,0,Z,Z), d=id.data, [gr,gg,gb]=hex(P.glass);
+      for(let i=0;i<d.length;i+=4){ const glass=d[i]===gr&&d[i+1]===gg&&d[i+2]===gb; d[i]=d[i+1]=d[i+2]=0; d[i+3]=glass?0:(d[i+3]?255:0); }
+      c.putImageData(id,0,0); }
+    out.icons[k]={width:Z,height:Z,template:!!o.template,rgba:raw(c,Z,Z)};
+  }
+  document.body.innerHTML='<pre id="out">'+JSON.stringify(out)+'</pre>';
+}
+if(Q.has('export')) exportAll(); else requestAnimationFrame(frame);
+</script>
+</body>
+</html>

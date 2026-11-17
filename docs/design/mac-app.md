@@ -65,6 +65,24 @@ selfguard.app/Contents/
   package, or a service that is off. The backlog (repos that need attention) is listed in the
   menu but doesn't change the icon: with real data it never empties, and an icon that never
   changes is ignored.
+- **Bastion, the mascot**: a pixel-art castle guard whose visor shows his eyes and takes the
+  color of the alert. The menu bar icon is his helmet (a template while watching, asleep when
+  monitoring is off, amber/red/magenta for news, critical news and malicious packages). The
+  engine's alerts (new findings, fixes, the reminder, malicious packages) are shown by a small
+  floating panel (`MascotPanel`, non-activating, top-right) where he plays the scene twice and
+  closes; malicious packages stay until dismissed, jump the queue and offer the advisory, and a
+  click opens the repo. "Bastion Alerts" in the menu turns the panel off.
+- **One alert, not two** (`src/appalerts.ts`, `AppAlerts.swift`): the engine still decides
+  what to say; the app only decides how. While the app runs it keeps `~/.selfguard/app.json`
+  fresh (`{ pid, at, alerts }`, every 30 s and when the toggle changes; removed on quit). If
+  that heartbeat is under 75 s old, its process is alive and alerts are on, `deliver()` writes
+  each alert to `~/.selfguard/app-alerts/` instead of calling osascript, and the app shows and
+  deletes it. Anything else (no app, a crashed or sleeping one, alerts off) falls back to the
+  macOS banner and dialog, so alerts never stop. Update, sharing and "find my projects"
+  notices stay banners. The art has one source,
+  `scripts/mascot/bastion.html`; `scripts/mascot/export.mjs` writes the sprite strips the
+  dashboard and the app share (`src/ui/static/mascot/`, shipped in the engine) and the menu
+  bar helmets (`macos/Resources/mascot/`). `--mascot-demo <scene>` shows the panel.
 - **Notifications**: the app watches `events.jsonl` and posts native notifications. Malicious
   findings open an `NSAlert` that can't be missed, like today's dialog. While the app is
   running, the engine leaves alerts to it (a `notifier: app` setting plus a heartbeat file the

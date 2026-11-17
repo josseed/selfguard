@@ -10,6 +10,7 @@ import { pageActivity, pagePackages } from "./pages-packages.js";
 import { pageFolders, pollFind } from "./page-folders.js";
 import { pageMachines } from "./page-machines.js";
 import { pageSettings } from "./page-settings.js";
+import { loadMascot } from "./mascot.js";
 import { loadRepoSources, loadSources } from "./sources.js";
 
 // ---------- routing ----------
@@ -103,6 +104,7 @@ async function loadForRoute() {
   const r = state.route;
   const jobs = [];
   if (r.name === "overview" || r.name === "packages") jobs.push(loadPackages());
+  if (r.name === "overview") jobs.push(loadMascot());
   // CI workflows and agent tools: shown when this version reads any (never blocks the page).
   if (r.name === "overview" || r.name === "repo") jobs.push(loadSources().catch(() => {}));
   if (r.name === "repo" && r.arg) jobs.push(loadRepoSources(r.arg).catch(() => {}));

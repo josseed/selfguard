@@ -3,6 +3,7 @@ import { $, ago, ecoTag, h, icon, pkgId, plural, sevBadge, SEVERITIES, state, ti
 import { card, empty, fixText, folderBuckets, repoGroups, seriousPackages, setHead, syncButton } from "./layout.js";
 import { feedList } from "./pages-packages.js";
 import { agentToolsCard } from "./sources.js";
+import { mascot } from "./mascot.js";
 
 // ---------- pages ----------
 
@@ -13,7 +14,7 @@ export function pageOverview() {
 
   const watching = o.schedule ? o.schedule.enabled : true;
   const banner = h("section", { class: `card banner ${att ? "bad" : o.roots === 0 ? "warn" : "ok"}` },
-    h("div", { class: "big-icon" }, icon(att ? "shieldBad" : o.roots === 0 ? "warn" : "shieldOk")),
+    (o.roots > 0 && mascot(o)) || h("div", { class: "big-icon" }, icon(att ? "shieldBad" : o.roots === 0 ? "warn" : "shieldOk")),
     h("div", { class: "grow" },
       h("h2", {}, att ? `${plural(att, "repo")} need${att === 1 ? "s" : ""} attention` : o.roots === 0 ? "No folders watched yet" : "All clear"),
       h("p", {}, att
