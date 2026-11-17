@@ -64,6 +64,8 @@ export function updateSettings(patch: { remind?: unknown; activeDays?: unknown; 
 export interface FoldersResult {
   roots: Array<Root & { exists: boolean; trackedProjects: number }>;
   exclude: string[];
+  /** Folders ignored from the Repos page: they come back when a project inside has activity. */
+  ignored: Array<{ path: string; at: string }>;
   /** Common code folders on this machine that aren't watched yet. */
   suggestions: string[];
 }
@@ -79,7 +81,7 @@ export function getFolders(): FoldersResult {
   }));
   const watched = cfg.roots.map((r) => r.path);
   const suggestions = candidateRoots().filter((c) => !watched.some((w) => c === w || isExcluded(c, [w])));
-  return { roots, exclude: cfg.exclude, suggestions };
+  return { roots, exclude: cfg.exclude, ignored: cfg.ignored, suggestions };
 }
 
 export interface DirectoryListing {

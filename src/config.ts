@@ -75,6 +75,11 @@ export interface Config {
   roots: Root[];
   /** Absolute paths never tracked or discovered (and everything below them). */
   exclude: string[];
+  /**
+   * Folders paused from the Repos page: not tracked, and they come back by themselves when a
+   * project inside has activity after `at` (lockfile, package.json or git). Unlike `exclude`.
+   */
+  ignored: Ignored[];
   /** How often to remind about unresolved malicious/critical/high findings. */
   remind: RemindEvery;
   /** Checkouts without git activity for this many days are "inactive" (no alerts). */
@@ -90,6 +95,12 @@ export interface Config {
   /** Daily check of npm for a newer selfguard (only the package name is sent). */
   updateCheck: boolean;
   share: ShareConfig;
+}
+
+export interface Ignored {
+  path: string;
+  /** When it was ignored (ISO). */
+  at: string;
 }
 
 export interface Dismissal {
@@ -152,6 +163,13 @@ export function loadConfig(): Config {
       dismissed.push({ key: d.key, label: typeof d.label === "string" ? d.label : d.key, at: d.at });
     }
   }
+  const ignored: Ignored[] = [];
+  if (raw && isObject(raw) && Array.isArray(raw.ignored)) {
+    for (const i of raw.ignored as unknown[]) {
+      if (!isObject(i) || typeof i.path !== "string" || !i.path || typeof i.at !== "string" || Number.isNaN(Date.parse(i.at))) continue;
+      if (!ignored.some((x) => x.path === i.path)) ignored.push({ path: i.path, at: i.at });
+    }
+  }
   const autoDiscover = !(raw && isObject(raw) && raw.autoDiscover === false);
   const updateCheck = !(raw && isObject(raw) && raw.updateCheck === false);
   const rs: Record<string, unknown> = raw && isObject(raw) && isObject(raw.share) ? raw.share : {};
@@ -160,7 +178,7 @@ export function loadConfig(): Config {
     port: typeof rs.port === "number" && Number.isInteger(rs.port) && rs.port > 1024 && rs.port < 65536 ? rs.port : DEFAULT_SHARE_PORT,
     allowOtherUsers: rs.allowOtherUsers === true,
   };
-  return { schema: 1, roots, exclude, remind, activeDays, machines, dismissed, autoDiscover, updateCheck, share };
+  return { schema: 1, roots, exclude, ignored, remind, activeDays, machines, dismissed, autoDiscover, updateCheck, share };
 }
 
 export function isExcluded(path: string, exclude: readonly string[]): boolean {

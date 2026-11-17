@@ -214,7 +214,7 @@ export async function runSetup(): Promise<number> {
   saveConfig({ ...cfg, roots });
   out.write(`${c.green("✓")} Saved ${roots.length} folder(s) to watch.\n\n`);
 
-  const projects = await withSpinner("Looking for projects…", () => discoverAll(roots, { exclude: cfg.exclude }));
+  const projects = await withSpinner("Looking for projects…", () => discoverAll(roots, { exclude: cfg.exclude, ignored: cfg.ignored }));
   const known = new Set(listRepos().map((r) => r.path));
   const fresh: Project[] = projects.filter((p) => !known.has(p.root));
   out.write(`Found ${c.bold(String(projects.length))} project(s), ${c.bold(String(fresh.length))} not tracked yet.\n`);

@@ -168,7 +168,9 @@ export async function route(method: string, url: URL, body: Record<string, unkno
     if (p === "/api/folders/ignore") return api.ignoreFolder(str(body, "path"), machineOf(body));
     if (p === "/api/unexclude") {
       const path = str(body, "path");
-      if (!api.listRoots().exclude.includes(path)) throw new api.ApiError("not_found", "that path is not excluded");
+      if (!api.listRoots().exclude.includes(path) && !api.getFolders().ignored.some((i) => i.path === path)) {
+        throw new api.ApiError("not_found", "that path is not excluded or ignored");
+      }
       return { ...api.listRoots(), ...(await api.restoreExcluded(path)) };
     }
     if (p === "/api/discover") return api.discoverNew({ dryRun: body.dryRun === true });

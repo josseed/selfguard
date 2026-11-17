@@ -252,8 +252,10 @@ With `--background`, it is the weekly automatic pass. Settings decides whether i
 Stops tracking the project containing `dir` (default: current directory). By default it also
 **excludes** that path from discovery, along with every project below it, so it doesn't come back.
 It works on a whole folder too (for example `~/code/old-clients`): the folder and every project
-inside stop being tracked, scanned and alerted, including projects created there later. This is
-what the dashboard's "Ignore folder" button does.
+inside stop being tracked, scanned and alerted, including projects created there later. (The
+dashboard's "Ignore folder" button is gentler: the folder is only paused, and a project inside
+comes back by itself when its lockfile, `package.json` or git log changes. `selfguard unexclude`
+clears both.)
 
 | Option | |
 |---|---|

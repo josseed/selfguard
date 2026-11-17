@@ -1,6 +1,6 @@
 // Ignore a whole folder from the Repos page (POST /api/folders/ignore) and include it again.
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -83,7 +83,7 @@ test("local: only real folder buckets can be ignored, never roots or arbitrary p
   assert.equal(tracked(), 4);
 });
 
-test("local: ignoring drops the projects, rewrites menubar.json, and include again brings them back", async () => {
+test("local: ignoring pauses the folder: quiet while nothing changes, back when a project there does", async () => {
   api.getStatus(); // warm
   const { writeMenuBar } = await import("../src/menubar.ts");
   writeMenuBar();
@@ -94,24 +94,34 @@ test("local: ignoring drops the projects, rewrites menubar.json, and include aga
   assert.deepEqual(r.json, { path: join(code, "old"), machine: null, forgotten: 2 });
   assert.equal(tracked(), 2);
   assert.equal(menuBarTracked(), 2);
-  assert.ok(api.listRoots().exclude.includes(join(code, "old")));
+  assert.deepEqual(api.getFolders().ignored.map((i) => i.path), [join(code, "old")]);
+  assert.deepEqual(api.listRoots().exclude, [], "paused, not excluded for good");
 
-  // Excluded projects don't come back through sync, and don't alert.
+  // Nothing changed there: sync keeps it out and announces nothing.
   const events = () => (existsSync(join(process.env.SELFGUARD_HOME!, "events.jsonl")) ? readFileSync(join(process.env.SELFGUARD_HOME!, "events.jsonl"), "utf8").split("\n").length : 0);
   const before = events();
-  copyFixture("v3", join(code, "old", "new-project")); // created later
+  const old = new Date(Date.now() - 3600_000);
+  for (const p of ["a", "b"]) for (const f of ["package-lock.json", "package.json"]) utimesSync(join(code, "old", p, f), old, old);
   await api.sync({ notify: true });
   assert.equal(tracked(), 2);
   assert.equal(events(), before, "nothing announced for the ignored folder");
   assert.ok(!api.getAttention().some((a) => a.path.startsWith(join(code, "old"))));
 
+  // A lockfile there is updated: that project comes back by itself, the other stays paused.
+  const now = new Date(Date.now() + 5000);
+  utimesSync(join(code, "old", "a", "package-lock.json"), now, now);
+  await api.sync({ notify: false });
+  assert.equal(tracked(), 3);
+  assert.ok(api.getStatus().projects.some((p) => p.path === join(code, "old", "a")));
+  assert.ok(!api.getStatus().projects.some((p) => p.path === join(code, "old", "b")));
+
+  // Include again clears the pause and finds the rest.
   const back = await post("/api/unexclude", { path: join(code, "old") });
   assert.equal(back.status, 200);
   assert.equal(back.json.removed, true);
-  assert.equal(back.json.restored, 3);
-  assert.equal(tracked(), 5);
-  assert.equal(menuBarTracked(), 5);
-  assert.deepEqual(api.listRoots().exclude, []);
+  assert.equal(tracked(), 4);
+  assert.equal(menuBarTracked(), 4);
+  assert.deepEqual(api.getFolders().ignored, []);
 });
 
 test("machine: ignore a remote folder and include it again", async () => {
@@ -129,7 +139,7 @@ test("machine: ignore a remote folder and include it again", async () => {
   assert.deepEqual(r.json, { path: folder, machine: "devbox", forgotten: 2 });
   assert.equal(tracked("devbox"), 0);
   assert.ok(api.listMachines().find((m) => m.name === "devbox")!.exclude.includes(folder));
-  assert.equal(tracked(), 5, "local projects untouched");
+  assert.equal(tracked(), 4, "local projects untouched");
 
   const back = await post("/api/machines/unexclude", { name: "devbox", path: folder });
   assert.equal(back.json.removed, true);

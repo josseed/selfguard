@@ -239,8 +239,10 @@ selfguard unexclude ~/code/shop/test/fixtures  # undo
 
 Whole folders of old projects work the same way: `selfguard forget ~/code/old-clients`, or in the
 dashboard open **Repos**, group **By folder** and press **Ignore folder** on that folder. Nothing
-inside is tracked, scanned, alerted or discovered (including projects created there later). To undo,
-use **Include again** under **Folders → Excluded** (or **Machines** for another machine); the
+inside is tracked, scanned or alerted, until something there changes: when a project's lockfile,
+`package.json` or git history is updated, that project comes back by itself (the others stay
+paused). To bring it all back at once, use **Include again** under **Folders → Ignored folders**
+(or **Machines** for another machine, where an ignored folder stays ignored for good); the
 projects come back right away.
 
 ## Linux: schedule with cron

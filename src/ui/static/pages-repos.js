@@ -88,7 +88,7 @@ function ignoreButton(b) {
     const all = folderBuckets(repoGroups("all")).find((x) => x.id === b.id) || b; // whatever the filters hide goes too
     const n = all.rows.length;
     const need = all.serious;
-    if (!confirm(`Ignore ${b.label}?\n\n${plural(n, "repo")} (${need} need attention) stop being tracked, scanned and alerted, including new projects created there later.\nYou can include it again under ${b.machine ? "Machines" : "Folders → Excluded"}.`)) return;
+    if (!confirm(`Ignore ${b.label}?\n\n${plural(n, "repo")} (${need} need attention) stop being tracked, scanned and alerted.${b.machine ? " New projects there are ignored too." : "\nIf a project there changes later (lockfile, package.json or new commits) it comes back by itself."}\nYou can include it again under ${b.machine ? "Machines" : "Folders → Ignored folders"}.`)) return;
     busy(btn, "…", async () => {
       const r = await call("POST", "/api/folders/ignore", { path: b.folder, machine: b.machine || undefined });
       toast(`Ignored ${b.label} · ${plural(r.forgotten, "repo")}`);

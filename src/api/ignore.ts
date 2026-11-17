@@ -1,7 +1,7 @@
 /** Ignore a whole folder of repos from the Repos page, and bring it back ("include again"). */
 import { existsSync } from "node:fs";
 import { announce } from "../announce.ts";
-import { isExcluded, loadConfig } from "../config.ts";
+import { isExcluded, loadConfig, saveConfig } from "../config.ts";
 import { discover } from "../discover.ts";
 import { ApiError } from "../errors.ts";
 import { tryLock } from "../fsutil.ts";
@@ -43,8 +43,16 @@ export function ignoreFolder(path: string, machine: string | null = null): Ignor
     writeMenuBar();
     return { path: r.path, machine, forgotten: (r.wasTracked ? 1 : 0) + r.alsoForgotten.length };
   }
-  const r = forget(path, { exclude: true, exact: true });
-  return { path: r.path, machine: null, forgotten: (r.wasTracked ? 1 : 0) + r.alsoForgotten.length };
+  // Paused, not banned: it is dropped from tracking now, and discovery picks a project of it up
+  // again as soon as it has activity (see activeSince in discover.ts).
+  let forgotten = 0;
+  for (const r of listRepos()) {
+    if (isExcluded(r.path, [path]) && forget(r.path, { exclude: false, exact: true }).wasTracked) forgotten++;
+  }
+  const next = loadConfig();
+  next.ignored = [...next.ignored.filter((i) => i.path !== path), { path, at: new Date().toISOString() }];
+  saveConfig(next);
+  return { path, machine: null, forgotten };
 }
 
 /** Include a folder again and find its projects now, bounded to that folder. */
@@ -66,7 +74,13 @@ export async function restoreExcluded(path: string, machine: string | null = nul
     }
     return { path, machine, removed, restored };
   }
-  const { removed } = unexclude(path);
+  const cfg = loadConfig();
+  const paused = cfg.ignored.some((i) => i.path === path);
+  if (paused) {
+    cfg.ignored = cfg.ignored.filter((i) => i.path !== path);
+    saveConfig(cfg);
+  }
+  const removed = unexclude(path).removed || paused;
   return { path, machine: null, removed, restored: removed ? await rediscover(path) : 0 };
 }
 
