@@ -22,7 +22,7 @@ export async function discoverNew(opts: { dryRun?: boolean } = {}): Promise<Disc
   const cfg = loadConfig();
   if (cfg.roots.length === 0) throw new ApiError("no_roots", "no folders configured; add one with roots add <dir>");
   const known = new Set(listRepos().map((r) => r.path));
-  const fresh = (await discoverAll(cfg.roots, { exclude: cfg.exclude })).filter((p) => !known.has(p.root));
+  const fresh = (await discoverAll(cfg.roots, { exclude: cfg.exclude, ignored: cfg.ignored })).filter((p) => !known.has(p.root));
   const found = fresh.map((p) => ({ path: p.root, lockType: p.lockType }));
   if (opts.dryRun || fresh.length === 0) return { dryRun: Boolean(opts.dryRun), found, registered: 0, withVulnerabilities: 0 };
   const outcomes = await scanProjects(fresh);
@@ -100,8 +100,9 @@ export function forget(path: string, opts: { exclude?: boolean; exact?: boolean 
 export function unexclude(path: string): RootsResult & { removed: boolean } {
   const cfg = loadConfig();
   const abs = normalizeDir(path) ?? resolve(path);
-  const before = cfg.exclude.length;
+  const before = cfg.exclude.length + cfg.ignored.length;
   cfg.exclude = cfg.exclude.filter((e) => e !== abs);
+  cfg.ignored = cfg.ignored.filter((i) => i.path !== abs); // a folder ignored from the dashboard
   saveConfig(cfg);
-  return { roots: cfg.roots, exclude: cfg.exclude, removed: cfg.exclude.length < before };
+  return { roots: cfg.roots, exclude: cfg.exclude, removed: cfg.exclude.length + cfg.ignored.length < before };
 }

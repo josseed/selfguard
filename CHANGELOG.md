@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **"Ignore folder" now pauses the folder instead of banning it.** Projects inside stay out of
+  tracking and alerts while nothing changes, but when a project there has activity (its lockfile
+  or `package.json` is updated, or new commits) it comes back by itself and is scanned again; the
+  rest of the folder stays paused. Paused folders are listed under Folders → "Ignored folders"
+  with "Include again". Ignoring a folder on another machine and `selfguard forget` are
+  unchanged (permanent).
+
 ## [0.14.0] - 2026-11-17
 
 ### Added

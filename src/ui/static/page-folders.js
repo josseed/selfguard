@@ -62,10 +62,25 @@ export function pageFolders() {
       }))
     : empty("Nothing excluded", "Ignored projects and folders show up here.");
 
+  const includeAgain = (p) => {
+    const b = h("button", { class: "btn small", type: "button" }, "Include again");
+    b.addEventListener("click", () => busy(b, "…", async () => {
+      const r = await call("POST", "/api/unexclude", { path: p });
+      toast(r.restored ? `Included again · ${plural(r.restored, "project")} found` : "Included again. New projects there are picked up by discovery.");
+      await refresh();
+    }));
+    return b;
+  };
+  const ignored = f.ignored.length
+    ? h("ul", { class: "list" }, ...f.ignored.map((i) =>
+        h("li", {}, h("div", { class: "grow" }, h("div", { class: "title mono" }, tildify(i.path)), h("div", { class: "small muted" }, `Ignored ${new Date(i.at).toLocaleDateString()}`)), includeAgain(i.path))))
+    : empty("No ignored folders", "Use Ignore folder on the Repos page for old projects. They come back by themselves when something changes there.");
+
   $("page").replaceChildren(h("div", { class: "stack" },
     findCard(),
     card("Watched folders", "selfguard discovers projects in these folders and below, skipping node_modules and similar.", roots,
       suggestions ? h("div", {}, h("div", { class: "small muted" }, "Suggestions found on this machine:"), h("div", { class: "gap-top" }, suggestions)) : null),
+    card("Ignored folders", "Not tracked or alerted, until a project inside has activity (a changed lockfile, package.json or new commits). Then it comes back by itself.", ignored),
     card("Excluded", "Never tracked or discovered, including everything inside.", excluded)));
 }
 

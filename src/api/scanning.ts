@@ -114,7 +114,7 @@ export async function sync(opts: { notify?: boolean } = {}): Promise<SyncResult>
       }
     }
     // New clones inside your folders get tracked without you ever cd-ing into them.
-    const discovered = (await discoverAll(cfg.roots, { exclude: cfg.exclude })).filter((p) => !seen.has(p.root));
+    const discovered = (await discoverAll(cfg.roots, { exclude: cfg.exclude, ignored: cfg.ignored })).filter((p) => !seen.has(p.root));
     projects.push(...discovered);
 
     const tracked = projects.map((p) => p.root);
