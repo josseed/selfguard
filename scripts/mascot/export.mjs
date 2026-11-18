@@ -115,4 +115,18 @@ for (const [key, icon] of Object.entries(data.icons)) {
   writeIcon(key, icon);
   if (icon.color) writeIcon(`${key}-color`, icon.color);
 }
-console.log(`wrote ${fileURLToPath(STATIC)} and ${fileURLToPath(MAC)}`);
+// The app icon: a 1024 px master, then every size macOS asks for, packed into the .icns the app
+// (and the CLI's notifications) use.
+const ICNS = new URL("src/assets/selfguard.icns", ROOT);
+const set = fileURLToPath(new URL("macos/build/selfguard.iconset/", ROOT));
+mkdirSync(set, { recursive: true });
+const master = `${set}icon_512x512@2x.png`;
+writeFileSync(master, png(Buffer.from(data.appIcon.rgba, "base64"), 1024, 1024));
+for (const size of [16, 32, 128, 256, 512]) {
+  for (const [scale, suffix] of [[1, ""], [2, "@2x"]]) {
+    const file = `${set}icon_${size}x${size}${suffix}.png`;
+    if (file !== master) execFileSync("sips", ["-z", String(size * scale), String(size * scale), master, "--out", file], { stdio: "ignore" });
+  }
+}
+execFileSync("iconutil", ["-c", "icns", set, "-o", fileURLToPath(ICNS)]);
+console.log(`wrote ${fileURLToPath(STATIC)}, ${fileURLToPath(MAC)} and ${fileURLToPath(ICNS)}`);
