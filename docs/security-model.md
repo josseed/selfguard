@@ -210,7 +210,7 @@ token, no `ui.json`**. (The only network listener in selfguard is the opt-in
 [tailnet sharing](#other-machines) service, which is a different thing.) The dashboard exists only
 inside the selfguard Mac app:
 
-- **The page** (`src/ui/static`, shipped in the engine) is served to the app's WKWebView by a
+- **The page** (`src/ui/static`, shipped in the app's bundled engine, not in the npm package) is served to the app's WKWebView by a
   `WKURLSchemeHandler` for the custom scheme `selfguard://dashboard/`. It serves only files
   named in `dist/ui/static/files.json`, generated at build time from the allowlist in
   `src/ui/assets.ts`; the lookup is an exact match on the URL path, never a path join, so
@@ -249,8 +249,9 @@ On Linux and on machines without the app there is no dashboard; the CLI is compl
 ## Old launcher app
 
 Before 0.14, `selfguard app install` generated a script-only `~/Applications/selfguard.app`
-that started the dashboard server. It no longer exists; `selfguard app uninstall` removes it
-if present, after checking its bundle id so that the real Mac app is never deleted.
+that started the dashboard server. It no longer exists, and neither do `selfguard app` and
+`selfguard ui`: the CLI never launches or opens anything. If an old launcher is still in
+`~/Applications`, drag it to the Trash.
 
 ## Releases
 

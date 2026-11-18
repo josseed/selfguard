@@ -28,6 +28,17 @@ All notable changes to this project are documented here. The format is based on
   window 7, 30, 90 days or 1 year). Sync now has a shortcut (⌘S). Times and counts are written
   out in full words ("5 minutes ago", not "5 min ago").
 
+### Removed
+
+- **`selfguard ui` and `selfguard app`.** The dashboard exists only in the selfguard Mac app:
+  open it from its menu bar icon → Open Dashboard. The npm CLI is for the terminal
+  (`selfguard status`, `selfguard report`, `--json`) and no longer offers anything
+  dashboard-related; notifications, `setup`, `remind` and the agent guide now point to
+  terminal commands. An old pre-0.14 script launcher in `~/Applications` can be dragged to the
+  Trash.
+- **The npm package no longer ships the dashboard's files** (`dist/ui/static`). The Mac app
+  still bundles them with its engine.
+
 ### Fixed
 
 - The Mac app quit at launch, silently, when macOS hid its menu bar icon (System Settings →

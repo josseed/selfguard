@@ -19,7 +19,7 @@ async function finishPairingCli(start: api.PairingStart, opts: { name?: string; 
   else {
     out.write(`Asked ${c.bold(clean(start.peer.name))} to share its repos with this machine.\n`);
     out.write(`Check that it shows the same code:  ${c.bold(c.cyan(code))}\n`);
-    out.write(c.dim(`Approve it there: dashboard → Machines, or selfguard share approve. Waiting up to 5 minutes…\n`));
+    out.write(c.dim(`Approve it there: selfguard share approve (or the Mac app's dashboard → Machines). Waiting up to 5 minutes…\n`));
   }
   const m = await withSpinner("Waiting for approval…", () => api.finishPairing(start, { name: opts.name, replace: opts.replace }));
   refreshRemoteAgent();

@@ -219,7 +219,7 @@ export function buildReminder(repos: AttentionRepo[]): Alert {
     return {
       kind: "banner",
       title: `selfguard: ${r.label} needs attention`,
-      subtitle: `${severityCounts(r.findings)} · open: selfguard ui`,
+      subtitle: `${severityCounts(r.findings)} · details: selfguard status`,
       body: listFixes(r.findings),
       scene: sceneOf(r.findings),
     };
@@ -229,7 +229,7 @@ export function buildReminder(repos: AttentionRepo[]): Alert {
   return {
     kind: "banner",
     title: `selfguard: ${serious.length} repos need attention`,
-    subtitle: `worst: ${LABEL[worstSeverity(all) ?? "unknown"]} · open: selfguard ui`,
+    subtitle: `worst: ${LABEL[worstSeverity(all) ?? "unknown"]} · details: selfguard status`,
     body: parts.join(", "),
     scene: sceneOf(all),
   };

@@ -111,7 +111,7 @@ test("reminders cover malicious, critical (non-dev) and high direct findings onl
 
   const one = buildReminder([{ label: "acme/web", findings: [dev, f("mongoose", "9.7.2", "G-h", "high", "9.11.4")] }]);
   assert.equal(one.kind === "banner" && one.title, "selfguard: acme/web needs attention");
-  assert.equal(one.kind === "banner" && one.subtitle, "1 high · open: selfguard ui");
+  assert.equal(one.kind === "banner" && one.subtitle, "1 high · details: selfguard status");
   assert.equal(one.kind === "banner" && one.body, "mongoose → 9.11.4");
 
   const many = buildReminder([

@@ -29,9 +29,9 @@ HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
   and a daily reminder lists what is still open and serious. When you fix something, you get a
   "✓ fixed" notification too.
 - **A dashboard, not just a terminal.** The Mac app shows every repo, what needs attention,
-  how to fix it, and a feed of what changed, in its own window (`selfguard ui` opens it). There
-  is no web server and no browser involved. On Linux the CLI is complete: `selfguard status`,
-  `report`, `--json`.
+  how to fix it, and a feed of what changed, in its own window (menu bar → Open Dashboard).
+  There is no web server and no browser involved. The npm CLI is terminal-only and complete on
+  its own: `selfguard status`, `report`, `--json`.
 - **Bastion, a guard who tells you.** A 16-bit castle guard, brought up to date, acts out what
   changed on the dashboard and, in the Mac app, in a small panel: he sounds the horn for a
   critical vulnerability, fights off a malicious package and celebrates your fixes. With the
@@ -83,12 +83,10 @@ selfguard setup
 them. It then offers to install the shell hook and background watching with notifications.
 You don't need the command line on a Mac: the selfguard app (below) bundles everything, asks
 whether to watch in the background, and has an optional "Install Terminal Command…" in its menu.
-Then open the dashboard (the selfguard Mac app, from the
-[latest release](https://github.com/josseed/selfguard/releases/latest)):
-
-```sh
-selfguard ui
-```
+The dashboard is only in the selfguard Mac app (from the
+[latest release](https://github.com/josseed/selfguard/releases/latest)): open it from its menu
+bar icon → Open Dashboard. In the terminal, `selfguard status` and `selfguard report` show the
+same results.
 
 ```text
 Where do you keep your code?

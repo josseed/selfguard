@@ -81,7 +81,8 @@ Exit codes: 0 ok, 1 scan found vulnerabilities, 2 usage or runtime error. No pro
    comment (\`uses: owner/repo@<sha> # v1.2.3\`). Malicious action or MCP server: remove it, then rotate the
    secrets that workflow or agent could reach. Unpinned MCP server: propose an exact version in the config.
 6. After the user installs, run selfguard_check (or selfguard_scan on the project) to verify.
-   The user can also follow everything in the Mac app's dashboard (macOS): selfguard ui.
+   On macOS the user can also follow everything in the selfguard Mac app's dashboard (menu bar →
+   Open Dashboard); no CLI command opens it. In the terminal: selfguard status, selfguard report.
 7. Dev-only findings matter less for production but still matter for developer machines and CI.
 
 ## Rules

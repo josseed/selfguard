@@ -40,13 +40,13 @@ Malicious-package alerts also open a dialog that stays on screen, so they can't 
 The dashboard is the selfguard Mac app's window ([download](https://github.com/josseed/selfguard/releases/latest));
 there is no browser page.
 
-- `selfguard ui` says the app isn't installed: install it, or use `selfguard status` / `report`.
-- Open it from the menu bar icon ("Open Dashboard") if `selfguard ui` doesn't.
+- Open it from the menu bar icon ("Open Dashboard"). There is no CLI command that opens it;
+  without the app, use `selfguard status` / `report` in the terminal.
 - "Not connected" or an error in the window: the app talks to the engine through a background
   process (`selfguard bridge`) that it restarts on the next request. Quit selfguard from the
   menu bar and open it again.
 - An old `~/Applications/selfguard.app` that is a script launcher (from `selfguard app install`
-  before 0.14): `selfguard app uninstall` removes it.
+  before 0.14, a command that no longer exists): drag it to the Trash and install the real app.
 - Errors are logged to `~/.selfguard/selfguard.log`.
 
 ## The shell hook doesn't do anything

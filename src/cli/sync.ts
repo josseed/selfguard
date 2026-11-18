@@ -102,7 +102,7 @@ export async function cmdRemind(args: string[]): Promise<number> {
       const fix = g.worst === "malicious" ? c.red("remove it") : g.upgradeTo ? c.green(`→ ${clean(g.upgradeTo, 40)}`) : c.yellow("no fix yet");
       out.write(`  ${severityLabel(g.worst, c)} ${clean(g.name, 100)}@${clean(g.version, 40)} ${c.dim(g.direct ? "direct" : "transitive")} ${fix}\n`);
     }
-    if (r.packages.length > 6) out.write(c.dim(`  …and ${r.packages.length - 6} more (selfguard ui)\n`));
+    if (r.packages.length > 6) out.write(c.dim(`  …and ${r.packages.length - 6} more: selfguard report -v in that repo\n`));
   }
   out.write(c.dim(sent ? "\nNotification sent.\n" : "\n"));
   return 0;

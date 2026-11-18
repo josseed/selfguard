@@ -8,7 +8,7 @@ Every command accepts `--json` to print a single JSON document on stdout instead
 human-readable output (see [AI and automation](ai-and-automation.md#json-output)).
 
 - [Setup](#setup): `setup`, `init`, `schedule`
-- [Dashboard and alerts](#dashboard-and-alerts): `ui`, `app`, `remind`, `settings`
+- [Alerts and the Mac app](#alerts-and-the-mac-app): `remind`, `update`, `settings`, internal `menubar`, `bridge`
 - [Projects](#projects): `status`, `scan`, `report`, `sync`, `check`, `where`, `vuln`
 - [Folders](#folders): `roots`, `discover`, `forget`, `unexclude`, `dismiss`, `undismiss`
 - [AI and automation](#ai-and-automation): `mcp`, `guide`
@@ -56,41 +56,18 @@ Node versions (nvm, fnm, Homebrew upgrade), run `selfguard schedule on` again.
 
 ---
 
-## Dashboard and alerts
+## Alerts and the Mac app
 
-### `selfguard ui [--repo KEY] [--page NAME]`
+The CLI is for the terminal. The dashboard exists only inside the selfguard Mac app (menu bar →
+Open Dashboard, [latest release](https://github.com/josseed/selfguard/releases/latest)); no CLI
+command opens it. The commands below marked internal are what the app's bundled engine runs.
 
-Opens the dashboard, which is the window of the selfguard Mac app (bundle id
-`dev.selfguard.mac`). There is no web server: the page runs inside the app and reaches the
-engine through the app, never through a port. See the [security model](security-model.md#dashboard).
-
-On macOS it launches the app (`open -b dev.selfguard.mac`); if it isn't installed it says where
-to download it ([latest release](https://github.com/josseed/selfguard/releases/latest)) and
-exits 1. On Linux there is no dashboard: it points to `selfguard status` and `selfguard report`,
-which cover everything.
-
-| Option | |
-|---|---|
-| `--repo` | Open a repo's page (its key, as in `status --json`). |
-| `--page` | Open a page: `overview`, `repos`, `packages`, `activity`, `folders`, `machines`, `settings`. |
-
-`--repo` and `--page` are used when the app is not running yet; if it already runs, `ui` just
-brings its dashboard window up.
-
-### `selfguard menubar [--json]`
+### `selfguard menubar [--json]` (internal)
 
 Rewrites `~/.selfguard/menubar.json` and prints it: the summary the Mac app shows in its menu
 bar (state, repos that need attention, latest findings and fixes, services, last check and
 sync). selfguard also rewrites it after every scan that finds or fixes something, and after
 `dismiss`, `undismiss`, `forget` and `sync`. Local only, no network.
-
-### `selfguard app [install | uninstall | status]`
-
-Where the Mac app is. `status` (and `install`, kept for old habits) says whether
-selfguard for Mac is installed and where to download it. The script launcher that
-`selfguard app install` used to generate in `~/Applications/selfguard.app` (before 0.14) is
-obsolete; `uninstall` removes it if it is there. It checks the bundle id first, so it never
-deletes the real app, which can live at the same path.
 
 ### `selfguard bridge` (internal)
 

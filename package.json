@@ -17,6 +17,7 @@
   },
   "files": [
     "dist",
+    "!dist/ui/static",
     "README.md",
     "LICENSE"
   ],

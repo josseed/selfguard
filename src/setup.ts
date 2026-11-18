@@ -249,8 +249,8 @@ export async function runSetup(): Promise<number> {
   }
 
   if (process.platform === "darwin" && !macAppPath()) {
-    out.write(`${c.dim(`The dashboard is the selfguard Mac app: ${RELEASES_URL}`)}\n`);
+    out.write(`${c.dim(`For a visual dashboard, get the selfguard Mac app: ${RELEASES_URL}`)}\n`);
   }
-  out.write(`\nDone. ${c.dim("selfguard ui (dashboard, in the Mac app) · selfguard status · selfguard --help")}\n`);
+  out.write(`\nDone. ${c.dim("selfguard status · selfguard report · selfguard --help")}\n`);
   return 0;
 }

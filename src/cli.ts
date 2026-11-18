@@ -15,7 +15,6 @@ import { emit, err, jsonMode, out, usage, UsageError } from "./cli/output.ts";
 import { cmdReport, cmdScan, cmdStatus, cmdVuln, cmdWhere } from "./cli/projects.ts";
 import { cmdMenuBar, cmdSchedule, cmdSettings } from "./cli/settings.ts";
 import { cmdShare } from "./cli/share.ts";
-import { cmdApp, cmdUi } from "./cli/ui.ts";
 import { cmdCheck, cmdRemind, cmdSync, cmdUpdate } from "./cli/sync.ts";
 import { cmdTools } from "./cli/tools.ts";
 
@@ -28,14 +27,7 @@ Setup:
                                      background watching with macOS notifications (launchd):
                                      lockfile changes right away, full sync every 6h
 
-Dashboard and alerts:
-  selfguard ui [--repo KEY] [--page NAME]
-                                     open the dashboard: it lives in the selfguard Mac app
-                                     (no server, no browser); elsewhere use status/report
-  selfguard menubar                  summary for the Mac app (rewrites ~/.selfguard/menubar.json)
-  selfguard app [install | uninstall | status]
-                                     where to get the Mac app; uninstall removes the old
-                                     script launcher (~/Applications/selfguard.app, pre-0.14)
+Alerts:
   selfguard remind                   send the reminder of serious open issues now
   selfguard settings [--remind daily|weekly|off] [--active-days N] [--auto-discover on|off]
                      [--update-check on|off]
@@ -143,11 +135,7 @@ async function main(argv: string[]): Promise<number> {
       return cmdRemind(rest);
     case "settings":
       return cmdSettings(rest);
-    case "ui":
-      return cmdUi(rest);
-    case "app":
-      return cmdApp(rest);
-    case "menubar":
+    case "menubar": // internal: the Mac app's menu bar summary (rewrites ~/.selfguard/menubar.json)
       return cmdMenuBar(rest);
     case "bridge": // internal: the dashboard's API over stdio, spawned by the Mac app
       await runBridge();
