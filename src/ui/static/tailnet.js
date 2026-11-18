@@ -1,10 +1,11 @@
 // Tailnet: peers, pairing and sharing (cards and dialogs of the Machines page).
-import { $, ago, h, icon, state, toast } from "./core.js";
+import { $, ago, h, icon, plural, state, toast } from "./core.js";
 import { busy, call, loadPeers, loadShare } from "./api.js";
 import { card, empty } from "./layout.js";
 import { openAddMachine, openFolderPicker } from "./dialogs.js";
 import { pageMachines, syncMachine } from "./page-machines.js";
 import { refresh } from "./app.js";
+import { toggleSwitch } from "./controls.js";
 
 // ---------- tailnet: peers, pairing, sharing ----------
 
@@ -74,7 +75,7 @@ export function shareRequestsCard() {
     return h("li", { class: "request" },
       h("div", { class: "grow" },
         h("div", { class: "title" }, `${r.name} wants to see your repos`),
-        h("div", { class: "sub" }, `${r.hostName}${r.login ? ` · ${r.login}` : ""} · expires in ${Math.max(1, Math.ceil((Date.parse(r.expiresAt) - Date.now()) / 60000))} min`),
+        h("div", { class: "sub" }, `${r.hostName}${r.login ? ` · ${r.login}` : ""} · expires in ${plural(Math.max(1, Math.ceil((Date.parse(r.expiresAt) - Date.now()) / 60000)), "minute")}`),
         h("div", { class: "pair-code" }, `${r.code.slice(0, 3)} ${r.code.slice(3)}`),
         h("div", { class: "small muted" }, "Approve only if the other screen shows this same code."),
         h("label", { class: "field" }, h("span", {}, "It may read lockfiles under"), scope),
@@ -89,12 +90,16 @@ export function shareRequestsCard() {
 export function sharingCard() {
   const sh = state.share;
   if (!sh) return null;
-  const toggle = h("button", { class: `btn small${sh.enabled ? "" : " primary"}`, type: "button" }, sh.enabled ? "Turn off" : "Turn on");
-  toggle.addEventListener("click", () => busy(toggle, "…", async () => {
-    await call("POST", "/api/share", { enabled: !sh.enabled });
-    toast(sh.enabled ? "Sharing off: no machine can read this one now" : "Sharing on: your other machines can ask to see this one");
-    await Promise.all([loadShare(), refresh()]);
-  }));
+  const toggle = toggleSwitch(sh.enabled, "Sharing", async () => {
+    let ok = false;
+    await busy(null, "", async () => {
+      await call("POST", "/api/share", { enabled: !sh.enabled });
+      ok = true;
+      toast(sh.enabled ? "Sharing off: no machine can read this one now" : "Sharing on: your other machines can ask to see this one");
+      await Promise.all([loadShare(), refresh()]);
+    });
+    return ok;
+  });
   const status = !sh.tailscale.ok
     ? h("div", { class: "sub warn-text" }, sh.tailscale.message)
     : sh.enabled

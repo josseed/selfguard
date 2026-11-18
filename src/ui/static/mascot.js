@@ -6,7 +6,7 @@
 import { call } from "./api.js";
 import { h, RANK, store } from "./core.js";
 
-const SCALE = 2; // whole CSS pixels per art pixel keeps the pixel art sharp
+const SCALE = 1; // CSS pixels per art pixel (2 device pixels on Retina): whole pixels keep the art sharp
 const SEEN_KEY = "selfguard-mascot-seen";
 const ALERT_LOOPS = 2;
 const ALERT_FOR = { malicious: "mal", critical: "crit", high: "high" };

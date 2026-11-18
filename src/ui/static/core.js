@@ -91,6 +91,10 @@ const ICONS = {
   copy: "M8 8V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-3M5 8h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
   machines: "M4 4h16v6H4V4Zm0 10h16v6H4v-6Zm4-7h.01M8 17h.01",
+  info: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-11v6m0-9.5v.01",
+  close: "M6 6l12 12M18 6 6 18",
+  sync: "M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2M20 4v4h-4M4 20v-4h4",
+  arrow: "M5 12h14m-5-5 5 5-5 5",
 };
 
 export function icon(name) {
@@ -119,14 +123,16 @@ export function toast(message) {
   toast.timer = setTimeout(() => (t.hidden = true), 4000);
 }
 
+/** "5 minutes ago", "yesterday": whole words, never "5 min" or "5 h". */
 export function ago(iso) {
   if (!iso) return "never";
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
   if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 3600) return `${plural(Math.floor(s / 60), "minute")} ago`;
+  if (s < 86400) return `${plural(Math.floor(s / 3600), "hour")} ago`;
   const d = Math.floor(s / 86400);
-  return d < 60 ? `${d} d ago` : `${Math.floor(d / 30)} mo ago`;
+  if (d === 1) return "yesterday";
+  return d < 60 ? `${d} days ago` : `${Math.floor(d / 30)} months ago`;
 }
 
 export const tildify = (p) => (p ? p.replace(/^\/(Users|home)\/[^/]+/, "~") : "");

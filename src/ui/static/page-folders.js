@@ -166,7 +166,7 @@ function findCard() {
   host.append(
     places.length ? h("ul", { class: "list" }, ...rows) : empty("Everything is already watched", `${plural(r.projects, "project")} found, all inside your watched folders.`),
     notes.length ? h("div", { class: "small muted find-notes" }, notes.join(" ")) : null);
-  const sub = `${plural(r.projects, "project")} in ${plural(r.places.length, "place")} · ${Math.round(r.ms / 1000)} s · ${r.visited.toLocaleString()} folders${already ? ` · ${already} already watched` : ""}. Unchecked folders are excluded from discovery.`;
+  const sub = `${plural(r.projects, "project")} in ${plural(r.places.length, "place")} · ${plural(Math.round(r.ms / 1000), "second")} · ${r.visited.toLocaleString()} folders${already ? ` · ${already} already watched` : ""}. Unchecked folders are excluded from discovery.`;
   return card("Find my projects", sub, host, places.length ? applyBtn : null, again);
 }
 

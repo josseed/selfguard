@@ -50,7 +50,7 @@ export function pageRepo() {
   const direct = pkgs.filter((p) => p.direct && p.upgradeTo).length;
 
   const kpis = h("div", { class: "kpis" },
-    h("div", { class: "card kpi" }, h("div", { class: "n" }, serious), h("div", { class: "l" }, "serious packages")),
+    h("div", { class: `card kpi${serious ? " bad" : ""}` }, h("div", { class: "n" }, serious), h("div", { class: "l" }, "serious packages")),
     h("div", { class: "card kpi" }, h("div", { class: "n" }, pkgs.length), h("div", { class: "l" }, `vulnerable packages${scope === "rep" && many ? ` on ${rep.branch || "main checkout"}` : ""}`)),
     h("div", { class: "card kpi" }, h("div", { class: "n" }, direct), h("div", { class: "l" }, "direct dependencies you can bump")));
 

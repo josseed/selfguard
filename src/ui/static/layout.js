@@ -2,6 +2,7 @@
 import { $, ago, h, icon, isSerious, RANK, state, tildify, toast } from "./core.js";
 import { busy, call } from "./api.js";
 import { refresh } from "./app.js";
+import { helmet, shortcutButton } from "./controls.js";
 
 // ---------- derived data ----------
 
@@ -76,6 +77,11 @@ export function fixText(p) {
   return h("span", { class: "fix-ok" }, `→ ${targets.slice(0, 2).join(" / ")}${targets.length > 2 ? " …" : ""}`);
 }
 
+const WEEK = 7 * 86400_000;
+
+/** Events worth a look (not first scans) from the last 7 days. */
+export const recentEvents = (o) => (o.events || []).filter((e) => !(e.kind === "new" && e.firstScan) && Date.now() - Date.parse(e.at) < WEEK);
+
 // ---------- layout ----------
 
 export const PAGES = [
@@ -90,20 +96,29 @@ export const PAGES = [
 
 export function renderNav() {
   const o = state.overview;
+  const serious = state.packages ? seriousPackages().length : null;
   const counts = {
-    repos: o ? [o.needsAttention.length, o.needsAttention.length > 0] : null,
-    folders: o ? [o.roots, false] : null,
+    repos: o ? [o.needsAttention.length, o.needsAttention.length > 0, "repos need attention"] : null,
+    packages: serious ? [serious, false, "serious vulnerable packages"] : null,
+    activity: o ? [recentEvents(o).length, false, "events in the last 7 days"] : null,
+    folders: o ? [o.roots, false, "watched folders"] : null,
     machines: o && o.share && o.share.requests
-      ? [o.share.requests, true]
-      : o && o.machines ? [o.machines.filter((m) => m.error).length || o.machines.length, o.machines.some((m) => m.error)] : null,
+      ? [o.share.requests, true, "pairing requests"]
+      : o && o.machines ? (o.machines.some((m) => m.error)
+        ? [o.machines.filter((m) => m.error).length, true, "machines unreachable"]
+        : [o.machines.length, false, "machines"]) : null,
   };
   const current = state.route.name === "repo" ? "repos" : state.route.name;
+  $("brand").replaceChildren(helmet(o, "small"),
+    h("span", {}, h("div", { class: "name" }, "selfguard"), o ? h("div", { class: "version" }, o.version) : null));
   $("nav").replaceChildren(
-    ...PAGES.map(([id, label, href]) =>
-      h("li", {},
+    ...PAGES.map(([id, label, href]) => {
+      const c = counts[id];
+      return h("li", {},
         h("a", { href, "aria-current": current === id ? "page" : null },
           icon(id), label,
-          counts[id] && counts[id][0] ? h("span", { class: `count${counts[id][1] ? " bad" : ""}` }, counts[id][0]) : null))),
+          c && c[0] ? h("span", { class: `count${c[1] ? " bad" : ""}`, title: `${c[0]} ${c[2]}`, "aria-label": `(${c[0]} ${c[2]})` }, c[0]) : null));
+    }),
   );
   if (!o) return;
   const watching = o.schedule ? o.schedule.enabled : null;
@@ -111,21 +126,22 @@ export function renderNav() {
     h("div", {},
       h("span", { class: `status-dot ${watching ? "on" : watching === false ? "off" : ""}` }),
       watching ? "Watching in background" : watching === false ? "Background watching off" : "Manual mode"),
-    h("div", { class: "faint" }, `Last sync ${ago(o.settings.lastSync)}`),
-    h("div", { class: "faint" }, `selfguard ${o.version}`),
+    h("div", {}, `Last sync ${ago(o.settings.lastSync)}`),
   );
 }
 
-export function setHead(title, crumbs, actions) {
+/** Page header: title, breadcrumbs, actions; `opts.icon` (an element) and `opts.sub` (text). */
+export function setHead(title, crumbs, actions, opts = {}) {
   $("page-title").textContent = title;
+  $("page-sub").replaceChildren(...[opts.sub].flat().filter(Boolean));
+  $("page-icon").replaceChildren(...(opts.icon ? [opts.icon] : []));
   $("crumbs").replaceChildren(...(crumbs || []));
-  $("page-actions").replaceChildren(...(actions || []));
+  $("page-actions").replaceChildren(...(actions || []).filter(Boolean));
   document.title = `${title} · selfguard`;
 }
 
 export function syncButton() {
-  const b = h("button", { class: "btn", type: "button" }, icon("refresh"), "Sync now");
-  b.querySelector("svg").setAttribute("width", "15");
+  const b = shortcutButton(h("button", { class: "btn primary", type: "button", title: "Check every project against the latest advisories" }, icon("sync"), "Sync now"), "s");
   b.addEventListener("click", () =>
     busy(b, "Syncing…", async () => {
       const r = await call("POST", "/api/sync", {});
@@ -136,11 +152,19 @@ export function syncButton() {
   return b;
 }
 
+/** A card: uppercase section title, optional description and action (a link or buttons). */
 export function card(title, sub, body, foot, actions) {
   return h("section", { class: "card" },
-    title ? h("div", { class: "card-head" }, h("div", {}, h("h2", {}, title), sub ? h("div", { class: "sub" }, sub) : null), actions || null) : null,
+    title || sub || actions ? h("div", { class: "card-head" }, h("div", {}, title ? h("h2", {}, title) : null, sub ? h("div", { class: "sub" }, sub) : null), actions || null) : null,
     body,
     foot ? h("div", { class: "card-foot" }, foot) : null);
+}
+
+/** "All 24 →" in a card's header. */
+export const more = (href, text, onclick) => h("a", { class: "more", href, onclick }, `${text} →`);
+
+export function statRow(label, value) {
+  return h("div", { class: "row" }, h("span", {}, label), h("span", {}, value));
 }
 
 export function empty(title, text) {
