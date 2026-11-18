@@ -120,7 +120,9 @@ export const sources = {
   machine: [
     source("Claude Code", `${HOME}/.claude.json`, [
       { severity: "high", name: "@modelcontextprotocol/server-filesystem", version: "0.5.0", ecosystem: "npm", certainty: "may-be-affected", id: "GHSA-hc55-p739-j48w", summary: "Path validation bypass", locations: [{ file: `${HOME}/.claude.json`, line: 14 }], fixedIn: "0.6.3" },
-    ], [], [{ agent: "Claude Code" }, { agent: "Claude Code" }, { agent: "Claude Code" }]),
+    ], [
+      { rule: "unpinned-npx", severity: "moderate", message: `MCP server "playwright (project ~/code/acme/admin-console-with-a-long-name)" runs @playwright/mcp (npx) unpinned: whatever is latest at start-up runs with your agent's permissions`, file: `${HOME}/.claude.json`, line: 1528 },
+    ], [{ agent: "Claude Code" }, { agent: "Claude Code" }, { agent: "Claude Code" }]),
     source("Cursor", `${HOME}/.cursor/mcp.json`, [], [], [{ agent: "Cursor" }]),
   ],
 };

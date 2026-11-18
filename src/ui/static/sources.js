@@ -42,10 +42,10 @@ function findingItem(f, root) {
 }
 
 function warningItem(w, root) {
-  return h("li", {},
+  return h("li", { class: "wrap" },
     h("span", { class: "tag", title: `rule: ${w.rule}` }, `warning · ${w.severity}`),
     h("div", { class: "grow" },
-      h("div", { class: "title" }, w.message),
+      h("div", { class: "title wrap" }, w.message),
       h("div", { class: "sub mono" }, where(w.file, w.line, root))));
 }
 
