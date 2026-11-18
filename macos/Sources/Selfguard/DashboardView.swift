@@ -20,7 +20,7 @@ struct DashboardView: NSViewRepresentable {
         config.websiteDataStore = .nonPersistent()
         config.setURLSchemeHandler(DashboardScheme(staticDir: model.engine?.staticDir), forURLScheme: DashboardScheme.scheme)
         config.userContentController.addScriptMessageHandler(
-            DashboardMessages(bridge: model.bridge), contentWorld: .page, name: DashboardMessages.name
+            DashboardMessages(bridge: model.bridge) { [weak model] on in model?.setMascotAlerts(on) }, contentWorld: .page, name: DashboardMessages.name
         )
         let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = context.coordinator

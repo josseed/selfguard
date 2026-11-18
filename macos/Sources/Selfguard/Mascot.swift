@@ -90,24 +90,29 @@ enum Mascot {
             .reduce(CGRect.null) { $0.union($1) }
     }
 
-    /// A menu bar helmet: `watch` and `sleep` are templates (tinted by macOS like any other
-    /// icon); `high`, `crit` and `mal` keep their color, since that is the alert.
+    /// A menu bar helmet, in color in every state (cyan eyes when calm, dimmed with "zz" when
+    /// monitoring is off, the alert's color otherwise), drawn at @1x and @2x.
     @MainActor static func menuBarIcon(_ name: String) -> NSImage? {
         if let icon = icons[name] { return icon }
-        guard let dir = Bundle.main.resourceURL?.appendingPathComponent("mascot", isDirectory: true) else { return nil }
-        let size = NSSize(width: 20, height: 20)
-        let image = NSImage(size: size)
-        for suffix in ["", "@2x"] {
-            let url = dir.appendingPathComponent("menubar-\(name)\(suffix).png")
-            guard let data = try? Data(contentsOf: url), let rep = NSBitmapImageRep(data: data) else { continue }
-            rep.size = size // points, so @2x maps one art pixel to two screen pixels
-            image.addRepresentation(rep)
-        }
-        guard !image.representations.isEmpty else { return nil }
-        image.isTemplate = name == "watch" || name == "sleep"
+        guard let image = menuBarLayer("menubar-\(name)") else { return nil }
         image.accessibilityDescription = "selfguard"
         icons[name] = image
         return image
+    }
+
+    private static let menuBarSize = NSSize(width: 18, height: 18)
+
+    /// An image at @1x and @2x, each drawn at its own resolution (one art pixel per screen pixel).
+    private static func menuBarLayer(_ file: String) -> NSImage? {
+        guard let dir = Bundle.main.resourceURL?.appendingPathComponent("mascot", isDirectory: true) else { return nil }
+        let image = NSImage(size: menuBarSize)
+        for suffix in ["", "@2x"] {
+            let url = dir.appendingPathComponent("\(file)\(suffix).png")
+            guard let data = try? Data(contentsOf: url), let rep = NSBitmapImageRep(data: data) else { continue }
+            rep.size = menuBarSize
+            image.addRepresentation(rep)
+        }
+        return image.representations.isEmpty ? nil : image
     }
 }
 

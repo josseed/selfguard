@@ -443,6 +443,49 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 
+// The menu bar helmet: his helmet from the scenes, doubled with EPX (the classic pixel art
+// upscaler: it rounds the stair steps without inventing new colors) to 36×36 for @2x, with a
+// one-pixel outline instead of a doubled one. @1x takes every other pixel. o: the guard()
+// options for the state, plus dim (asleep: muted colors) and zz.
+function menuHelmet(o){
+  const spr=guard({...o, headOnly:true});
+  const S=20, src=document.createElement('canvas'); src.width=S; src.height=S;
+  const sc=src.getContext('2d',{willReadFrequently:true}); sc.drawImage(spr,10,PAD-2,S,S,0,0,S,S);
+  const d=sc.getImageData(0,0,S,S).data, [kr,kg,kb]=hex(P.K);
+  // the art without its outline, as "#rrggbb" or null
+  const px=(x,y)=>{ if(x<0||y<0||x>=S||y>=S) return null; const i=(y*S+x)*4;
+    if(d[i+3]<40||(d[i]===kr&&d[i+1]===kg&&d[i+2]===kb)) return null;
+    return '#'+[d[i],d[i+1],d[i+2]].map(n=>n.toString(16).padStart(2,'0')).join(''); };
+  // EPX: every pixel becomes four, corners taking a neighbor's color where two neighbors agree
+  const W=S*2, big=Array.from({length:W},()=>Array(W).fill(null));
+  for(let y=0;y<S;y++) for(let x=0;x<S;x++){
+    const P0=px(x,y), A=px(x,y-1), B=px(x+1,y), C=px(x-1,y), D=px(x,y+1);
+    let p1=P0,p2=P0,p3=P0,p4=P0;
+    if(C===A&&C!==D&&A!==B) p1=A; if(A===B&&A!==C&&B!==D) p2=B;
+    if(D===C&&D!==B&&C!==A) p3=C; if(B===D&&B!==A&&D!==C) p4=D;
+    big[y*2][x*2]=p1; big[y*2][x*2+1]=p2; big[y*2+1][x*2]=p3; big[y*2+1][x*2+1]=p4;
+  }
+  // 36×36: the helmet spans x 6..35 and y 2..37 of the 40×40 doubled art
+  const N=36, ox=3, oy=2, grid=Array.from({length:N},(_,y)=>Array.from({length:N},(_,x)=>big[y+oy]?.[x+ox]??null));
+  if(o.dim) for(let y=0;y<N;y++) for(let x=0;x<N;x++) if(grid[y][x]){ const [r,g,b]=hex(grid[y][x]), l=(r*.3+g*.59+b*.11)*.62+40;
+    grid[y][x]='#'+[l,l,l*1.08].map(n=>Math.min(255,Math.round(n)).toString(16).padStart(2,'0')).join(''); }
+  const cv=document.createElement('canvas'); cv.width=N; cv.height=N; const c=cv.getContext('2d');
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+    let col=grid[y][x];
+    if(!col&&[[1,0],[-1,0],[0,1],[0,-1]].some(([a,b])=>grid[y+b]?.[x+a])) col=P.K;
+    if(col){ c.fillStyle=col; c.fillRect(x,y,1,1); }
+  }
+  if(o.zz){ // "zz" on a cleared patch, top left (the plume and antenna lean right)
+    c.clearRect(0,0,11,13);
+    const z=(x0,y0,s)=>{ c.fillStyle=o.zz; for(let i=0;i<s;i++){ c.fillRect(x0+i,y0,1,1); c.fillRect(x0+i,y0+s-1,1,1); c.fillRect(x0+s-1-i,y0+i,1,1); } };
+    z(4,6,5); z(0,1,4);
+  }
+  return cv;
+}
+// @1x: every other pixel of the @2x helmet.
+function halve(cv){ const h=document.createElement('canvas'); h.width=cv.width/2; h.height=cv.height/2;
+  const c=h.getContext('2d'); c.imageSmoothingEnabled=false; c.drawImage(cv,0,0,h.width,h.height); return h; }
+
 // ---------- export (?export=1), read by export.mjs ----------
 // Each scene: a horizontal strip of character-only frames (no backdrop, no hi-res overlays),
 // cropped to the area any frame uses. Icons: the helmet alone, for the Mac menu bar.
@@ -460,18 +503,17 @@ function exportAll(){
     const c=st.getContext('2d'); frames.forEach((d,i)=>c.putImageData(d,i*w-x0,-y0,x0,y0,w,h));
     out.scenes[L.sc.key]={frames:n,x:x0,y:y0,width:w,height:h,durationMs:Math.round(n*1000/FPS),rgba:raw(c,w*n,h)};
   }
-  // Template icons (black + alpha, macOS tints them) for calm states; color when it matters.
-  const ICONS={watch:{eyes:'normal',template:true}, sleep:{eyes:'blink',template:true},
-    high:{visor:ST.high.c,eyes:'alert'}, crit:{visor:ST.crit.c,eyes:'angry',beacon:true}, mal:{visor:ST.mal.c,eyes:'angry'}};
-  const Z=20;
+  // Menu bar icons: the helmet in color in every state. Calm: cyan eyes. Asleep (monitoring
+  // off): muted, eyes shut, "zz". Alerts: the alert's color; a beacon when it is critical.
+  const ICONS={
+    watch:{visor:ST.idle.c, eyes:'normal'},
+    sleep:{visor:ST.idle.c, eyes:'blink', dim:true, zz:'#aab2c4'},
+    high:{visor:ST.high.c, eyes:'alert'},
+    crit:{visor:ST.crit.c, eyes:'angry', beacon:true},
+    mal:{visor:ST.mal.c, eyes:'angry'}};
   for(const [k,o] of Object.entries(ICONS)){
-    const spr=guard({visor:o.visor||ST.idle.c,led:o.visor||ST.idle.c,eyes:o.eyes,beacon:o.beacon,headOnly:true});
-    const cv=document.createElement('canvas'); cv.width=Z; cv.height=Z; const c=cv.getContext('2d');
-    c.drawImage(spr,10,PAD-2,Z,Z,0,0,Z,Z);
-    if(o.template){ const id=c.getImageData(0,0,Z,Z), d=id.data, [gr,gg,gb]=hex(P.glass);
-      for(let i=0;i<d.length;i+=4){ const glass=d[i]===gr&&d[i+1]===gg&&d[i+2]===gb; d[i]=d[i+1]=d[i+2]=0; d[i+3]=glass?0:(d[i+3]?255:0); }
-      c.putImageData(id,0,0); }
-    out.icons[k]={width:Z,height:Z,template:!!o.template,rgba:raw(c,Z,Z)};
+    const big=menuHelmet({...o, led:o.visor});
+    out.icons[k]={width:18, height:18, rgba:raw(halve(big).getContext('2d'),18,18), rgba2x:raw(big.getContext('2d'),36,36)};
   }
   document.body.innerHTML='<pre id="out">'+JSON.stringify(out)+'</pre>';
 }

@@ -8,14 +8,19 @@ struct SelfguardApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
     @StateObject private var updates = Updates()
+    /// Always true. Passing a binding (rather than none) is what keeps the app running when
+    /// macOS hides the icon (System Settings → Menu Bar, or ⌘-dragging it out): without one,
+    /// SwiftUI quits the app, so it never shows up in that list to be allowed again. Opening
+    /// the app again then shows the dashboard.
+    @State private var menuBarInserted = true
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $menuBarInserted) {
             MenuView(model: model, updates: updates)
         } label: {
-            MenuBarIcon(model: model, delegate: delegate)
+            MenuBarIcon(model: model, updates: updates, delegate: delegate)
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
 
         Window("selfguard", id: "dashboard") {
             DashboardView(model: model)
@@ -36,6 +41,7 @@ struct SelfguardApp: App {
 /// The icon in the menu bar. It is always on screen, so it also opens the window when asked.
 private struct MenuBarIcon: View {
     @ObservedObject var model: AppModel
+    let updates: Updates
     let delegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
 
@@ -53,6 +59,8 @@ private struct MenuBarIcon: View {
                 }
                 if args.contains("--dashboard") { model.openWindow(repo: value(after: "--repo"), page: value(after: "--page")) }
                 if let i = args.firstIndex(of: "--mascot-demo"), i + 1 < args.count { model.mascotDemo(args[i + 1]) }
+                if args.contains("--panel-preview") { PanelPreview.show(model: model, updates: updates) }
+                if let path = value(after: "--panel-snapshot") { PanelPreview.snapshot(model: model, updates: updates, to: path) }
             }
             .onChange(of: model.windowRequests) { _ in
                 openWindow(id: "dashboard")
@@ -83,8 +91,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model?.bridge?.terminateNow()
     }
 
+    /// A menu bar app: with its icon hidden by macOS, no window is left, and it must keep
+    /// running anyway (so it is listed in System Settings → Menu Bar, to be allowed again).
+    func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool { false }
+
     func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows _: Bool) -> Bool {
         Task { @MainActor in model?.openWindow() }
         return false
+    }
+}
+
+/// `--panel-preview`: the menu bar panel in a plain window, to look at it while working on it
+/// (or when macOS hides the icon).
+@MainActor enum PanelPreview {
+    private static var window: NSWindow?
+
+    static func show(model: AppModel, updates: Updates) {
+        let w = NSWindow(contentViewController: NSHostingController(rootView: MenuView(model: model, updates: updates)))
+        w.title = "selfguard panel"
+        w.styleMask = [.titled, .closable, .fullSizeContentView]
+        w.titlebarAppearsTransparent = true
+        w.isOpaque = false
+        w.backgroundColor = .clear
+        w.center()
+        w.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window = w
+    }
+
+    /// `--panel-snapshot <file.png>`: draw the panel into a PNG (from inside the app, so no
+    /// screen recording permission is needed), then leave it open.
+    static func snapshot(model: AppModel, updates: Updates, to path: String) {
+        show(model: model, updates: updates)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard let view = window?.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        }
     }
 }

@@ -91,7 +91,7 @@ enum RelativeTime {
     static func describe(_ s: String?, now: Date = Date()) -> String {
         guard let date = ISODate.parse(s) else { return "never" }
         let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .short
+        f.unitsStyle = .full // "1 hour ago", never "1 hr. ago"
         return f.localizedString(for: date, relativeTo: now)
     }
 }
