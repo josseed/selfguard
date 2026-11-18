@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Check for Updates… is back in the Mac app's menu bar panel**, under Settings and Quit, with
+  the app's version (⌘U). Before, the panel only offered an update once a scheduled check had
+  found it.
+
 ## [0.17.0] - 2026-11-18
 
 ### Changed

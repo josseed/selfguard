@@ -37,13 +37,18 @@
   "keywords": [
     "security",
     "vulnerabilities",
+    "supply-chain",
+    "malware",
     "osv",
+    "audit",
+    "javascript",
     "npm",
+    "python",
     "pypi",
+    "rust",
     "cargo",
     "go",
-    "supply-chain",
-    "audit",
+    "mcp",
     "cli"
   ],
   "devDependencies": {

@@ -165,6 +165,14 @@ struct MenuView: View {
             .buttonStyle(.plain)
             .font(.callout)
             .foregroundStyle(.secondary)
+            // The version, and a way to look for a newer one before the scheduled check does.
+            HStack(spacing: 4) {
+                Text("selfguard \(Bundle.main.shortVersion) ·")
+                Button("Check for Updates…") { updates.check() }.buttonStyle(.plain).underline()
+            }
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .help(updates.enabled ? "Look for a new version now (⌘U)" : "Open the releases page (⌘U)")
         }
     }
 
@@ -175,6 +183,7 @@ struct MenuView: View {
             Button("") { model.checkNow() }.keyboardShortcut("r").disabled(model.busy != nil || model.engine == nil)
             Button("") { open(page: "settings") }.keyboardShortcut(",")
             Button("") { NSApp.terminate(nil) }.keyboardShortcut("q")
+            Button("") { updates.check() }.keyboardShortcut("u")
         }
         .opacity(0).allowsHitTesting(false)
     }
