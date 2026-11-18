@@ -98,14 +98,43 @@ export function pageSettings() {
       [h("span", { class: "small" }, h("span", { class: `status-dot ${on ? "on" : "off"}` }), on ? "On" : "Off"), ...(adopt ? [adopt] : []), toggle]));
   }
 
+  // In the Mac app: what only the app knows, answered by the app itself (not the engine).
+  const thisMac = o.inApp ? h("div", {}, h("p", { class: "small muted" }, "Loading…")) : null;
+  if (thisMac) fillThisMac(thisMac);
+
   $("page").replaceChildren(h("div", { class: "stack" },
     card("Alerts", null, h("div", {}, ...rows)),
+    ...(thisMac ? [card("This Mac", null, thisMac)] : []),
     card("About", null, h("div", { class: "stat-list" },
       statRow("Version", o.version),
       statRow("Tracked projects", o.trackedProjects),
       statRow("Last full sync", ago(o.settings.lastSync)),
       statRow("Last lockfile check", ago(o.settings.lastCheck)),
       statRow("Documentation", h("a", { href: "https://github.com/josseed/selfguard#readme", target: "_blank", rel: "noopener noreferrer" }, "github.com/josseed/selfguard"))))));
+}
+
+async function fillThisMac(host) {
+  let app;
+  try { app = await call("GET", "/api/app"); } catch (e) { host.replaceChildren(h("p", { class: "small muted" }, e.message)); return; }
+  const flip = (key, on, done) => {
+    const b = h("button", { class: `btn small${on ? "" : " primary"}`, type: "button" }, on ? "Turn off" : "Turn on");
+    b.addEventListener("click", () => busy(b, "…", async () => {
+      await call("POST", "/api/app", { [key]: !on });
+      toast(done(!on));
+      await fillThisMac(host);
+    }));
+    return b;
+  };
+  const rows = [
+    settingRow("Open at login", app.loginItem ? "On: selfguard starts with your Mac." : "Off: open selfguard yourself after you log in.",
+      [flip("loginItem", app.loginItem, (on) => on ? "selfguard opens at login" : "selfguard won't open at login")]),
+    settingRow("Bastion alerts", app.mascotAlerts ? "On: Bastion shows up, animated, when something new is found." : "Off: alerts are macOS notifications.",
+      [flip("mascotAlerts", app.mascotAlerts, (on) => on ? "Bastion alerts on" : "Bastion alerts off")]),
+  ];
+  if (app.commandLine.available) rows.push(settingRow("Terminal command",
+    app.commandLine.installed ? "On: selfguard in ~/.local/bin runs this app's engine." : "Off: install selfguard in ~/.local/bin to use the app's engine from a terminal.",
+    [flip("commandLine", app.commandLine.installed, (on) => on ? "Terminal command installed" : "Terminal command removed")]));
+  host.replaceChildren(...rows);
 }
 
 function settingRow(label, text, controls) {

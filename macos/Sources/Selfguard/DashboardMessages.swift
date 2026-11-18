@@ -14,8 +14,12 @@ final class DashboardMessages: NSObject, WKScriptMessageHandlerWithReply {
     private static let maxBody = 900_000 // the engine refuses lines over 1 MB
 
     private let bridge: Bridge?
+    private let setMascotAlerts: (Bool) -> Void
 
-    init(bridge: Bridge?) { self.bridge = bridge }
+    init(bridge: Bridge?, setMascotAlerts: @escaping (Bool) -> Void) {
+        self.bridge = bridge
+        self.setMascotAlerts = setMascotAlerts
+    }
 
     func userContentController(
         _ userContentController: WKUserContentController,
@@ -25,13 +29,34 @@ final class DashboardMessages: NSObject, WKScriptMessageHandlerWithReply {
         guard message.frameInfo.isMainFrame, origin.protocol == DashboardScheme.scheme, origin.host == DashboardScheme.host else {
             return (Bridge.failure(403, "forbidden", "Not the dashboard page.").value, nil)
         }
-        guard let bridge else {
-            return (Bridge.failure(503, "engine_unavailable", "The selfguard engine is missing from the app.").value, nil)
-        }
         guard let (method, path, body) = Self.validate(message.body) else {
             return (Bridge.failure(400, "invalid", "Malformed request.").value, nil)
         }
+        if path == Self.appPath { return (appSettings(method: method, body: body), nil) }
+        guard let bridge else {
+            return (Bridge.failure(503, "engine_unavailable", "The selfguard engine is missing from the app.").value, nil)
+        }
         return (await bridge.request(method: method, path: path, body: body).value, nil)
+    }
+
+    /// What only the app knows (open at login, Bastion's alerts, the terminal command): answered
+    /// here, never sent to the engine. POST takes any of `loginItem`, `mascotAlerts` and
+    /// `commandLine` as booleans; both return the current values.
+    static let appPath = "/api/app"
+
+    private func appSettings(method: String, body: [String: Any]) -> [String: Any] {
+        if method == "POST" {
+            if let on = body["loginItem"] as? Bool { LoginItem.set(on) }
+            if let on = body["mascotAlerts"] as? Bool { setMascotAlerts(on) }
+            if let on = body["commandLine"] as? Bool, CommandLineTool.available, on != CommandLineTool.installed {
+                CommandLineTool.toggle()
+            }
+        }
+        return ["status": 200, "data": [
+            "loginItem": LoginItem.enabled,
+            "mascotAlerts": MascotPanel.enabled,
+            "commandLine": ["available": CommandLineTool.available, "installed": CommandLineTool.installed],
+        ]]
     }
 
     /// `{method: "GET"|"POST", path: "/api/…", body?: {…}}` or nil.

@@ -93,15 +93,6 @@ function png(rgba, w, h) {
   return Buffer.concat(parts);
 }
 
-/** Nearest-neighbor upscale (pixel art stays sharp). */
-function scale(rgba, w, h, k) {
-  const out = Buffer.alloc(rgba.length * k * k);
-  for (let y = 0; y < h * k; y++) {
-    for (let x = 0; x < w * k; x++) rgba.copy(out, (y * w * k + x) * 4, ((Math.floor(y / k) * w + Math.floor(x / k)) * 4), (Math.floor(y / k) * w + Math.floor(x / k)) * 4 + 4);
-  }
-  return out;
-}
-
 // ---------- write ----------
 
 mkdirSync(STATIC, { recursive: true });
@@ -114,9 +105,28 @@ for (const [key, s] of Object.entries(data.scenes)) {
   console.log(`${key.padEnd(6)} ${s.frames} frames ${s.width}x${s.height}  ${(file.length / 1024).toFixed(1)} KB`);
 }
 writeFileSync(new URL("manifest.json", STATIC), JSON.stringify(manifest, null, 2) + "\n");
+// Menu bar icons: drawn at both resolutions (one art pixel per screen pixel), each with an
+// optional color layer (menubar-<state>-color) the app draws over the tinted template.
+const writeIcon = (name, icon) => {
+  writeFileSync(new URL(`menubar-${name}.png`, MAC), png(Buffer.from(icon.rgba, "base64"), icon.width, icon.height));
+  writeFileSync(new URL(`menubar-${name}@2x.png`, MAC), png(Buffer.from(icon.rgba2x, "base64"), icon.width * 2, icon.height * 2));
+};
 for (const [key, icon] of Object.entries(data.icons)) {
-  const rgba = Buffer.from(icon.rgba, "base64");
-  writeFileSync(new URL(`menubar-${key}.png`, MAC), png(rgba, icon.width, icon.height));
-  writeFileSync(new URL(`menubar-${key}@2x.png`, MAC), png(scale(rgba, icon.width, icon.height, 2), icon.width * 2, icon.height * 2));
+  writeIcon(key, icon);
+  if (icon.color) writeIcon(`${key}-color`, icon.color);
 }
-console.log(`wrote ${fileURLToPath(STATIC)} and ${fileURLToPath(MAC)}`);
+// The app icon: a 1024 px master, then every size macOS asks for, packed into the .icns the app
+// (and the CLI's notifications) use.
+const ICNS = new URL("src/assets/selfguard.icns", ROOT);
+const set = fileURLToPath(new URL("macos/build/selfguard.iconset/", ROOT));
+mkdirSync(set, { recursive: true });
+const master = `${set}icon_512x512@2x.png`;
+writeFileSync(master, png(Buffer.from(data.appIcon.rgba, "base64"), 1024, 1024));
+for (const size of [16, 32, 128, 256, 512]) {
+  for (const [scale, suffix] of [[1, ""], [2, "@2x"]]) {
+    const file = `${set}icon_${size}x${size}${suffix}.png`;
+    if (file !== master) execFileSync("sips", ["-z", String(size * scale), String(size * scale), master, "--out", file], { stdio: "ignore" });
+  }
+}
+execFileSync("iconutil", ["-c", "icns", set, "-o", fileURLToPath(ICNS)]);
+console.log(`wrote ${fileURLToPath(STATIC)}, ${fileURLToPath(MAC)} and ${fileURLToPath(ICNS)}`);
