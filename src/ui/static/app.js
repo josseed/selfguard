@@ -46,7 +46,7 @@ function renderUpdate() {
       h("span", {},
         h("strong", {}, `selfguard ${u.latest} is available`), ` (you have ${u.current}). `,
         h("a", { class: "act", href: u.releaseNotes, target: "_blank", rel: "noopener noreferrer" }, "What's new"),
-        h("span", { class: "muted" }, " · Install it from the menu bar icon's panel (signed and verified; the app restarts)."))),
+        h("span", { class: "muted" }, " · Install it from the menu bar icon's panel: Check for Updates… (signed and verified; the app restarts)."))),
     later));
 }
 

@@ -257,7 +257,8 @@ are recorded and shown by `selfguard status`, `selfguard report` and the shell h
 ## Staying up to date
 
 **The Mac app** updates itself, with its engine. When a new version is out, the menu bar panel
-shows a notice; click it to install. Every update is checked before it is installed: the
+shows a notice; click it to install. To look right away, use **Check for Updates…** at the
+bottom of the panel (<kbd>⌘</kbd>+<kbd>U</kbd>). Every update is checked before it is installed: the
 release feed's and the download's EdDSA signatures, and Apple's code signature from the same
 Developer ID. The app restarts on the new version and the background agents use it on their
 next run.
