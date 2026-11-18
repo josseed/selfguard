@@ -29,11 +29,11 @@ can't read repos across the disk), Windows and Linux.
 | Piece | Today | In the app |
 |---|---|---|
 | Engine | `dist/cli.js` on the user's Node | same code, run by the bundled Node |
-| Dashboard | the page of `src/ui/static`, once served by `selfguard ui` on 127.0.0.1 | in a WKWebView under `selfguard://dashboard/`; API over `selfguard bridge` (stdio); no server |
+| Dashboard | the page of `src/ui/static`, once served by the removed `selfguard ui` on 127.0.0.1 | in a WKWebView under `selfguard://dashboard/`; API over `selfguard bridge` (stdio); no server |
 | Services | launchd agents (`watch`, `sync`, `discover`, `share`, `remote`) built from `process.execPath` + `cliEntry()` | the same agents, pointing to the bundled engine |
 | Alerts | `osascript` banners and a blocking dialog | `UNUserNotificationCenter` and an `NSAlert` from the app |
 | Updates | daily npm check, shows `npm i -g …` | Sparkle |
-| Launcher | `selfguard app install` generated a script-only `.app` | removed; `selfguard ui` opens the real app |
+| Launcher | `selfguard app install` generated a script-only `.app` | removed, with `selfguard ui` and `selfguard app`: the npm CLI is terminal-only and the dashboard is opened from the app (menu bar → Open Dashboard) |
 
 ## Architecture
 
@@ -66,9 +66,10 @@ selfguard.app/Contents/
   `src/bridge.ts` and docs/cli.md). It starts with the first request, restarts on the next one
   if it dies (failing the ones in flight), and stops 60 s after the window closes and when the
   app quits. No dashboard server, port, token or `ui.json` exist.
-- **`selfguard ui`** launches the app with `open -b dev.selfguard.mac --args --dashboard
-  [--repo K] [--page P]`; without the app it says where to get it. On Linux there is no
-  dashboard.
+- **Opening the dashboard** is done from the app only (menu bar → Open Dashboard). The npm CLI
+  has no dashboard command and the npm package does not ship the page (`dist/ui/static` is
+  left out of `files`; the build still copies it into `dist/` for the app bundle). The app
+  still accepts `--dashboard [--repo K] [--page P]` at launch. On Linux there is no dashboard.
 - **State for the menu**: `~/.selfguard/menubar.json`, rewritten by the engine after every scan
   with news, `sync`, `dismiss` and `forget`, and by `selfguard menubar` (the app runs it at
   launch, after Check Now / Sync and every 15 minutes for service health). The app checks the
@@ -164,7 +165,7 @@ Same GitHub release `vX.Y.Z` as npm, with one more job in `release.yml`:
 | 2. Engine integration | Native notifications, adoption of the services, CLI tool link, `SELFGUARD_RUNTIME=app` | — |
 | 3. Signed releases | CI signs, notarizes and publishes the DMG on every release | Add the secrets to the `macos-release` environment |
 | 4. Auto-update | Sparkle appcast, "Check for updates", Homebrew cask | Create the tap repo |
-| 5. Docs and migration | `docs/mac-app.md`, README (the old `selfguard app install` now points to the real app: done) | — |
+| 5. Docs and migration | `docs/mac-app.md`, README (`selfguard ui` / `selfguard app` removed; the dashboard is only in the app: done) | — |
 
 Phases 1 and 2 can start right away and don't depend on the Apple account.
 

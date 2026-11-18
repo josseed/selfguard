@@ -76,15 +76,12 @@ Only **active** checkouts (git activity in the last 30 days) alert you; see
 [how it works](how-it-works.md#alerts). Change the reminder with
 `selfguard settings --remind weekly` (or `off`).
 
-### Dashboard
+### Dashboard (Mac app)
 
-```sh
-selfguard ui
-```
-
-Opens the dashboard in the selfguard Mac app ([download](https://github.com/josseed/selfguard/releases/latest)).
-It is the only visual part of selfguard: there is no web page and no server. On Linux use the
-CLI (`selfguard status`, `report`). The dashboard shows:
+The dashboard lives only in the selfguard Mac app ([download](https://github.com/josseed/selfguard/releases/latest)).
+It is the only visual part of selfguard: there is no web page and no server, and the npm CLI
+does not open it. In the terminal (and on Linux) use `selfguard status` and `selfguard report`.
+The dashboard shows:
 
 - **Overview**: whether anything needs attention, counts by severity, and **Fix first**: the
   serious packages ranked by how many repos they affect.
@@ -107,7 +104,7 @@ CLI (`selfguard status`, `report`). The dashboard shows:
   updates.
 
 Open it from the menu bar icon ("Open Dashboard"), from Spotlight (<kbd>⌘</kbd>+<kbd>Space</kbd>
-→ "selfguard") or with `selfguard ui`.
+→ "selfguard").
 
 ### In the terminal
 
@@ -125,7 +122,6 @@ Open it from the menu bar icon ("Open Dashboard"), from Spotlight (<kbd>⌘</kbd
 Useful commands:
 
 ```sh
-selfguard ui                    # dashboard (Mac app)
 selfguard remind                # what is serious and still open, right now
 selfguard status                # active repos, riskiest first (--all for everything)
 selfguard scan                  # full report for the current project
@@ -255,7 +251,7 @@ projects come back right away.
 ```
 
 Desktop notifications and the lockfile watcher are not implemented on Linux yet. New findings
-are recorded and shown by `selfguard ui`, `selfguard status` and the shell hook.
+are recorded and shown by `selfguard status`, `selfguard report` and the shell hook.
 
 ## Staying up to date
 
@@ -276,7 +272,6 @@ off with `selfguard settings --update-check off`.
 
 ```sh
 selfguard schedule off                 # macOS: remove the launchd agents
-selfguard app uninstall                # macOS: remove ~/Applications/selfguard.app
 npm uninstall -g selfguard
 rm -rf ~/.selfguard                    # all local state
 ```
