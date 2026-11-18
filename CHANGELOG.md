@@ -34,6 +34,8 @@ All notable changes to this project are documented here. The format is based on
   Menu Bar, or ⌘-dragging it out), so it never showed up there to be allowed again. It now
   keeps running; opening it again shows the dashboard.
 - The dashboard's "Check for updates" switch had no effect (the settings route dropped it).
+- A long warning (for example an unpinned MCP server) stretched its card past the window's
+  edge, hiding its end and the fix column. Cards keep to the page's width and the message wraps.
 
 ### Security
 

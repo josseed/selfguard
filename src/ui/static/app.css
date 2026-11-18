@@ -55,7 +55,7 @@ a:hover { text-decoration: underline; }
 
 /* ---------- shell ---------- */
 
-.shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+.shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100vh; }
 .sidebar {
   position: sticky;
   top: 0;
@@ -144,7 +144,7 @@ main#page { min-width: 0; }
 .notice .x svg { width: 12px; height: 12px; }
 
 @media (max-width: 860px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: minmax(0, 1fr); }
   .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
   .nav { grid-auto-flow: column; overflow-x: auto; }
   .sidebar-foot { display: none; }
