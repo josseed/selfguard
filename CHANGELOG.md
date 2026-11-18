@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **A new menu bar panel.** The menu is now a panel, always dark on the system's glass: Bastion
+  and the status, the time since the last check (↻ checks now), one notice when something needs
+  you (a service off, an update), what's new since you last looked (or the counts by
+  severity), Open Dashboard (⌘D), three live stats, Settings… (⌘,) and Quit (⌘Q). It has
+  nothing to configure: Open at Login, Bastion Alerts and the terminal command move to the
+  dashboard's Settings, in "This Mac".
+- **Sharper icons.** The menu bar helmet is drawn at the screen's resolution (36×36 on Retina),
+  in color in every state: cyan eyes when all is well, muted with "zz" when monitoring is off,
+  the alert's color otherwise. The app icon is now Bastion's helmet.
+- Times read in full words ("1 hour ago").
+
+### Fixed
+
+- The Mac app quit at launch, silently, when macOS hid its menu bar icon (System Settings →
+  Menu Bar, or ⌘-dragging it out), so it never showed up there to be allowed again. It now
+  keeps running; opening it again shows the dashboard.
+
 ## [0.16.0] - 2026-11-17
 
 ### Added
