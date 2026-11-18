@@ -25,6 +25,10 @@ All notable changes to this project are documented here. The format is based on
   Menu Bar, or ⌘-dragging it out), so it never showed up there to be allowed again. It now
   keeps running; opening it again shows the dashboard.
 
+### Security
+
+- The terminal command installer only replaces a link that belongs to selfguard.app.
+
 ## [0.16.0] - 2026-11-17
 
 ### Added

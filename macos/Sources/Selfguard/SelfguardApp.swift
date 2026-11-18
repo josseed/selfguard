@@ -59,8 +59,11 @@ private struct MenuBarIcon: View {
                 }
                 if args.contains("--dashboard") { model.openWindow(repo: value(after: "--repo"), page: value(after: "--page")) }
                 if let i = args.firstIndex(of: "--mascot-demo"), i + 1 < args.count { model.mascotDemo(args[i + 1]) }
+                #if DEBUG
+                // Development only: release builds (`swift build -c release`) don't define DEBUG.
                 if args.contains("--panel-preview") { PanelPreview.show(model: model, updates: updates) }
                 if let path = value(after: "--panel-snapshot") { PanelPreview.snapshot(model: model, updates: updates, to: path) }
+                #endif
             }
             .onChange(of: model.windowRequests) { _ in
                 openWindow(id: "dashboard")
@@ -101,7 +104,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// `--panel-preview`: the menu bar panel in a plain window, to look at it while working on it
+#if DEBUG
+/// `--panel-preview` (debug builds only): the menu bar panel in a plain window, to look at it while working on it
 /// (or when macOS hides the icon).
 @MainActor enum PanelPreview {
     private static var window: NSWindow?
@@ -131,3 +135,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 }
+#endif

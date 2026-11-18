@@ -34,7 +34,7 @@ enum CommandLineTool {
         let fm = FileManager.default
         if fm.fileExists(atPath: link.path) || (try? fm.destinationOfSymbolicLink(atPath: link.path)) != nil {
             // Never replace something that isn't ours (for example the npm install's command).
-            if (try? fm.destinationOfSymbolicLink(atPath: link.path)).map({ $0.contains(".app/Contents/Resources/engine/") }) != true {
+            if !linkIsFromThisApp() {
                 return say("There is already a selfguard command", "\(link.path) exists and isn't from this app, so it was left alone.")
             }
             try? fm.removeItem(at: link)
@@ -50,6 +50,19 @@ enum CommandLineTool {
         say("The selfguard command is installed",
             onPath ? "Open a new terminal and run: selfguard status"
                    : "Add \(dir) to your PATH (for example: echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.zshrc), then open a new terminal and run: selfguard status")
+    }
+
+    /// The link points into a copy of this app (this one, or an older one somewhere else): the
+    /// enclosing .app has this app's bundle identifier.
+    private static func linkIsFromThisApp() -> Bool {
+        guard let id = Bundle.main.bundleIdentifier,
+              let dest = try? FileManager.default.destinationOfSymbolicLink(atPath: link.path) else { return false }
+        var url = URL(fileURLWithPath: dest, relativeTo: link.deletingLastPathComponent()).standardizedFileURL
+        while url.path != "/" {
+            if url.pathExtension == "app" { return Bundle(url: url)?.bundleIdentifier == id }
+            url.deleteLastPathComponent()
+        }
+        return false
     }
 
     @MainActor
