@@ -35,6 +35,14 @@ Malicious-package alerts also open a dialog that stays on screen, so they can't 
 - Dev-only findings and transitive high-severity findings never trigger the reminder. They are in
   the dashboard.
 
+## The menu bar icon doesn't show
+
+macOS can hide a menu bar icon: when the menu bar is full (behind the notch), or when the app
+isn't allowed there. Open **System Settings → Menu Bar** and turn on selfguard under "Allow in
+the Menu Bar" (selfguard has to be running to be listed). selfguard keeps running while its
+icon is hidden, so alerts still arrive; opening the app again (Spotlight, Finder) shows the
+dashboard. A menu bar manager (Bartender, Ice) can also be hiding it.
+
 ## The dashboard doesn't open
 
 The dashboard is the selfguard Mac app's window ([download](https://github.com/josseed/selfguard/releases/latest));

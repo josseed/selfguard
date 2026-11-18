@@ -100,8 +100,9 @@ The dashboard shows:
   look for new projects, and include excluded paths again.
 - **Machines**: dev servers watched over SSH: connection status, their folders (with the same
   folder browser), sync now, remove.
-- **Settings**: reminder frequency, the active window, background watching on/off and
-  updates.
+- **Settings**: background watching and the lockfile watcher, reminder frequency, the active
+  window, finding new projects, other machines, updates, and **This Mac** (open at login,
+  Bastion's alerts, the terminal command).
 
 Open it from the menu bar icon ("Open Dashboard"), from Spotlight (<kbd>⌘</kbd>+<kbd>Space</kbd>
 → "selfguard").
@@ -255,18 +256,22 @@ are recorded and shown by `selfguard status`, `selfguard report` and the shell h
 
 ## Staying up to date
 
-selfguard checks npm once a day for a newer version, sending only the package name. When there
-is one, you get one notification and the dashboard shows a banner with the release notes and the
-command to run:
+**The Mac app** updates itself, with its engine. When a new version is out, the menu bar panel
+shows a notice; click it to install. Every update is checked before it is installed: the
+release feed's and the download's EdDSA signatures, and Apple's code signature from the same
+Developer ID. The app restarts on the new version and the background agents use it on their
+next run.
+
+**The npm CLI** checks npm once a day for a newer version, sending only the package name. When
+there is one, you get one notification with the command to run:
 
 ```sh
 npm i -g selfguard@<version> --ignore-scripts
 ```
 
-selfguard never updates itself. After you run that command, the dashboard shows **Restart
-dashboard**, which reloads it with the new version at the same address. The background agents
-pick up the new version on their next run. `selfguard update` checks right away. Turn the check
-off with `selfguard settings --update-check off`.
+The CLI never updates itself. The background agents pick up the new version on their next run.
+`selfguard update` checks right away. Turn the check off with
+`selfguard settings --update-check off` (or in the dashboard: Settings → Updates).
 
 ## Uninstall
 
