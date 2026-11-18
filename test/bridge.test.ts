@@ -52,6 +52,14 @@ test("a POST with a body; validation errors map to statuses", async () => {
   assert.equal((await ask({ id: 3, method: "POST", path: "/api/settings" })).status, 200, "no body means {}");
 });
 
+test("the update check can be turned off and on from the dashboard", async () => {
+  const off = await post("/api/settings", { updateCheck: false });
+  assert.equal(off.status, 200);
+  assert.equal((off.data as { updateCheck: boolean }).updateCheck, false);
+  const on = await post("/api/settings", { updateCheck: true });
+  assert.equal((on.data as { updateCheck: boolean }).updateCheck, true);
+});
+
 test("only tracked projects and configured machines are acted on", async () => {
   const untracked = await post("/api/scan", { path: "/etc" });
   assert.equal(untracked.status, 404);

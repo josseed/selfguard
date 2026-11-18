@@ -4,7 +4,8 @@
 import { $, h, icon, state, store, toast } from "./core.js";
 import { call, loadFolders, loadMachines, loadOverview, loadPackages, loadPeers, loadRepo, loadShare } from "./api.js";
 import { PAGES, renderNav } from "./layout.js";
-import { pageOverview, pageRepos } from "./pages-repos.js";
+import { pageOverview } from "./page-overview.js";
+import { pageRepos } from "./pages-repos.js";
 import { pageRepo } from "./page-repo.js";
 import { pageActivity, pagePackages } from "./pages-packages.js";
 import { pageFolders, pollFind } from "./page-folders.js";
@@ -39,14 +40,24 @@ function renderUpdate() {
     store.set("selfguard-update-hidden", state.ui.updateHidden);
     renderUpdate();
   });
-  host.replaceChildren(h("div", { class: "update-banner" },
-    h("span", { class: "folder-icon" }, icon("shieldOk")),
+  host.replaceChildren(h("div", { class: "notice info", role: "status" },
+    icon("info"),
     h("div", { class: "grow" },
-      h("strong", {}, `selfguard ${u.latest} is available`), h("span", { class: "muted" }, ` (you have ${u.current}). `),
-      h("a", { href: u.releaseNotes, target: "_blank", rel: "noopener noreferrer" }, "What's new"),
-      h("div", { class: "small muted" }, "Update it from the selfguard menu: Check for Updates… (signed and verified; the app restarts).")),
+      h("span", {},
+        h("strong", {}, `selfguard ${u.latest} is available`), ` (you have ${u.current}). `,
+        h("a", { class: "act", href: u.releaseNotes, target: "_blank", rel: "noopener noreferrer" }, "What's new"),
+        h("span", { class: "muted" }, " · Update it from the selfguard menu: Check for Updates… (signed and verified; the app restarts)."))),
     later));
 }
+
+/** Keyboard shortcuts shown on buttons (data-shortcut, see controls.shortcutButton): ⌘ + key. */
+document.addEventListener("keydown", (e) => {
+  if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || !$("modal").hidden) return;
+  const b = document.querySelector(`#page-actions [data-shortcut="${CSS.escape(e.key.toLowerCase())}"]`);
+  if (!b || b.disabled) return;
+  e.preventDefault();
+  b.click();
+});
 
 async function render() {
   if (!state.overview) return;

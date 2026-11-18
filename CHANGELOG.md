@@ -18,12 +18,22 @@ All notable changes to this project are documented here. The format is based on
   in color in every state: cyan eyes when all is well, muted with "zz" when monitoring is off,
   the alert's color otherwise. The app icon is now Bastion's helmet.
 - Times read in full words ("1 hour ago").
+- **Dashboard redesign.** Every page now follows the menu bar panel's style: always dark,
+  borderless cards with uppercase section titles, severity pills, hairline dividers and the
+  helmet in the sidebar and header. The Overview opens with a status headline ("Watching N
+  projects · checked … ago"), one dismissible notice when something needs a decision (for
+  example the lockfile watcher being off), four severity tiles, the repos that need attention
+  and recent activity. Settings are grouped cards (Watching, Alerts, This Mac, Projects, Other
+  machines, Updates, About) with switches and presets (reminder daily, weekly or off; active
+  window 7, 30, 90 days or 1 year). Sync now has a shortcut (⌘S). Times and counts are written
+  out in full words ("5 minutes ago", not "5 min ago").
 
 ### Fixed
 
 - The Mac app quit at launch, silently, when macOS hid its menu bar icon (System Settings →
   Menu Bar, or ⌘-dragging it out), so it never showed up there to be allowed again. It now
   keeps running; opening it again shows the dashboard.
+- The dashboard's "Check for updates" switch had no effect (the settings route dropped it).
 
 ### Security
 

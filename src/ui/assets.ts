@@ -20,6 +20,7 @@ export const STATIC: Record<string, { file: string; type: string }> = {
   "/core.js": { file: "core.js", type: JS },
   "/api.js": { file: "api.js", type: JS },
   "/layout.js": { file: "layout.js", type: JS },
+  "/page-overview.js": { file: "page-overview.js", type: JS },
   "/pages-repos.js": { file: "pages-repos.js", type: JS },
   "/page-repo.js": { file: "page-repo.js", type: JS },
   "/pages-packages.js": { file: "pages-packages.js", type: JS },
@@ -30,6 +31,7 @@ export const STATIC: Record<string, { file: string; type: string }> = {
   "/page-settings.js": { file: "page-settings.js", type: JS },
   "/sources.js": { file: "sources.js", type: JS },
   "/mascot.js": { file: "mascot.js", type: JS },
+  "/controls.js": { file: "controls.js", type: JS },
   "/app.css": { file: "app.css", type: CSS },
   "/components.css": { file: "components.css", type: CSS },
   "/pages.css": { file: "pages.css", type: CSS },
@@ -41,6 +43,12 @@ export const STATIC: Record<string, { file: string; type: string }> = {
   "/mascot/crit.png": { file: "mascot/crit.png", type: "image/png" },
   "/mascot/mal.png": { file: "mascot/mal.png", type: "image/png" },
   "/mascot/fixed.png": { file: "mascot/fixed.png", type: "image/png" },
+  // The helmet in the header and sidebar: the Mac app's menu bar icons (macos/Resources/mascot, @2x).
+  "/mascot/helmet-watch.png": { file: "mascot/helmet-watch.png", type: "image/png" },
+  "/mascot/helmet-sleep.png": { file: "mascot/helmet-sleep.png", type: "image/png" },
+  "/mascot/helmet-high.png": { file: "mascot/helmet-high.png", type: "image/png" },
+  "/mascot/helmet-crit.png": { file: "mascot/helmet-crit.png", type: "image/png" },
+  "/mascot/helmet-mal.png": { file: "mascot/helmet-mal.png", type: "image/png" },
 };
 
 /**

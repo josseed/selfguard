@@ -146,7 +146,7 @@ export async function route(method: string, url: URL, body: Record<string, unkno
       return api.checkMachines({ notify: true, only: name ? [name] : undefined });
     }
     if (p === "/api/settings") {
-      const r = api.updateSettings({ remind: body.remind, activeDays: body.activeDays, autoDiscover: body.autoDiscover });
+      const r = api.updateSettings({ remind: body.remind, activeDays: body.activeDays, autoDiscover: body.autoDiscover, updateCheck: body.updateCheck });
       if (body.autoDiscover !== undefined) {
         try {
           updateDiscoverAgent(r.autoDiscover);
