@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-18
+
 ### Changed
 
 - **A new menu bar panel.** The menu is now a panel, always dark on the system's glass: Bastion
@@ -489,7 +491,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/josseed/selfguard/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/josseed/selfguard/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/josseed/selfguard/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/josseed/selfguard/compare/v0.13.0...v0.14.0
