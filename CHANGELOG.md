@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-20
+
 ### Fixed
 
 - **The Mac app is built again for releases.** Since 0.17.1 the app uses the macOS 26 SDK
@@ -569,7 +571,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.18.1...HEAD
+[0.18.1]: https://github.com/josseed/selfguard/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/josseed/selfguard/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/josseed/selfguard/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/josseed/selfguard/compare/v0.16.0...v0.17.0
