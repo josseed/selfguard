@@ -19,6 +19,10 @@ project code, package managers or language toolchains.
   machine's agent configs and per-repo ones like .mcp.json). Their findings carry \`certainty\`: confirmed,
   may-be-affected (mutable tag like @v4) or version-unknown (branch, bare SHA, unpinned package), plus file
   and line; \`warnings\` are risky practices (unpinned actions/servers, script injection), not vulnerabilities.
+  The "agents" kind also warns about repo files that make an agent or the editor run code or leak credentials
+  on open (rules repo-agent-hooks, agent-endpoint-override, agent-helper-command, agent-permissions-bypassed,
+  autorun-task, terminal-env-injection, hidden-unicode…); messages never include values. Treat a high one in
+  a repo the user just cloned as "don't open it with an agent until reviewed".
 - risks: warnings with \`alerts: true\` (severity high, or their rule asks) notify the user when they appear
   after a source's first scan, in active repos or on this machine, and high ones join the daily reminder.
   A warning put there on purpose (a LaunchAgent, a repo hook) can be dismissed by its \`id\`: it stays listed
