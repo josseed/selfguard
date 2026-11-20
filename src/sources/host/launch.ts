@@ -4,8 +4,8 @@
  * (announced once when it appears after the baseline); suspicious ones are high. Messages name
  * the label and the program's basename only, never the arguments (they may hold secrets).
  */
-import { readFileSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { readRegularFile } from "../../fsutil.ts";
 import type { ExtractResult, SourceExtractor, SourceTarget } from "../types.ts";
 import { exists, filesIn, home, isDir, NONE, systemPath } from "./fs.ts";
 import { parseBinaryPlist, parseXmlPlist, type PlistValue } from "./plist.ts";
@@ -109,8 +109,9 @@ function readItem(file: string, text: string): LaunchItem | null {
   if (text.startsWith("bplist00")) {
     // The core hands text over; a binary plist is read again as bytes (bounded).
     try {
-      if (statSync(file).size > MAX_BINARY_PLIST) return null;
-      const value = parseBinaryPlist(readFileSync(file));
+      const raw = readRegularFile(file, MAX_BINARY_PLIST);
+      if (!raw) return null;
+      const value = parseBinaryPlist(raw.data);
       return value === null ? null : fromPlist(file, value);
     } catch {
       return null;

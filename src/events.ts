@@ -3,8 +3,8 @@
  * which reminders were sent. Feeds the dashboard's activity feed. Local only.
  */
 import type { Ecosystem } from "./lockfile/types.ts";
-import { appendFileSync, readFileSync, statSync } from "node:fs";
-import { atomicWrite, ensureDir, isObject } from "./fsutil.ts";
+import { appendFileSync, readFileSync } from "node:fs";
+import { atomicWrite, ensureDir, isObject, readIfOver } from "./fsutil.ts";
 import type { Severity } from "./match.ts";
 import { eventsFile, stateRoot } from "./paths.ts";
 import { groupByPackage } from "./report.ts";
@@ -74,8 +74,9 @@ export function appendEvents(events: SelfguardEvent[]): void {
   const file = eventsFile();
   appendFileSync(file, events.map((e) => `${JSON.stringify(e)}\n`).join(""), { mode: 0o600 });
   try {
-    if (statSync(file).size > MAX_BYTES) {
-      const lines = readFileSync(file, "utf8").split("\n").filter(Boolean);
+    const big = readIfOver(file, MAX_BYTES);
+    if (big !== null) {
+      const lines = big.split("\n").filter(Boolean);
       atomicWrite(file, `${lines.slice(-KEEP_LINES).join("\n")}\n`);
     }
   } catch {
