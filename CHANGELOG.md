@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-11-20
+
+### Fixed
+
+- **The menu bar panel no longer leaves empty glass under its footer** on macOS 26. The panel
+  grew with its content but never shrank back, so after closing a notice or once the news went
+  away it kept its old height. It now fits its content, top edge in place.
+
+### Added
+
+- Property-based fuzzing of the parsers with fast-check, in the test suite.
+
 ## [0.19.0] - 2026-11-20
 
 ### Security
@@ -657,7 +669,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.19.1...HEAD
+[0.19.1]: https://github.com/josseed/selfguard/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/josseed/selfguard/compare/v0.18.2...v0.19.0
 [0.18.2]: https://github.com/josseed/selfguard/compare/v0.18.1...v0.18.2
 [0.18.1]: https://github.com/josseed/selfguard/compare/v0.18.0...v0.18.1
