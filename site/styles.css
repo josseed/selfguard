@@ -317,3 +317,45 @@ th { white-space: nowrap; }
   .install { max-width: 100%; overflow: hidden; white-space: nowrap; }
   .cta .btn { width: 100%; justify-content: center; }
 }
+
+/* Hero: the four layers panel */
+.layers { list-style: none; margin: 0; padding: 8px; }
+.layers li {
+  display: grid; grid-template-columns: 40px 1fr auto; gap: 14px; align-items: center;
+  padding: 13px 12px; border-radius: 11px;
+}
+.layers li + li { border-top: 1px solid rgba(255,255,255,.05); }
+.layers b { display: block; font-size: 15px; font-weight: 600; }
+.layers small { display: block; font-size: 12.5px; color: var(--text-3); }
+.layer-icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; }
+.layer-icon svg, .icon svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pill { font: 600 12px var(--font); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.pill-crit { color: var(--crit-text); background: rgba(255,69,58,.14); }
+.pill-high { color: var(--high-text); background: rgba(255,159,10,.14); }
+.pill-mal { color: var(--mal-text); background: rgba(191,90,242,.16); box-shadow: 0 0 14px -2px rgba(191,90,242,.5); }
+.pill-mod { color: var(--moderate); background: rgba(255,214,10,.11); }
+
+/* Layers grid */
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+.layer-card { padding: 32px; }
+.layer-card p + p { margin-top: 14px; }
+.tags { font: 12.5px var(--mono) !important; color: var(--text-3) !important; }
+
+/* Real attacks */
+.attacks { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.attack {
+  position: relative; padding: 22px 20px; border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(191,90,242,.07), rgba(255,255,255,.02));
+  border: 1px solid rgba(191,90,242,.18);
+}
+.attack p { margin: 0; font-size: 14px; color: var(--text-2); }
+.attack .attack-name { font: 700 17px var(--display); color: var(--text); letter-spacing: -.01em; }
+.attack .attack-kind { font: 12px var(--mono); color: var(--mal-text); margin: 2px 0 12px; }
+.attack .attack-guard { margin-top: 14px; font-size: 13px; color: var(--ok-text); }
+.attack code { font-size: .8em; }
+
+@media (max-width: 1100px) { .attacks { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 960px) { .grid-2 { grid-template-columns: 1fr; } .attacks { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .attacks { grid-template-columns: 1fr; } }
+.strip-inner { flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.strip .chips { justify-content: center; }
