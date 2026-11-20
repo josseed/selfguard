@@ -103,3 +103,17 @@ test("a repo without a virtualenv has no host record", () => {
   const root = gitRepo();
   assert.deepEqual(sources.sourceInputs([root]).filter((i) => i.kind === "host"), []);
 });
+
+test("a hook's file name never starts a message, and odd names aren't shown", () => {
+  freshHome();
+  const root = gitRepo();
+  put(root, `${SITE}/-e property p : (do shell script x) --.pth`, "import base64\n");
+  put(root, `${SITE}/evil_hook.pth`, "import base64\n");
+  const rec = scanHost(sources, sources.repoTarget(root));
+  const messages = rec.warnings.map((w) => w.message).sort();
+  assert.equal(messages.length, 2);
+  for (const m of messages) assert.match(m, /^Python startup hook /);
+  assert.ok(messages.some((m) => m.includes("Python startup hook a file with an unusual name in")));
+  assert.ok(messages.some((m) => m.includes("Python startup hook evil_hook.pth in")));
+  assert.ok(!messages.some((m) => m.includes("do shell script")));
+});

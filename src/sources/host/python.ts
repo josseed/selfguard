@@ -74,8 +74,15 @@ function envName(file: string, target: SourceTarget): string {
   return "your user site-packages";
 }
 
+/**
+ * How a hook file is named in messages: the file name only when it looks like one (a repo picks
+ * it, and messages reach notifications and terminals), and never first in the message.
+ */
+const shown = (name: string): string => (/^[A-Za-z0-9_][A-Za-z0-9._+-]{0,100}$/.test(name) ? name : "a file with an unusual name");
+
 export function extractPythonHook(file: string, text: string, where: string): ExtractResult {
   const name = basename(file);
+  const label = shown(name);
   const lines = text.split(/\r?\n/);
   if (CUSTOMIZE.has(name)) {
     const bad = DANGEROUS.test(text);
@@ -89,8 +96,8 @@ export function extractPythonHook(file: string, text: string, where: string): Ex
           key: name,
           line: 0,
           message: bad
-            ? `${name} in ${where} runs at every Python start and decodes, evaluates or downloads code: the LiteLLM compromise worked this way. Remove the environment and rotate credentials.`
-            : `${name} in ${where} runs at every Python start. Packages rarely ship one: check where it came from.`,
+            ? `Python startup hook ${label} in ${where} runs at every Python start and decodes, evaluates or downloads code: the LiteLLM compromise worked this way. Remove the environment and rotate credentials.`
+            : `Python startup hook ${label} in ${where} runs at every Python start. Packages rarely ship one: check where it came from.`,
         },
       ],
       skipped: 0,
@@ -112,7 +119,7 @@ export function extractPythonHook(file: string, text: string, where: string): Ex
             urgent: true,
             key: name,
             line,
-            message: `${name} in ${where} runs hidden code at every Python start (decodes, evaluates or downloads code), like the LiteLLM .pth stealer. Remove the package that installed it and rotate credentials.`,
+            message: `Python startup hook ${label} in ${where} runs hidden code at every Python start (decodes, evaluates or downloads code), like the LiteLLM .pth stealer. Remove the package that installed it and rotate credentials.`,
           }
         : {
             rule: "python-startup-hook",
@@ -120,7 +127,7 @@ export function extractPythonHook(file: string, text: string, where: string): Ex
             notify: true,
             key: name,
             line,
-            message: `${name} in ${where} runs code at every Python start. Make sure you know which package installed it.`,
+            message: `Python startup hook ${label} in ${where} runs code at every Python start. Make sure you know which package installed it.`,
           },
     ],
     skipped: 0,

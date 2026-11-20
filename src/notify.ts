@@ -2,16 +2,30 @@ import { execFile } from "node:child_process";
 import { clean } from "./sanitize.ts";
 
 /*
- * macOS alerts via osascript. Untrusted text (package names, advisory text) is always
- * passed as argv to an `on run` handler, never interpolated into AppleScript source,
- * so it cannot inject script.
+ * macOS alerts via osascript. Untrusted text (package names, advisory text, file names from
+ * scanned repos) is always passed as argv to an `on run` handler, never interpolated into
+ * AppleScript source. osascript parses options until the first non-option word, so a text
+ * starting with "-e" would become another script line: a fixed word goes first (option parsing
+ * stops there) and leading dashes are dropped as well.
  */
 
 const enabled = (): boolean => process.platform === "darwin" && process.env.SELFGUARD_NO_NOTIFY !== "1";
 
+/** Fixed first argument: osascript stops parsing options at it, so nothing after is an option. */
+const ARGV_GUARD = "selfguard";
+
+/**
+ * osascript's arguments for an `on run argv` script `lines` (which must start with
+ * "on run argv"): the script reads `a`, the untrusted values, as `item 1 of a`… Pure, for tests.
+ */
+export function osascriptArgs(lines: string[], argv: string[]): string[] {
+  const [first, ...rest] = lines;
+  const script = first === "on run argv" ? [first, "set a to rest of argv", ...rest] : lines;
+  return [...script.flatMap((line) => ["-e", line]), ARGV_GUARD, ...argv.map((v) => v.replace(/^[\s-]+/, ""))];
+}
+
 function osascript(lines: string[], argv: string[], timeoutMs: number): Promise<string> {
-  const args = lines.flatMap((line) => ["-e", line]);
-  args.push(...argv);
+  const args = osascriptArgs(lines, argv);
   return new Promise((resolve) => {
     execFile("/usr/bin/osascript", args, { timeout: timeoutMs }, (_err, stdout) => resolve(String(stdout ?? "").trim()));
   });
@@ -21,7 +35,7 @@ function osascript(lines: string[], argv: string[], timeoutMs: number): Promise<
 export function notify(title: string, message: string, subtitle = ""): Promise<void> {
   if (!enabled()) return Promise.resolve();
   return osascript(
-    ["on run argv", "display notification (item 1 of argv) with title (item 2 of argv) subtitle (item 3 of argv)", "end run"],
+    ["on run argv", "display notification (item 1 of a) with title (item 2 of a) subtitle (item 3 of a)", "end run"],
     [clean(message, 220), clean(title, 80), clean(subtitle, 120)],
     10_000,
   ).then(() => undefined);
@@ -38,7 +52,7 @@ export async function criticalDialog(title: string, message: string, url: string
   const answer = await osascript(
     [
       "on run argv",
-      'set r to display alert (item 1 of argv) message (item 2 of argv) as critical buttons {"Dismiss", "Open advisory"} default button "Open advisory" giving up after 1800',
+      'set r to display alert (item 1 of a) message (item 2 of a) as critical buttons {"Dismiss", "Open advisory"} default button "Open advisory" giving up after 1800',
       'if gave up of r then return ""',
       "return button returned of r",
       "end run",

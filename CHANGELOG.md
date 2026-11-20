@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+
+- **Notifications can no longer run script from a scanned repo.** macOS alerts pass their text
+  to `osascript` as arguments, but `osascript` reads options until the first plain word, so a
+  text starting with `-e` (such as a `.pth` file name chosen by a repo) became another script
+  line. A fixed first argument now ends option parsing, leading dashes are dropped, and
+  Python startup hook messages start with fixed text and only show ordinary file names.
+
 ### Added
 
 - **Agent guard: repo files that run code when you open the repo.** New warnings (kind
