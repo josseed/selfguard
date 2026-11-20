@@ -39,12 +39,15 @@ ditto -c -k --keepParent "$APP" "$WORK/selfguard.zip"
 "${NOTARY[@]}" "$WORK/selfguard.zip"
 xcrun stapler staple "$APP"
 
-# 2. The DMG: the app and a link to /Applications, signed, notarized and stapled.
-mkdir "$WORK/dmg"
-ditto "$APP" "$WORK/dmg/selfguard.app"
-ln -s /Applications "$WORK/dmg/Applications"
+# 2. The DMG: the app and a link to /Applications in a window laid out for dragging one onto
+# the other (scripts/dmg/: background, icon positions), signed, notarized and stapled.
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || { echo "dmgbuild needs Python 3.11+" >&2; exit 1; }
+python3 -m venv "$WORK/venv"
+"$WORK/venv/bin/pip" install --quiet --disable-pip-version-check --require-hashes --only-binary :all: \
+  -r "$ROOT/scripts/dmg/requirements.txt"
 rm -f "$DMG"
-hdiutil create -volname "selfguard $VERSION" -srcfolder "$WORK/dmg" -fs HFS+ -format UDZO -ov "$DMG" >/dev/null
+"$WORK/venv/bin/dmgbuild" -s "$ROOT/scripts/dmg/settings.py" -D app="$APP" -D root="$ROOT" \
+  "selfguard $VERSION" "$DMG" >/dev/null
 codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
 "${NOTARY[@]}" "$DMG"
 xcrun stapler staple "$DMG"
