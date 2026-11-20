@@ -1,6 +1,7 @@
 /** The client side (machine A): probe, pair with and unpair from machine B. */
 import { validRemotePath } from "../config.ts";
 import { isObject } from "../fsutil.ts";
+import { readCapped } from "../net.ts";
 import { clean } from "../sanitize.ts";
 import { urlHost } from "../tailnet.ts";
 import { b64, newEphemeralKey, pairingCode, unb64, unseal, validPublicKey, type EphemeralKey } from "./crypto.ts";
@@ -9,8 +10,9 @@ import { PAIR_TTL_MS, ShareError } from "./store.ts";
 
 async function getJson(url: string, init: RequestInit & { timeoutMs: number }): Promise<{ status: number; body: Record<string, unknown> }> {
   const res = await fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(init.timeoutMs) });
-  const text = await res.text();
-  if (text.length > 256 * 1024) throw new ShareError("protocol", "answer too large");
+  // Any tailnet peer answers /hello: stop reading at the cap, not after the whole body.
+  const text = await readCapped(res, 256 * 1024);
+  if (text === null) throw new ShareError("protocol", "answer too large");
   let body: Record<string, unknown> = {};
   try {
     const j = JSON.parse(text);

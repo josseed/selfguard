@@ -115,8 +115,10 @@ export function extractAgentConfig(cfg: AgentConfig, text: string, deps: Extract
         continue;
       }
       const launch = parseLaunch(def.command, def.args);
-      if (!launch) {
+      if (!launch || launch.ambiguous) {
         res.skipped++;
+        // A package hidden behind an unknown option must not come out clean.
+        if (launch) res.warnings.push({ rule: "unparsed-mcp-server", message: `MCP server "${server}" (${launch.launcher}): an option before the package makes it unclear what runs, so it was not checked.`, line, severity: "low" });
         continue;
       }
       for (const pkg of launch.packages) {

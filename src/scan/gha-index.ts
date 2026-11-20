@@ -6,6 +6,7 @@
  * downloaded) and names are matched here, lowercased. Action names never leave the machine.
  */
 import { atomicWrite, isObject, readJsonFile } from "../fsutil.ts";
+import { readCapped } from "../net.ts";
 import { getCachedVuln, getVulns, ID_RE, type OsvVuln, type VulnRef } from "../osv.ts";
 import { ghaIndexFile } from "../paths.ts";
 import { clean } from "../sanitize.ts";
@@ -69,9 +70,8 @@ async function fetchCsv(): Promise<string> {
     redirect: "error",
   });
   if (!res.ok) throw new Error(`OSV bucket ${res.status}`);
-  if (Number(res.headers.get("content-length") ?? 0) > MAX_CSV_BYTES) throw new Error("advisory list too large");
-  const text = await res.text();
-  if (text.length > MAX_CSV_BYTES) throw new Error("advisory list too large");
+  const text = await readCapped(res, MAX_CSV_BYTES);
+  if (text === null) throw new Error("advisory list too large");
   return text;
 }
 

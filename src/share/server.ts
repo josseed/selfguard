@@ -1,12 +1,14 @@
 /** The share server (machine B): listens on the tailnet addresses and answers paired machines. */
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { loadConfig } from "../config.ts";
 import { notify } from "../notify.ts";
-import { answerReader } from "../reader.ts";
+import { readerAnswer } from "../reader.ts";
 import { READER_PROTOCOL } from "../remote.ts";
 import { clean } from "../sanitize.ts";
-import { plainIp, tailnet, urlHost, whoisDetailed, type WhoisResult } from "../tailnet.ts";
+import { plainIp, tailnet, urlHost, whoisDetailed, type Whois, type WhoisResult } from "../tailnet.ts";
 import { VERSION } from "../version.ts";
 import { b64, findGrant, newEphemeralKey, pairingCode, unb64, validPublicKey } from "./crypto.ts";
 import { revokeGrant } from "./grants.ts";
@@ -47,6 +49,22 @@ export interface RunningShare {
 interface SelfIdentity {
   name: string;
   login: string | null;
+  tagged: boolean;
+}
+
+/**
+ * Why `caller` doesn't count as a machine of our own Tailscale user (null: it does). A tagged
+ * device has no user: two of them share the "tagged-devices" login, which proves nothing. The
+ * message is shown on the asking machine.
+ */
+function otherUser(self: SelfIdentity, caller: Whois): { reason: string; message: string } | null {
+  const n = self.name;
+  const allow = "to pair anyway, run selfguard share on --allow-other-users there";
+  if (self.tagged) return { reason: "tagged self", message: `${n} is a tagged Tailscale device, with no user to match yours: ${allow}` };
+  if (caller.tagged) return { reason: "tagged caller", message: `this machine is a tagged Tailscale device, with no user to match ${n}'s: ${allow}` };
+  if (!self.login || !caller.login) return { reason: "unknown user", message: `${n} couldn't tell which Tailscale user each machine belongs to: ${allow}` };
+  if (caller.login !== self.login) return { reason: "other user", message: `${n} only pairs with machines of its own Tailscale user: ${allow}` };
+  return null;
 }
 
 /**
@@ -62,7 +80,7 @@ export async function startShareServer(opts: ShareServerOptions = {}): Promise<R
     if (h === "0.0.0.0" || h === "::" || h === "") throw new ShareError("invalid", "refusing to listen on all interfaces");
   }
   const selfInfo = (t ?? tailnet()).self;
-  const self: SelfIdentity = { name: selfInfo?.name ?? selfName(), login: selfInfo?.login ?? null };
+  const self: SelfIdentity = { name: selfInfo?.name ?? selfName(), login: selfInfo?.login ?? null, tagged: selfInfo?.tagged ?? false };
   const port = opts.port ?? cfg.share.port;
   // Host headers we answer to: only our own addresses (defeats DNS rebinding from a browser).
   const allowedHosts = new Set<string>();
@@ -123,12 +141,15 @@ function makeHandler(
     if (whoisCache.size > 1000) whoisCache.clear();
     return w;
   };
-  const send = (res: ServerResponse, status: number, body: unknown, type = "application/json"): void => {
+  const head = (res: ServerResponse, status: number, type: string): void => {
     res.statusCode = status;
     res.setHeader("content-type", type);
     res.setHeader("cache-control", "no-store");
     res.setHeader("x-content-type-options", "nosniff");
-    res.end(type === "application/json" ? JSON.stringify(body) : (body as Buffer));
+  };
+  const send = (res: ServerResponse, status: number, body: unknown): void => {
+    head(res, status, "application/json");
+    res.end(JSON.stringify(body));
   };
   const fail = (res: ServerResponse, status: number, code: string, message: string): void => send(res, status, { error: { code, message } });
   const unavailable = (res: ServerResponse): void => fail(res, 503, "unavailable", "couldn't check the caller with Tailscale right now; try again");
@@ -156,9 +177,10 @@ function makeHandler(
         const w = await who(ip);
         if (!w.ok) return w.reason === "unknown" ? fail(res, 403, "not_tailnet", "only machines of this tailnet can pair") : unavailable(res);
         const caller = w.who;
-        if (!cfg.share.allowOtherUsers && (!caller.login || caller.login !== self.login)) {
-          logAccess({ op: "pair-refused", ip, node: caller.nodeId, reason: "other user" });
-          return fail(res, 403, "other_user", "this machine only pairs with machines of its own Tailscale user");
+        const refused = cfg.share.allowOtherUsers ? null : otherUser(self, caller);
+        if (refused) {
+          logAccess({ op: "pair-refused", ip, node: caller.nodeId, reason: refused.reason });
+          return fail(res, 403, "other_user", refused.message);
         }
         const pubA = unb64(body.publicKey as string);
         const eph = newEphemeralKey();
@@ -237,19 +259,31 @@ function makeHandler(
         }
         const body = await readBody(req, MAX_BODY);
         const op = body.subarray(0, 32).toString("utf8").split("\n")[0] ?? "";
-        const answer = await answerReader(body, { scope: grant.scope });
-        logAccess({ op: op.replace(/^SGREQ1 /, ""), ip, grant: grant.name, bytes: answer.length });
         if (!grant.lastSeen || Date.now() - Date.parse(grant.lastSeen) > 60_000 || grant.lastIp !== ip) {
           await withShareLock(() => {
             saveGrants(loadGrants().map((g) => (g.id === grant.id ? { ...g, lastSeen: new Date().toISOString(), lastIp: ip } : g)));
           }).catch(() => {});
         }
-        return send(res, 200, answer, "application/octet-stream");
+        // Streamed as it is read: a fetch answer is never whole in memory here.
+        let bytes = 0;
+        const counted = async function* (): AsyncGenerator<Buffer> {
+          for await (const c of readerAnswer(body, { scope: grant.scope })) {
+            bytes += c.length;
+            yield c;
+          }
+        };
+        head(res, 200, "application/octet-stream");
+        try {
+          await pipeline(Readable.from(counted(), { objectMode: false }), res);
+        } finally {
+          logAccess({ op: op.replace(/^SGREQ1 /, ""), ip, grant: grant.name, bytes });
+        }
+        return;
       }
       return fail(res, 404, "not_found", "no such endpoint");
     } catch (e) {
       const err = e instanceof ShareError ? e : new ShareError("failed", "internal error", 500);
-      if (!res.headersSent) fail(res, err.status, err.code, err.message);
+      if (!res.headersSent && !res.destroyed) fail(res, err.status, err.code, err.message);
     }
   };
 }

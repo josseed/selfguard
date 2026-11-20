@@ -1,13 +1,17 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
   closeSync,
+  constants,
+  fstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
   renameSync,
   statSync,
   unlinkSync,
   writeFileSync,
+  type Stats,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { locksDir } from "./paths.ts";
@@ -30,6 +34,33 @@ export function readJsonFile<T>(file: string): T | null {
     return JSON.parse(readFileSync(file, "utf8")) as T;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Read a file from a project (untrusted) only if it is a regular file of at most `max` bytes;
+ * null otherwise. Opened non-blocking and checked after opening, so a FIFO can't hang the read
+ * and a device (/dev/zero) can't stream forever. `nofollow`: refuse a symlink (as discovery and
+ * the remote readers do). `truncate`: read the first `max` bytes of a larger file instead.
+ */
+export function readRegularFile(file: string, max: number, opts: { nofollow?: boolean; truncate?: boolean } = {}): { data: Buffer; stat: Stats } | null {
+  let fd: number | undefined;
+  try {
+    fd = openSync(file, constants.O_RDONLY | constants.O_NONBLOCK | (opts.nofollow ? constants.O_NOFOLLOW : 0));
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || (stat.size > max && !opts.truncate)) return null;
+    const data = Buffer.alloc(Math.min(stat.size, max));
+    let n = 0;
+    while (n < data.length) {
+      const got = readSync(fd, data, n, data.length - n, n);
+      if (got === 0) break; // shrank meanwhile
+      n += got;
+    }
+    return { data: data.subarray(0, n), stat };
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 }
 

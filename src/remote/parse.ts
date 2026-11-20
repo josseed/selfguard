@@ -4,7 +4,7 @@ import { LOCKFILES } from "../lockfile/detect.ts";
 import type { LockfileType } from "../lockfile/types.ts";
 import type { GitFacts } from "../repoid.ts";
 import { clean } from "../sanitize.ts";
-import { FETCHABLE, isReader, MAX_FETCH_BYTES, MAX_FILE_BYTES, notReader, READER_PROTOCOL, RemoteError, type Target } from "./core.ts";
+import { FETCHABLE, isReader, MAX_FETCH_BYTES, MAX_FILE_BYTES, notReader, READER_PROTOCOL, READER_REVISION, RemoteError, type Target } from "./core.ts";
 
 // ---------- parsing what comes back ----------
 
@@ -43,6 +43,7 @@ export function parseHeader(line: string, t: Target): Header {
   if (isReader(t)) {
     if (!tag.startsWith("reader ")) throw notReader();
     if (tag !== `reader ${READER_PROTOCOL}`) throw new RemoteError("outdated", "the reader on the machine is from another selfguard version: reinstall it (selfguard machines install <name>)");
+    if (t.key && !(Number(h[5]) >= READER_REVISION)) throw new RemoteError("outdated", "the reader on the machine is older than this selfguard and misses security fixes: reinstall it (selfguard machines install <name>)");
   } else if (tag.startsWith("reader")) {
     throw new RemoteError("protocol", "this machine forces the selfguard reader for your key; use the restricted mode");
   }

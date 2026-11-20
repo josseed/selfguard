@@ -33,7 +33,11 @@ export function assertMac(): void {
   if (process.platform !== "darwin") throw new Error("scheduling is only implemented for macOS (launchd) for now");
 }
 
-/** Plist for one of our agents. Pure: tested directly. */
+/**
+ * Plist for one of our agents. Pure: tested directly. NODE_OPTIONS is emptied so a
+ * `launchctl setenv NODE_OPTIONS --require …` can't load code into the engine (in the app,
+ * the bundled node runs with the app's privacy grants).
+ */
 export function agentPlist(
   label: string,
   args: string[],
@@ -56,6 +60,10 @@ export function agentPlist(
 ${args.map((a) => `    <string>${xml(a)}</string>`).join("\n")}
   </array>
 ${triggerXml}
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_OPTIONS</key><string></string>
+  </dict>
   <key>ProcessType</key><string>Background</string>
   <key>LowPriorityIO</key><true/>
   <key>StandardOutPath</key><string>${xml(log)}</string>

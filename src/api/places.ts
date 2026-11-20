@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { clampDepth, loadConfig, normalizeDir, saveConfig, type Root } from "../config.ts";
+import { clampDepth, excludeRefusal, loadConfig, normalizeDir, saveConfig, type Root } from "../config.ts";
 import { liveDismissals, trackedActivity } from "../dismiss.ts";
 import { ApiError } from "../errors.ts";
 import { appendEvents } from "../events.ts";
@@ -73,7 +73,8 @@ export async function applyPlaces(watch: Array<{ path: string; depth: number }>,
     const cfg = loadConfig();
     for (const path of ignore) {
       const dir = normalizeDir(path);
-      if (!dir || cfg.exclude.includes(dir) || cfg.roots.some((r) => r.path === dir)) continue;
+      // Never "/", the home folder or a folder holding a watched one (same rule as forget).
+      if (!dir || cfg.exclude.includes(dir) || excludeRefusal(dir, cfg.roots)) continue;
       cfg.exclude.push(dir);
       excluded.push(dir);
     }

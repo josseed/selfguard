@@ -241,6 +241,10 @@ clears both.)
 |---|---|
 | `--keep-discoverable` | Only stop tracking. The next `sync` may register it again. |
 
+Excluding `/`, your home folder, a watched folder or a folder above one is refused, because it
+would switch selfguard off for everything below it. To stop watching a folder, use
+`selfguard roots remove`.
+
 ### `selfguard unexclude <dir>`
 
 Removes a path from the exclusion list so discovery can find it again. (The dashboard's
@@ -260,7 +264,8 @@ Stops alerting for one warning of `selfguard tools` (its `id`, or its full `warn
 `tools --json`): a LaunchAgent, an agent hook or a CI step you put there on purpose. It stays
 listed, marked `dismissed`, but never notifies again and leaves the reminder and the menu bar
 counts. Unlike a repo, it doesn't come back by itself. Also from the dashboard (**Dismiss** next
-to the warning) and MCP (`selfguard_dismiss_warning`).
+to the warning) and MCP (`selfguard_dismiss_warning`, except urgent warnings: an assistant can't
+dismiss those).
 
 ### `selfguard undismiss [dir|key]`
 
@@ -364,7 +369,8 @@ Let your other machines see this one, over Tailscale, without SSH.
 `on` starts the sharing service: a launchd agent on macOS, or a systemd user unit
 (`selfguard-share.service`) on Linux. It listens only on this machine's Tailscale addresses,
 port 47821 by default. Pairing is limited to your own Tailscale user unless
-`--allow-other-users`. `off` stops answering at once. `status` shows addresses, pending
+`--allow-other-users`. Tagged devices have no user, so pairing with or from a tagged machine
+needs `--allow-other-users` too. `off` stops answering at once. `status` shows addresses, pending
 requests and paired machines.
 
 ### `selfguard share requests`, `approve <id> [--scope DIR] [--root DIR]...`, `reject <id>`
@@ -416,8 +422,8 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `SELFGUARD_OSV_API` | OSV API base URL. Default `https://api.osv.dev/v1`. For mirrors and tests. |
 | `SELFGUARD_NO_LAUNCHD=1` | Never install or change launchd agents (tests). |
 | `SELFGUARD_SYSTEM_ROOT` | Folder that stands for `/` when reading `/Library/LaunchAgents` and `/Library/LaunchDaemons` (tests). |
-| `SELFGUARD_SSH` | ssh client to use for other machines. Default `ssh` from `PATH`. |
-| `SELFGUARD_TAILSCALE` | Path of the `tailscale` CLI (default: the usual install locations). |
+| `SELFGUARD_SSH` | ssh client to use for other machines. Default `ssh` from `PATH`. Ignored by the Mac app, which uses `/usr/bin/ssh`. |
+| `SELFGUARD_TAILSCALE` | Path of the `tailscale` CLI (default: the usual install locations). Ignored by the Mac app. |
 | `SELFGUARD_NO_UPDATE_CHECK=1` | Never ask npm for a newer selfguard. |
 | `SELFGUARD_NPM_REGISTRY` | Registry for the update check. Default `https://registry.npmjs.org`. |
 | `NO_COLOR` | Disable colored output ([no-color.org](https://no-color.org)). Color is also off when stdout isn't a terminal. |

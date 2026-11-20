@@ -1,6 +1,6 @@
-import { readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join } from "node:path";
-import { sha256 } from "./fsutil.ts";
+import { readRegularFile, sha256 } from "./fsutil.ts";
 import type { Project } from "./lockfile/detect.ts";
 import { isSupported, manifestFor, parseLockfile, parseManifest } from "./lockfile/index.ts";
 import { buildFindings } from "./findings.ts";
@@ -11,7 +11,8 @@ import { clean } from "./sanitize.ts";
 import { findingKey, loadRepo, type Finding, type RepoRecord } from "./store.ts";
 import { lookup, type Lookup } from "./scan/lookup.ts";
 
-export const MAX_LOCKFILE_BYTES = 100 * 1024 * 1024;
+/** Lockfiles and manifests: same cap as a file fetched from another machine (remote/core.ts). */
+export const MAX_LOCKFILE_BYTES = 50 * 1024 * 1024;
 
 /**
  * What to scan. Local projects are read from disk. Remote ones (another machine) carry
@@ -32,14 +33,50 @@ export interface LockState {
   size: number;
 }
 
+/**
+ * A project file (lockfile or manifest), or null: missing, too large, a symlink, or not a
+ * regular file. A cloned repo can commit `package.json -> /dev/zero`; a FIFO would hang the
+ * scan while it holds the project's lock.
+ */
+const readProjectFile = (file: string) => readRegularFile(file, MAX_LOCKFILE_BYTES, { nofollow: true });
+
+function readLock(lockfile: string): { data: Buffer; state: LockState } | null {
+  const r = readProjectFile(lockfile);
+  return r && { data: r.data, state: { hash: sha256(r.data), mtimeMs: r.stat.mtimeMs, size: r.stat.size } };
+}
+
 export function lockState(lockfile: string): LockState | null {
-  try {
-    const st = statSync(lockfile);
-    if (!st.isFile() || st.size > MAX_LOCKFILE_BYTES) return null;
-    return { hash: sha256(readFileSync(lockfile)), mtimeMs: st.mtimeMs, size: st.size };
-  } catch {
-    return null;
-  }
+  return readLock(lockfile)?.state ?? null;
+}
+
+/**
+ * A parse error as stored and shown. V8's JSON messages quote up to 10 characters on each side
+ * of the error, which may be a credential (`"resolved": "https://user:token@…"`): the quote is
+ * only used to find the line, never kept. Our own parsers' messages don't quote the file.
+ */
+export function parseErrorMessage(err: unknown, text: string): string {
+  if (!(err instanceof SyntaxError)) return clean(err instanceof Error ? err.message : String(err), 200);
+  const line = jsonErrorLine(err.message, text);
+  return line ? `invalid JSON at line ${line}` : "invalid JSON";
+}
+
+const CONTEXT = 10; // characters V8 quotes on each side of a JSON error
+const linesIn = (s: string): number => s.split("\n").length - 1;
+
+function jsonErrorLine(message: string, text: string): number | null {
+  const lc = /\(line (\d+) column \d+\)/.exec(message);
+  if (lc) return Number(lc[1]);
+  const pos = /at position (\d+)/.exec(message);
+  if (pos) return linesIn(text.slice(0, Number(pos[1]))) + 1;
+  if (message.startsWith("Unexpected end of JSON input")) return linesIn(text) + 1;
+  // `Unexpected token 'x', ..."<context>"... is not valid JSON`: the context locates it.
+  const m = /^Unexpected token [\s\S]*?, (\.\.\.)?"([\s\S]*)"(\.\.\.)? is not valid JSON$/.exec(message);
+  if (!m) return null;
+  const [, before, ctx = "", after] = m;
+  if (!before && after) return linesIn(ctx.slice(0, ctx.length - CONTEXT)) + 1; // near the start
+  if (before && !after) return linesIn(text) + 1 - linesIn(ctx.slice(CONTEXT)); // near the end
+  const at = before ? text.indexOf(ctx) : -1;
+  return at >= 0 ? linesIn(text.slice(0, at + CONTEXT)) + 1 : null;
 }
 
 /** Cheap check first (mtime+size), hash only if those changed. */
@@ -105,16 +142,17 @@ function inventory(project: ScanInput): Inventory {
     }
     return { record, previous };
   }
-  const st: LockState | null = remote
+  const lock = remote
     ? project.content && project.content.lock.length <= MAX_LOCKFILE_BYTES
-      ? { hash: sha256(project.content.lock), mtimeMs: project.content.mtimeMs, size: project.content.size }
+      ? { data: project.content.lock, state: { hash: sha256(project.content.lock), mtimeMs: project.content.mtimeMs, size: project.content.size } }
       : null
-    : lockState(project.lockfile);
-  if (!st) {
-    record.error = "lockfile unreadable or too large";
+    : readLock(project.lockfile);
+  if (!lock) {
+    record.error = "lockfile unreadable, too large (over 50 MB) or not a regular file";
     record.scannedAt = now;
     return { record, previous };
   }
+  const st = lock.state;
   Object.assign(record, { lockHash: st.hash, lockMtimeMs: st.mtimeMs, lockSize: st.size });
   if (!isSupported(project.lockType, project.lockfile)) {
     record.error = "bun.lockb (binary) is not supported; run `bun install --save-text-lockfile` to create bun.lock";
@@ -122,21 +160,21 @@ function inventory(project: ScanInput): Inventory {
     return { record, previous };
   }
 
+  let manifest: unknown;
+  const manifestName = manifestFor(project.lockType);
   try {
-    let manifest: unknown;
-    const manifestName = manifestFor(project.lockType);
-    try {
-      const raw = remote ? project.content?.manifest : manifestName ? readFileSync(join(project.root, manifestName)) : null;
-      manifest = raw ? parseManifest(project.lockType, raw.toString("utf8")) : undefined;
-    } catch {
-      manifest = undefined;
-    }
-    const text = remote ? project.content!.lock.toString("utf8") : readFileSync(project.lockfile, "utf8");
+    const raw = remote ? project.content?.manifest : manifestName ? readProjectFile(join(project.root, manifestName))?.data : null;
+    manifest = raw ? parseManifest(project.lockType, raw.toString("utf8")) : undefined;
+  } catch {
+    manifest = undefined;
+  }
+  const text = lock.data.toString("utf8"); // the bytes just hashed
+  try {
     const parsed = parseLockfile(project.lockType, text, manifest);
     record.deps = parsed.deps;
     record.skipped = parsed.skipped;
   } catch (err) {
-    record.error = `could not parse lockfile: ${clean((err as Error).message, 200)}`;
+    record.error = `could not parse lockfile: ${parseErrorMessage(err, text)}`;
     record.scannedAt = now;
   }
   return { record, previous };

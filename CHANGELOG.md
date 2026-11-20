@@ -19,6 +19,68 @@ All notable changes to this project are documented here. The format is based on
 - **Public, continuous checks of the repository:** OpenSSF Scorecard (score and badge),
   CodeQL for the TypeScript sources and the workflows, and zizmor for every workflow change.
 
+Fixes from an internal security audit and a new fuzzer. None is critical; most need a hostile
+repo, a compromised paired machine or code already running as you.
+
+- **The Mac app no longer passes `NODE_OPTIONS` or engine overrides to its engine.**
+  `open --env NODE_OPTIONS=… -a selfguard` (or `SELFGUARD_APP_NODE`/`SELFGUARD_APP_CLI`, now
+  debug builds only) could make the app run another program with the privacy permissions
+  macOS gave it. The engine now gets a filtered environment: no `NODE_*` or `DYLD_*` and the
+  system `PATH`. Run from the app's bundle, the engine always uses `/usr/bin/ssh` and ignores
+  `SELFGUARD_SSH` and `SELFGUARD_TAILSCALE`, also when launchd starts it, and the background
+  agents get an empty `NODE_OPTIONS`, so `launchctl setenv` can't do it either.
+- **A cloned repo can't make a scan eat all memory or hang.** A `package.json` or lockfile
+  committed as a symlink to `/dev/zero` grew the scan to gigabytes, and a FIFO hung it while
+  holding the project's lock. Manifests and lockfiles must now be regular files, are opened
+  without blocking and are read up to their cap (50 MB for lockfiles, down from 100 MB).
+- **An option before an MCP server's package no longer leaks or hides anything.** In
+  `npx --_authToken npm_… -y pkg`, the token was taken for the package name, sent to OSV and
+  stored, and the real package went unchecked; `--loglevel x evil-pkg` hid a package the same
+  way. Known npm, uv and pipx options are now read correctly, and an unknown one before the
+  package skips the server with a new low `unparsed-mcp-server` warning instead of guessing.
+- **One MCP call can no longer switch selfguard off.** `selfguard_forget` with `/` or `~`
+  excluded every project. Excluding `/`, the home folder, a watched folder or a folder above
+  one is now refused (CLI, dashboard, place picker, MCP, and on other machines). Every tool
+  that makes selfguard watch or alert less is marked destructive, and over MCP an urgent
+  warning can't be dismissed, nor its repo forgotten.
+- **A paired machine can't make the sharing service use gigabytes of memory.** A small `/read`
+  request naming one lockfile 500 times made B read and hold every copy. Each file is now
+  answered once, an answer holds at most 64 MB of files (the client asks again for the rest),
+  and answers are streamed. The same limits apply to the SSH reader.
+- **Symlinks inside `.git` can't leak files from outside a grant.** `HEAD`, `commondir` and
+  `config` were read through symlinks, so a narrower grant could reveal a parent repo's remote
+  URL or another file's first line. Both readers now refuse them, and skip folders whose names
+  contain control characters (a newline in a name made the SSH reader look outside its folder).
+- **GitHub Actions workflows that hid a `uses:` now get checked or flagged.** Flow style
+  (`- { uses: … }`), a value on the next line, YAML escapes (`"\u0074j-actions/…"`, which gave
+  a wrong name) and anchors are read; forms that still can't be read give a low
+  `workflow-not-parsed` warning instead of a clean result. `script-injection` now catches
+  `github.event['issue']['title']`, any letter case and `actions/github-script`'s `script:`, and
+  `pr-target-checkout` catches `merge_commit_sha` and a checkout of the PR's head repository.
+- **Smaller fixes.** Replies from other machines (`/hello`, pairing), OSV, npm and the GitHub
+  Actions list stop downloading at their size cap instead of checking it afterwards. The update
+  check accepts only an exact `x.y.z`, so a crafted registry answer can't break the shown
+  `npm i -g` command. Cached advisories are checked against their id. JSON lockfile errors say
+  "invalid JSON at line N" instead of quoting the file. Links and images in advisory text or
+  repo names can't reach the "Copy markdown" report. The dashboard opens only osv.dev advisories
+  and selfguard's GitHub page in the browser. Removing a machine's key no longer deletes
+  another Mac's line with a similar name. The whole-home search keeps worktree pointers inside
+  the home folder. A `go.mod` with a no-break space and very long runs of spaces no longer slow
+  the parser or the text cleaner to a crawl.
+
+### Changed
+
+- **Machines in restricted SSH mode show "reader outdated" until you reinstall the reader**
+  (`selfguard machines install <name>`, or **Update reader** in the dashboard): the fixes above
+  change it, and an old reader would keep the old behaviour.
+- **Pairing with or from a tagged Tailscale device needs `--allow-other-users`.** Tailscale
+  reports every tagged device as the same pseudo-user, so two tagged machines used to count as
+  "the same user".
+- **Symlinked lockfiles and manifests are no longer read** locally (they already weren't on
+  other machines): the project shows "lockfile unreadable, too large or not a regular file".
+- **A prerelease on npm's `latest` tag is not offered as an update.**
+- **The Mac app ignores `SELFGUARD_SSH` and `SELFGUARD_TAILSCALE`.** The CLI still honours them.
+
 ## [0.18.2] - 2026-11-20
 
 ### Changed

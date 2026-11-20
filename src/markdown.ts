@@ -70,7 +70,16 @@ const shown = (p: Pick<MarkdownPackage, "ecosystem">, v: string): string => (p.e
 
 /** Inline code that can't be broken out of by a backtick in untrusted text. */
 const code = (s: string): string => `\`${clean(s, 300).replace(/`/g, "'")}\``;
-const text = (s: string, max = 200): string => clean(s, max).replace(/[<>]/g, (c) => (c === "<" ? "‹" : "›"));
+/**
+ * Untrusted prose (advisory summaries, repo labels) as plain text: no HTML or autolinks (`<>`
+ * swapped) and no links or images. Those need `](` or `][` (a reference definition can't be
+ * written: the text never starts a line), so that `]` gets an odd number of backslashes before
+ * it. The rest is left alone to keep the text readable.
+ */
+const text = (s: string, max = 200): string =>
+  clean(s, max)
+    .replace(/[<>]/g, (c) => (c === "<" ? "‹" : "›"))
+    .replace(/(\\*)\](?=\s*[([])/g, (m, slashes: string) => (slashes.length % 2 ? m : `${slashes}\\]`));
 
 function fixLine(p: MarkdownPackage, lockTypes: LockfileType[]): string {
   const manifest = lockTypes.length ? [...new Set(lockTypes.map((t) => HOWTO[t].manifest))].join(" / ") : "package.json";

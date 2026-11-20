@@ -206,6 +206,31 @@ export function isExcluded(path: string, exclude: readonly string[]): boolean {
   return exclude.some((e) => path === e || path.startsWith(e.endsWith("/") ? e : `${e}/`));
 }
 
+/**
+ * Why `path` must not be excluded, or null. Excluding "/", the home folder or a watched folder,
+ * or a folder above one of them, would silently switch selfguard off for everything below it
+ * (one MCP call from a prompt-injected agent could do that).
+ */
+export function excludeRefusal(path: string, roots: readonly Root[]): string | null {
+  const home = homedir();
+  let realHome = home;
+  try {
+    realHome = realpathSync(home);
+  } catch {
+    /* keep it as given */
+  }
+  if (isExcluded(home, [path]) || isExcluded(realHome, [path])) {
+    return path === home || path === realHome
+      ? "refusing to exclude your home folder: it would hide every project (forget without excluding to only stop tracking a project there)"
+      : `refusing to exclude ${path}: it contains your home folder and would hide every project`;
+  }
+  const root = roots.find((r) => isExcluded(r.path, [path]));
+  if (!root) return null;
+  return root.path === path
+    ? `refusing to exclude ${path}: it is a watched folder (stop watching it with \`selfguard roots remove\` instead)`
+    : `refusing to exclude ${path}: it contains the watched folder ${root.path}`;
+}
+
 export function saveConfig(cfg: Config): void {
   atomicWrite(configFile(), `${JSON.stringify(cfg, null, 2)}\n`);
 }

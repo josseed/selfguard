@@ -65,7 +65,7 @@ Then ask things like:
 | `selfguard_roots_list` | ✅ | | Watched folders and exclusions. |
 | `selfguard_roots_add` / `selfguard_roots_remove` | | | Manage watched folders. |
 | `selfguard_discover` | | ✅ | List (default) or register new projects in watched folders. |
-| `selfguard_forget` | | | Stop tracking and exclude a path. Marked destructive. |
+| `selfguard_forget` | | | Stop tracking and exclude a path. Marked destructive; refuses `/`, your home folder and watched folders. |
 | `selfguard_unexclude` | | | Re-include an excluded path. |
 
 Each tool declares MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`), so
@@ -78,8 +78,13 @@ clients can decide what to auto-approve. Results come as `structuredContent` and
 - **Advisory text and package names are third-party data.** Tool descriptions and the agent
   guide tell the model to treat them as data, never as instructions (prompt-injection
   hardening). All such text is also stripped of control and bidirectional characters.
-- **`selfguard_forget` is marked destructive**, and the guide asks the assistant to confirm with
-  you first.
+- **Tools that make selfguard watch or alert less are marked destructive**
+  (`selfguard_forget`, `selfguard_roots_remove`, `selfguard_dismiss`,
+  `selfguard_dismiss_warning`), and the guide asks the assistant to confirm with you first.
+  `selfguard_forget` refuses to exclude `/`, your home folder, a watched folder or a folder
+  above one. Urgent warnings (the ones that look like an attack) can't be dismissed over MCP,
+  and a repo that has one can't be forgotten over MCP: only you can do that, from the CLI or
+  the app.
 
 ## JSON output
 

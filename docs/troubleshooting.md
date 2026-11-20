@@ -150,7 +150,8 @@ paths in the client config. See
   `selfguard share on`. `selfguard share status` should say it is answering on its Tailscale
   address.
 - Both machines must be logged in to Tailscale with the **same Tailscale user** (pairing with
-  other users is refused unless `selfguard share on --allow-other-users`).
+  other users is refused unless `selfguard share on --allow-other-users`). A tagged device has
+  no user, so if either machine is tagged, use `--allow-other-users` on the one being watched.
 - The peer must be online in Tailscale. Press **Refresh**: the page probes each machine for
   about 1.5 s.
 - A firewall on that machine may block incoming connections to node. Allow it, or check that

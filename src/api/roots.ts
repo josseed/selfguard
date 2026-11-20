@@ -1,7 +1,7 @@
 import { writeMenuBar } from "../menubar.ts";
 import { resolve } from "node:path";
 import { announce } from "../announce.ts";
-import { clampDepth, DEFAULT_DEPTH, isExcluded, loadConfig, normalizeDir, saveConfig, type Root } from "../config.ts";
+import { clampDepth, DEFAULT_DEPTH, excludeRefusal, isExcluded, loadConfig, normalizeDir, saveConfig, type Root } from "../config.ts";
 import { discoverAll } from "../discover.ts";
 import { ApiError } from "../errors.ts";
 import { findProject } from "../lockfile/detect.ts";
@@ -70,15 +70,21 @@ export function removeRoot(path: string): RootsResult & { removed: boolean } {
 
 /**
  * Stop tracking a path. With `exclude` (default), it's also excluded from discovery
- * so it never comes back (use for fixtures, examples, archived repos).
+ * so it never comes back (use for fixtures, examples, archived repos). Never "/", the home
+ * folder or a watched folder (or one above them): see excludeRefusal. CLI, MCP and the
+ * dashboard all come through here.
  */
 export function forget(path: string, opts: { exclude?: boolean; exact?: boolean } = {}): { path: string; wasTracked: boolean; excluded: boolean; alsoForgotten: string[] } {
   const abs = normalizeDir(path) ?? resolve(path);
   // `exact`: a plain folder, never the project that happens to contain it.
   const root = opts.exact || loadRepo(abs) ? abs : (findProject(abs)?.root ?? abs);
+  const exclude = opts.exclude ?? true;
+  if (exclude) {
+    const refusal = excludeRefusal(root, loadConfig().roots);
+    if (refusal) throw new ApiError("invalid", refusal);
+  }
   const wasTracked = forgetRepo(root);
   const alsoForgotten: string[] = [];
-  const exclude = opts.exclude ?? true;
   if (exclude) {
     const cfg = loadConfig();
     if (!cfg.exclude.includes(root)) cfg.exclude.push(root);

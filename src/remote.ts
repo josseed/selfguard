@@ -16,13 +16,13 @@
  * manager or anything from a project. What comes back is treated as untrusted.
  */
 import type { Root } from "./config.ts";
-import { isReader, MAX_FETCH_BYTES, MAX_LIST_BYTES, type Target } from "./remote/core.ts";
+import { isReader, MAX_ANSWER_BYTES, MAX_FETCH_BYTES, MAX_FILE_BYTES, MAX_LIST_BYTES, type Target } from "./remote/core.ts";
 import { firstLine, parseBrowse, parseFetch, parseHeader, parseList, type BrowseResult, type Header, type ListResult } from "./remote/parse.ts";
 import { browseRequest, fetchRequest, listRequest, openScript } from "./remote/script.ts";
 import { runRemote } from "./remote/transport.ts";
 import { tailnet, type TailnetPeer } from "./tailnet.ts";
 
-export { FETCHABLE, isReader, MAX_FILE_BYTES, READER_PATH, READER_PROTOCOL, RemoteError, shq, SKIP, type Target } from "./remote/core.ts";
+export { FETCHABLE, isReader, MAX_ANSWER_BYTES, MAX_FILE_BYTES, READER_PATH, READER_PROTOCOL, READER_REVISION, RemoteError, shq, SKIP, type Target } from "./remote/core.ts";
 export { sshArgs, runRemote } from "./remote/transport.ts";
 export { readerScript, listRequest, fetchRequest, browseRequest } from "./remote/script.ts";
 export { authorizedLine, installScript, revokeScript, runInstall } from "./remote/install.ts";
@@ -45,11 +45,23 @@ export async function listMachine(t: Target, roots: Root[]): Promise<ListResult>
 
 export async function fetchFiles(t: Target, files: string[]): Promise<Map<string, Buffer | null>> {
   const out = new Map<string, Buffer | null>();
-  // Several smaller batches keep each answer well under the cap.
-  for (let i = 0; i < files.length; i += 200) {
-    const batch = files.slice(i, i + 200);
+  let queue = files;
+  while (queue.length) {
+    const batch = queue.slice(0, 200);
+    queue = queue.slice(200);
     const got = parseFetch(await runRemote(t, fetchRequest(t, batch), { maxBytes: MAX_FETCH_BYTES, timeoutMs: 300_000 }), t);
-    for (const f of batch) out.set(f, got.get(f) ?? null);
+    let bytes = 0;
+    const missing: string[] = [];
+    for (const f of batch) {
+      const data = got.get(f) ?? null;
+      out.set(f, data);
+      if (data) bytes += data.length;
+      else missing.push(f);
+    }
+    // The reader leaves out files past MAX_ANSWER_BYTES. That can only happen once the answer
+    // holds more than the cap minus one file, so ask again for what's missing (at least one
+    // file came back, so this ends); below that, a missing file really is unreadable.
+    if (missing.length && bytes > MAX_ANSWER_BYTES - MAX_FILE_BYTES) queue = [...missing, ...queue];
   }
   return out;
 }

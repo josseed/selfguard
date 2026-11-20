@@ -26,3 +26,16 @@ export const menuBarFile = (): string => join(stateRoot(), "menubar.json");
 /** Heartbeat of the Mac app, and the alerts it shows instead of osascript (appalerts.ts). */
 export const appFile = (): string => join(stateRoot(), "app.json");
 export const appAlertsDir = (): string => join(stateRoot(), "app-alerts");
+
+/**
+ * Running from the Mac app's bundle: its bundled node, started by the app or by launchd. macOS
+ * then lets the engine use the app's privacy permissions, so nothing in the environment (which
+ * `open --env` or `launchctl setenv` can set) may choose which program it runs.
+ */
+export const inAppBundle = (): boolean => /\.app\/Contents\//.test(process.execPath);
+
+/** The program to run: `envName` may override `name` (CLI, tests); the app always uses `appPath`. */
+export function program(envName: string, name: string, appPath: string): string {
+  if (inAppBundle()) return appPath;
+  return process.env[envName] || name;
+}

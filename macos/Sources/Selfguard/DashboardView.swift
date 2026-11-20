@@ -5,8 +5,8 @@ import WebKit
 /// The dashboard page in a WKWebView, with no network involved.
 ///
 /// - The page is served from the engine's files by a `selfguard://dashboard/` scheme handler
-///   (DashboardScheme) and only that address may be shown. https links (osv.dev, GitHub…) open
-///   in the default browser; anything else is dropped.
+///   (DashboardScheme) and only that address may be shown. The few pages it links to (osv.dev
+///   advisories, selfguard on GitHub) open in the default browser; anything else is dropped.
 /// - The page reaches the engine only through the `selfguard` script message handler
 ///   (DashboardMessages), which forwards to the Bridge. There is no listener, port or token.
 /// - Website data is kept in memory only (`nonPersistent`).
@@ -40,7 +40,20 @@ struct DashboardView: NSViewRepresentable {
         var loaded: URL?
 
         private func openOutside(_ url: URL) {
-            if url.scheme == "https" { NSWorkspace.shared.open(url) }
+            if Self.linksOut(to: url) { NSWorkspace.shared.open(url) }
+        }
+
+        /// Exactly the links the page renders (core.js advisoryUrl, the release notes in app.js,
+        /// the README in page-settings.js): even a script in the page can't open any other site,
+        /// with or without a click.
+        private static let outside = [
+            #"^https://osv\.dev/vulnerability/[A-Za-z0-9._%-]+$"#,
+            #"^https://github\.com/josseed/selfguard(#readme|/releases/tag/v[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9})?$"#,
+        ]
+
+        static func linksOut(to url: URL) -> Bool {
+            let s = url.absoluteString
+            return outside.contains { s.range(of: $0, options: .regularExpression) != nil }
         }
 
         func webView(

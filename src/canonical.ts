@@ -11,9 +11,10 @@
  *   and mostly the same dependencies (agents' snapshots, unpacked archives, "evidence"
  *   folders). It joins that project's repo and never represents it.
  */
-import { readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join } from "node:path";
 import { activityOf } from "./activity.ts";
+import { readRegularFile } from "./fsutil.ts";
 import type { RepoIdentity } from "./repoid.ts";
 import { checkoutId, repoKeyOf, type RepoRecord } from "./store.ts";
 
@@ -41,13 +42,16 @@ export interface Checkout {
 export const COPY_SIMILARITY = 0.6;
 
 const nameCache = new Map<string, { mtimeMs: number; name: string | null }>();
+const MAX_MANIFEST = 1024 * 1024;
 
 function readName(file: string, parse: (text: string) => string | null): string | null {
   try {
     const st = statSync(file);
     const hit = nameCache.get(file);
     if (hit && hit.mtimeMs === st.mtimeMs) return hit.name;
-    const name = st.size > 1024 * 1024 ? null : parse(readFileSync(file, "utf8"));
+    // Regular files only (a manifest symlinked to /dev/zero reports size 0), like the scan.
+    const raw = readRegularFile(file, MAX_MANIFEST, { nofollow: true });
+    const name = raw ? parse(raw.data.toString("utf8")) : null;
     nameCache.set(file, { mtimeMs: st.mtimeMs, name });
     return name;
   } catch {

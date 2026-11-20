@@ -3,15 +3,17 @@
  * actions, plus the practice checks. Reads files as text; never runs or resolves anything.
  */
 import type { ExtractResult, SourceExtractor } from "../types.ts";
-import { prTargetCheckout, scriptInjection, unpinnedActions } from "./checks.ts";
+import { notParsed, prTargetCheckout, scriptInjection, unpinnedActions } from "./checks.ts";
 import { splitLines } from "./lines.ts";
 import { scanUses } from "./uses.ts";
 import { ciFiles, ciMarkers, ciProbe, ciWatch } from "./workflows.ts";
 
 export function extractActions(text: string): ExtractResult {
   const lines = splitLines(typeof text === "string" ? text : "");
-  const { refs, uses, skipped } = scanUses(lines);
-  const warnings = [...unpinnedActions(uses), ...prTargetCheckout(lines, uses), ...scriptInjection(lines)].sort((a, b) => a.line - b.line);
+  const { refs, uses, skipped, unread } = scanUses(lines);
+  const warnings = [...unpinnedActions(uses), ...prTargetCheckout(lines, uses), ...scriptInjection(lines, uses), ...notParsed(unread)].sort(
+    (a, b) => a.line - b.line,
+  );
   return { refs, warnings, skipped };
 }
 
