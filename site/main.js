@@ -1,4 +1,7 @@
 import { mountCastle } from "./castle.js";
+import { setupDownloads } from "./download.js";
+
+setupDownloads();
 
 // Bastion, played from the same sprite strips the dashboard uses (src/ui/static/mascot/).
 // Scene geometry mirrors src/ui/static/mascot/manifest.json: keep them in sync when the art changes.
