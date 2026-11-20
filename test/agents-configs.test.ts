@@ -93,7 +93,9 @@ test("repo scope: .mcp.json, .cursor/mcp.json, .vscode/mcp.json, .gemini/setting
   put(root, ".codex/config.toml", "codex.fixture.toml"); // machine-wide only: not read here
   put(root, ".claude.json", "claude-code.fixture.json");
   const rec = extract("repo", root);
-  assert.deepEqual([...new Set(rec.files.map((f) => f.path.slice(root.length + 1)))], [".mcp.json", ".cursor/mcp.json", ".vscode/mcp.json", ".gemini/settings.json"]);
+  // The agent guard reads .codex/config.toml in a repo for its settings, not for MCP servers.
+  const mcpFiles = rec.files.filter((f) => f.by?.includes("mcp-servers"));
+  assert.deepEqual([...new Set(mcpFiles.map((f) => f.path.slice(root.length + 1)))], [".mcp.json", ".cursor/mcp.json", ".vscode/mcp.json", ".gemini/settings.json"]);
   assert.deepEqual(summary(rec, root).slice(0, 1), ["Claude Code|team-docs|npx|npm:team-docs-mcp@?|.mcp.json:3"]);
   assert.equal(rec.refs.length, 7);
   assert.equal(rec.skipped, 1 + 1 + 1 + 1, "github: spec, and one remote server in each of the three others");

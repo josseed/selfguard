@@ -1,15 +1,16 @@
 /**
- * Sources beside the lockfile: CI workflows ("ci") and AI-agent configs ("agents"). Their
- * records are separate from lockfile records (one per git root and kind, plus one
- * machine-wide "agents" record), so the one-lockfile-per-folder model stays untouched.
+ * Sources beside the lockfile: CI workflows ("ci"), AI-agent configs ("agents") and this
+ * machine's persistence and credential posture ("host", docs/host.md). Their records are
+ * separate from lockfile records (one per git root and kind, plus one machine-wide record per
+ * kind), so the one-lockfile-per-folder model stays untouched.
  */
 import type { Ecosystem } from "../lockfile/types.ts";
 import type { Finding } from "../store.ts";
 
-export type SourceKind = "ci" | "agents";
-export const SOURCE_KINDS: readonly SourceKind[] = ["ci", "agents"];
+export type SourceKind = "ci" | "agents" | "host";
+export const SOURCE_KINDS: readonly SourceKind[] = ["ci", "agents", "host"];
 
-/** "repo": files of one git root. "machine": this machine's own config (agents only). */
+/** "repo": files of one git root. "machine": this machine's own files (agents, host). */
 export type SourceScope = "repo" | "machine";
 
 /** What a source is read for: a git root, or the home folder for the machine-wide scope. */
@@ -68,6 +69,16 @@ export interface SourceWarning {
   file: string;
   line: number;
   severity: "high" | "moderate" | "low";
+  /** Stable identity within the file (e.g. a hook event, a plist label). Default: rule + file. */
+  key?: string;
+  /** Tell the user when it appears after the baseline, even if severity isn't "high". */
+  notify?: boolean;
+  /**
+   * Looks like an attack, not a practice (a task that runs on folder open, a hook that downloads
+   * code, hidden Unicode tags, a .pth that decodes code): announced like a malicious package,
+   * even on the source's first scan, after an upgrade or in an inactive repo.
+   */
+  urgent?: boolean;
 }
 
 /** A finding of a source, with where its reference appears. `certainty` absent = "confirmed". */
@@ -118,6 +129,13 @@ export interface SourceRecord {
   error?: string;
   /** findingKey -> last time seen (ISO), as RepoRecord.seen. */
   seen?: Record<string, string>;
+  /** warningKey -> last time seen (ISO): a warning that comes back soon isn't news. */
+  warningSeen?: Record<string, string>;
+  /**
+   * selfguard version whose rules produced `warnings`. After an upgrade, warnings of files
+   * that didn't change are the new rules' baseline, not news (sources/warnings.ts).
+   */
+  warningsBy?: string;
 }
 
 /** What an extractor returns for one file. `file` is filled in by the core. */

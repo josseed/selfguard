@@ -229,6 +229,9 @@ td.top { vertical-align: top; }
 .feed-icon.new { color: var(--critical-text); background: rgba(255, 69, 58, .14); }
 .feed-icon.resolved { color: var(--ok-text); background: rgba(48, 209, 88, .14); }
 .feed-icon.reminder { color: var(--link); background: rgba(10, 132, 255, .14); }
+.feed-icon.risk { color: var(--high-text); background: rgba(255, 159, 10, .18); }
+.feed-icon.risk-resolved { color: var(--ok-text); background: rgba(48, 209, 88, .14); }
+.list li.dismissed { opacity: .6; }
 
 .empty { padding: 22px 12px; text-align: center; color: var(--text2); font-size: 12px; }
 .empty strong { display: block; color: var(--text); font-size: 13px; font-weight: 500; margin-bottom: 3px; }

@@ -5,6 +5,7 @@
  */
 import { readdirSync } from "node:fs";
 import { needsAttention } from "./alerts.ts";
+import { riskCounts } from "./api/risks.ts";
 import { getAttention } from "./api/status.ts";
 import { loadConfig } from "./config.ts";
 import { readEvents } from "./events.ts";
@@ -24,7 +25,8 @@ export type MenuBarState = "malicious" | "attention" | "degraded" | "clean";
 
 export interface MenuBarEvent {
   at: string;
-  kind: "new" | "resolved";
+  /** "risk" / "risk-resolved": source warnings (total = number of risks, severity = worst). */
+  kind: "new" | "resolved" | "risk" | "risk-resolved";
   repo: string;
   repoKey: string;
   machine: string | null;
@@ -42,6 +44,8 @@ export interface MenuBar {
   repos: Array<{ key: string; label: string; machine: string | null; branch: string | null; worstSeverity: Severity | null; serious: number }>;
   attentionRepos: number;
   moreRepos: number;
+  /** Open source warnings that alert (high, or their rule asks), not dismissed, in active repos and this machine. */
+  risks: { open: number; high: number; sources: number };
   trackedProjects: number;
   /** null: not macOS, or the schedule couldn't be read. */
   services: { sync: boolean; watcher: boolean; owner: "app" | "cli" | null } | null;
@@ -61,6 +65,8 @@ export function menuBarState(totals: Record<Severity, number>, attention: number
   if (services && (!services.sync || !services.watcher)) return "degraded";
   return "clean";
 }
+
+const worstOf = (list: Severity[]): Severity | null => list.sort((a, b) => severityRank(a) - severityRank(b))[0] ?? null;
 
 function countRecords(): number {
   const count = (dir: string): number => {
@@ -101,26 +107,29 @@ export function getMenuBar(): MenuBar {
   }
   const state = loadState();
   const update = cachedUpdate();
+  const risks = riskCounts();
   const events: MenuBarEvent[] = readEvents(300)
-    .filter((e) => (e.kind === "new" || e.kind === "resolved") && e.active && !e.firstScan)
+    .filter((e) => (e.kind === "new" || e.kind === "resolved" || e.kind === "risk" || e.kind === "risk-resolved") && e.active && !e.firstScan)
     .slice(0, MAX_EVENTS)
     .map((e) => ({
       at: e.at,
-      kind: e.kind as "new" | "resolved",
+      kind: e.kind as MenuBarEvent["kind"],
       repo: e.repo,
       repoKey: e.repoKey,
       machine: e.machine ?? null,
-      severity: e.packages.length ? e.packages.map((p) => p.severity).sort((a, b) => severityRank(a) - severityRank(b))[0]! : null,
+      severity: worstOf([...e.packages.map((p) => p.severity), ...(e.risks ?? []).map((r) => r.severity)]),
       total: e.total,
     }));
   return {
     version: VERSION,
     generatedAt: new Date().toISOString(),
-    state: menuBarState(totals, repos.length, services),
+    // An open high risk needs attention like a serious vulnerability.
+    state: menuBarState(totals, repos.length + (risks.high > 0 ? 1 : 0), services),
     totals,
     repos: repos.slice(0, MAX_REPOS),
     attentionRepos: repos.length,
     moreRepos: Math.max(0, repos.length - MAX_REPOS),
+    risks,
     trackedProjects: countRecords(),
     services,
     lastSync: state.lastSync ?? null,

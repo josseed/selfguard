@@ -5,6 +5,12 @@ tokens, source code) without being in any project lockfile:
 
 - **GitHub Actions** referenced by each repo's workflows.
 - **MCP servers** configured for AI agents, on this machine and in each repo.
+- **Agent and editor settings in repos** that run code or send your credentials elsewhere as
+  soon as you open the repo (agent hooks, endpoint overrides, autorun tasks), and invisible
+  Unicode hidden in the instructions agents read. See [Agent guard](#agent-guard).
+
+This machine's own persistence and credential posture (launch items, shell startup files,
+plaintext tokens, Python startup hooks) is covered in [This machine](host.md).
 
 Files are read as data: nothing is executed, GitHub is never called, and only MCP server
 package names (and exact versions) are sent to OSV. Action names never leave the machine: they
@@ -29,7 +35,11 @@ lockfiles only; sources are shown separately.
 
   Malicious advisories (`MAL-*`) always apply, whatever the version.
 - **Warnings** are risky practices found without the network. They are never counted as
-  vulnerable packages.
+  vulnerable packages. High-severity ones (and those whose rule asks for it) notify you when
+  they appear after the first scan; `selfguard dismiss --warning <id>` silences one you put
+  there on purpose. Urgent ones (an autorun task, a repo hook that downloads code, hidden
+  Unicode tags, bidi controls or hidden text) alert even on the first scan of a freshly cloned
+  repo. See [alerts](how-it-works.md#alerts).
 
 ## GitHub Actions
 
@@ -128,6 +138,55 @@ places and checks that none reaches records, events, logs, CLI and MCP output or
 Limits: line numbers are best effort; changes to the npx cache don't trigger a rescan; VS Code's
 `settings.json` (`mcp.servers`), Windows paths, `CLAUDE_CONFIG_DIR`/`CODEX_HOME` overrides,
 managed configs and the bunx, pnpm and uv caches aren't read.
+
+## Agent guard
+
+A cloned repo can ship files that make an AI agent or the editor run its code, or send your
+prompts and API keys to another server, as soon as you open it: Claude Code project hooks and
+`ANTHROPIC_BASE_URL` overrides (CVE-2025-59536, CVE-2026-21852, CVE-2026-25725), VS Code tasks
+that run on folder open (the fake job-interview repos of "Contagious Interview"), and invisible
+Unicode that hides instructions or code (ASCII smuggling, Trojan Source, GlassWorm). selfguard
+reads these files as data and gives warnings (kind "agents", no references, nothing sent).
+Warnings marked **notify** carry `notify: true`; each has a `key` (a hook event, a variable
+name, a task label) that tells two warnings of one file apart.
+
+### Files read
+
+| Agent or editor | In each repo | On this machine |
+|---|---|---|
+| Claude Code | `.claude/settings.json`, `.claude/settings.local.json` | `~/.claude/settings.json` |
+| Cursor | `.cursor/hooks.json` | — |
+| Gemini CLI | `.gemini/settings.json` | — |
+| Codex | `.codex/config.toml`, `.codex/hooks.json` | `~/.codex/config.toml` |
+| VS Code (and Cursor, Windsurf) | `.vscode/tasks.json`, `.vscode/settings.json` | — |
+| Instructions (hidden Unicode only) | `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.windsurfrules`, `.clinerules` (file, or `*.md`/`*.txt` in the folder), `.github/copilot-instructions.md`, `.cursor/rules/*.mdc`, `.claude/commands/*.md`, `.claude/agents/*.md`, `.claude/skills/*/SKILL.md` | `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` |
+
+Folders are read one level deep (50 files each), never walked. The repo's settings files are
+also checked for hidden Unicode; the user's own settings on this machine aren't.
+
+### Warnings
+
+| Rule | Severity | Notify | When |
+|---|---|---|---|
+| `repo-agent-hooks` | high | yes | A repo config defines hooks (Claude Code, Cursor, Gemini CLI, Codex): commands that run on agent events such as `SessionStart`. One warning per event; the message says when a hook command downloads or decodes code (curl, wget, nc, `base64 -d`, `\| sh`, `python -c`, osascript, eval…), without quoting it. |
+| `agent-endpoint-override` | high | yes | Claude Code `env` (or Codex `shell_environment_policy.set`) sets `*_BASE_URL`, `HTTP(S)_PROXY`, CA or TLS overrides, an API key or auth token, or a code-loading variable (`NODE_OPTIONS`, `DYLD_*`, `LD_PRELOAD`, `PYTHONSTARTUP`, `BASH_ENV`…). The variable is named; its value never is. |
+| `agent-helper-command` | high | yes | A setting that runs a command from the repo: Claude Code `apiKeyHelper`, `awsCredentialExport`, `awsAuthRefresh`, `otelHeadersHelper`, `statusLine`; Gemini CLI `tools.discoveryCommand`, `tools.callCommand` (and the older top-level names). |
+| `agent-permissions-bypassed` | high (repo), moderate (machine) | repo only | Claude Code `permissions.defaultMode: "bypassPermissions"`; Codex `approval_policy = "never"` with `sandbox_mode = "danger-full-access"`; in a repo, VS Code `chat.tools.autoApprove` or `chat.tools.global.autoApprove` set to true. |
+| `unrestricted-shell-permission` | moderate | no | Claude Code `permissions.allow` holds `Bash`, `Bash(*)` or `Bash(:*)`. |
+| `agent-mcp-autoapprove` | moderate | yes | Claude Code `enableAllProjectMcpServers: true`: every server in the repo's `.mcp.json` starts without asking. |
+| `autorun-task` | high | yes | A `.vscode/tasks.json` task has `runOptions.runOn: "folderOpen"`. Key: the task label. |
+| `terminal-env-injection` | high | yes | `.vscode/settings.json` sets `NODE_OPTIONS`, `DYLD_*`, `LD_PRELOAD`, `PYTHONSTARTUP` (or similar) in `terminal.integrated.env.osx/linux/windows`. |
+| `hidden-unicode` | high | yes | Unicode tag characters (U+E0000–E007F, ASCII smuggling; emoji subdivision flags excepted) or bidi controls (U+202A–202E, U+2066–2069, Trojan Source). |
+| `hidden-unicode` | moderate, or high and notify | when high | Zero-width characters (U+200B/200C/200D/2060, U+FEFF after the start) or variation selectors (U+FE00–FE0F, U+E0100–E01EF) outside emoji sequences and the scripts that use joiners. High when a run is 10 or longer or decodes to text (GlassWorm). |
+
+Messages give a count and the first line, never the hidden text, a command, a URL or a value.
+A file that can't be parsed is skipped silently (the agent can't read it either). On this
+machine, hooks, `env` and helpers are yours and aren't flagged.
+
+Not read (formats not confirmed, or too common to flag): Gemini CLI `.env` files (they can set
+`GOOGLE_GEMINI_BASE_URL`, but are ordinary project `.env` files), Codex `notify`,
+`model_providers` and `openai_base_url` (ignored by Codex in project config), Gemini CLI YOLO
+mode (command line only), `.code-workspace` files, user-level Cursor hooks and plugin hooks.
 
 ## When they are checked
 

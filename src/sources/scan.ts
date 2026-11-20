@@ -10,6 +10,8 @@ import { updateSeen } from "../scan.ts";
 import { findingKey } from "../store.ts";
 import { buildSourceFindings, queryFor, refVersion } from "./findings.ts";
 import { loadSource } from "./store.ts";
+import { diffWarnings } from "./warnings.ts";
+import { VERSION } from "../version.ts";
 import { fileState, filesFor, markerStates, type SourceInput } from "./targets.ts";
 import type { ExtractResult, SourceFinding, SourceRecord, SourceRef, SourceWarning, UnknownKind } from "./types.ts";
 
@@ -17,6 +19,9 @@ export interface SourceOutcome {
   record: SourceRecord;
   newFindings: SourceFinding[];
   resolvedFindings: SourceFinding[];
+  /** Warnings that appeared since the last scan (never on a first scan; see sources/warnings.ts). */
+  newWarnings: SourceWarning[];
+  resolvedWarnings: SourceWarning[];
   firstScan: boolean;
 }
 
@@ -74,7 +79,12 @@ function cleanWarning(w: ExtractResult["warnings"][number], file: string): Sourc
   const rule = opt(w?.rule, 64);
   const message = opt(w?.message, 300);
   if (!rule || !message) return null;
-  return { rule, message, file, line: lineOf(w.line), severity: SEVERITIES.has(w.severity) ? w.severity : "low" };
+  const out: SourceWarning = { rule, message, file, line: lineOf(w.line), severity: SEVERITIES.has(w.severity) ? w.severity : "low" };
+  const key = opt(w.key, 120);
+  if (key) out.key = key;
+  if (w.notify === true) out.notify = true;
+  if (w.urgent === true) out.urgent = out.notify = true;
+  return out;
 }
 
 /** What a scan depends on: each reference's package and version, not where it is written. */
@@ -159,11 +169,16 @@ function relocate(findings: SourceFinding[], refs: SourceRef[]): SourceFinding[]
 
 export function finishSources(inventories: SourceInventory[], found: Lookup, now = new Date().toISOString()): SourceOutcome[] {
   return inventories.map(({ record, previous, reuse }) => {
+    // Warnings come from the files just read, whatever happens with OSV below.
+    const { newWarnings, resolvedWarnings, warningSeen } = diffWarnings(record, previous, now);
+    record.warningSeen = warningSeen;
+    record.warningsBy = VERSION;
+    const warned = { newWarnings, resolvedWarnings };
     if (reuse && previous) {
       record.findings = relocate(previous.findings, record.refs);
       record.scannedAt = previous.scannedAt;
       record.seen = previous.seen ?? {};
-      return { record, newFindings: [], resolvedFindings: [], firstScan: false };
+      return { record, newFindings: [], resolvedFindings: [], ...warned, firstScan: false };
     }
     const actions = record.refs.some((r) => r.ecosystem === "GitHub Actions");
     const error = found.error ?? (actions ? found.ghaError : undefined);
@@ -177,7 +192,7 @@ export function finishSources(inventories: SourceInventory[], found: Lookup, now
       record.findings = previous?.findings ?? [];
       record.scannedAt = previous?.scannedAt ?? null;
       record.seen = previous?.seen ?? {};
-      return { record, newFindings: [], resolvedFindings: [], firstScan: previous === null };
+      return { record, newFindings: [], resolvedFindings: [], ...warned, firstScan: previous === null };
     }
     record.findings = buildSourceFindings(record.refs, found, previous, now);
     record.scannedAt = now;
@@ -190,7 +205,7 @@ export function finishSources(inventories: SourceInventory[], found: Lookup, now
     const after = new Set(record.findings.map(findingKey));
     const resolvedFindings = previous ? previous.findings.filter((f) => !after.has(findingKey(f))) : [];
     record.seen = updateSeen(previous, record.findings, now);
-    return { record, newFindings, resolvedFindings, firstScan: previous === null };
+    return { record, newFindings, resolvedFindings, ...warned, firstScan: previous === null };
   });
 }
 

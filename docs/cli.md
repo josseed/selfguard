@@ -146,11 +146,14 @@ code).
 
 Last results for what runs beside your lockfiles: this machine's **agent tools** (MCP servers
 from Claude Code, Claude Desktop, Cursor, VS Code, Windsurf, Codex and Gemini CLI configs) and
-each repo's **GitHub Actions** workflows and project agent configs. With `dir`, only the git
-repo around it. Shows findings with their certainty (confirmed, may be affected, version
-unknown), file and line, and warnings such as unpinned actions or MCP servers. Reads local
-state only; `scan`, `sync` and `check` refresh it. See
-[CI workflows and agent tools](ci-and-agent-tools.md).
+each repo's **GitHub Actions** workflows and project agent configs, plus **This machine**:
+launch items, shell startup files, package manager and git config, plaintext credential files
+and Python startup hooks (also in each repo's virtualenvs), high warnings first. With `dir`,
+only the git repo around it. Shows findings with their certainty (confirmed, may be affected,
+version unknown), file and line, and warnings such as unpinned actions or MCP servers. Warnings
+that alert when they appear (high severity, or their rule asks) are shown as `risk` with an `id`
+(`-v` shows every warning's id); dismissed ones are marked `dismissed`. Reads local state only; `scan`, `sync` and `check` refresh it. See
+[CI workflows and agent tools](ci-and-agent-tools.md) and [This machine](host.md).
 
 ### `selfguard report [dir] [-v|--verbose] [-m|--markdown]`
 
@@ -249,11 +252,23 @@ Turns off the repo containing `dir` (default: current directory), or the repo wi
 (as shown by `status --json` or `dismiss --list`, useful for other machines). Every checkout of
 the repo counts as inactive (no reminders, alerts only for malicious packages, hidden from
 `status` without `--all`) until one of them has git activity again: then it turns back on by
-itself. Dismissing again restarts the clock. `--list` shows the dismissed repos.
+itself. Dismissing again restarts the clock. `--list` shows the dismissed repos and warnings.
+
+### `selfguard dismiss --warning <id>`
+
+Stops alerting for one warning of `selfguard tools` (its `id`, or its full `warningKey` from
+`tools --json`): a LaunchAgent, an agent hook or a CI step you put there on purpose. It stays
+listed, marked `dismissed`, but never notifies again and leaves the reminder and the menu bar
+counts. Unlike a repo, it doesn't come back by itself. Also from the dashboard (**Dismiss** next
+to the warning) and MCP (`selfguard_dismiss_warning`).
 
 ### `selfguard undismiss [dir|key]`
 
 Turns a dismissed repo back on now.
+
+### `selfguard undismiss --warning <id>`
+
+The warning alerts again (when it reappears) and counts in reminders.
 
 ---
 
@@ -400,6 +415,7 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `SELFGUARD_NO_NOTIFY=1` | Disable notifications and dialogs (useful in tests and CI). |
 | `SELFGUARD_OSV_API` | OSV API base URL. Default `https://api.osv.dev/v1`. For mirrors and tests. |
 | `SELFGUARD_NO_LAUNCHD=1` | Never install or change launchd agents (tests). |
+| `SELFGUARD_SYSTEM_ROOT` | Folder that stands for `/` when reading `/Library/LaunchAgents` and `/Library/LaunchDaemons` (tests). |
 | `SELFGUARD_SSH` | ssh client to use for other machines. Default `ssh` from `PATH`. |
 | `SELFGUARD_TAILSCALE` | Path of the `tailscale` CLI (default: the usual install locations). |
 | `SELFGUARD_NO_UPDATE_CHECK=1` | Never ask npm for a newer selfguard. |

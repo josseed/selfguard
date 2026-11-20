@@ -71,13 +71,14 @@ struct MenuView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionTitle("New since you last looked")
             ForEach(recent.prefix(3)) { e in
-                let fixed = e.kind == "resolved"
+                let fixed = e.kind == "resolved" || e.kind == "risk-resolved"
+                let risk = e.kind.hasPrefix("risk")
                 EventRow(
                     dot: fixed ? Severity.fixed : Severity.color(e.severity),
                     name: e.machine.map { "\($0) · \(e.repo)" } ?? e.repo,
-                    detail: "\(packages(e.total))\(fixed ? " fixed" : "") · \(RelativeTime.describe(e.at))",
+                    detail: "\(risk ? risks(e.total) : packages(e.total))\(fixed ? (risk ? " resolved" : " fixed") : "") · \(RelativeTime.describe(e.at))",
                     pill: fixed ? ("Fixed", Severity.fixed) : e.severity.map { ($0.capitalized, Severity.color($0)) }
-                ) { open(repo: e.repoKey) }
+                ) { e.repoKey.hasPrefix("sources:") ? open(page: "activity") : open(repo: e.repoKey) }
             }
             if recent.count > 3 {
                 Button { open(page: "activity") } label: {
@@ -237,6 +238,7 @@ struct MenuView: View {
     }
 
     private func packages(_ n: Int) -> String { n == 1 ? "1 package" : "\(n) packages" }
+    private func risks(_ n: Int) -> String { n == 1 ? "1 risk" : "\(n) risks" }
 }
 
 extension Bundle {

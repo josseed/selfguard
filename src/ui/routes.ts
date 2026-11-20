@@ -165,6 +165,8 @@ export async function route(method: string, url: URL, body: Record<string, unkno
     if (p === "/api/folders/remove") return api.removeRoot(str(body, "path"));
     if (p === "/api/repo/dismiss") return api.dismissRepo(str(body, "key"));
     if (p === "/api/repo/undismiss") return api.undismissRepo(str(body, "key"));
+    if (p === "/api/warning/dismiss") return api.dismissWarning(str(body, "id"));
+    if (p === "/api/warning/undismiss") return api.undismissWarning(str(body, "id"));
     if (p === "/api/folders/ignore") return api.ignoreFolder(str(body, "path"), machineOf(body));
     if (p === "/api/unexclude") {
       const path = str(body, "path");

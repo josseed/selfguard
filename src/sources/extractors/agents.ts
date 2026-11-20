@@ -1,14 +1,16 @@
 /**
  * MCP servers of AI agents (kind "agents"): per-project configs (.mcp.json, .cursor/mcp.json…)
  * and machine-wide ones (~/.claude.json, Claude Desktop…). The agents and their paths are data
- * in sources/agents/configs.ts (see docs/ci-and-agent-tools.md). sources/builtin.ts registers
- * every entry.
+ * in sources/agents/configs.ts (see docs/ci-and-agent-tools.md). The agent guard
+ * (sources/agentguard/) adds warnings for risky agent settings and hidden Unicode.
+ * sources/builtin.ts registers every entry.
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { configsFor, type AgentConfig } from "../agents/configs.ts";
 import { extractAgentConfig } from "../agents/extract.ts";
 import { readNpxCache, type NpxCache } from "../agents/npx-cache.ts";
+import { AGENT_GUARD_EXTRACTORS } from "../agentguard/extractor.ts";
 import type { SourceExtractor, SourceTarget } from "../types.ts";
 
 const pathOf = (target: SourceTarget, cfg: AgentConfig): string => join(target.root, ...cfg.path.split("/"));
@@ -30,4 +32,4 @@ export const MCP_SERVERS: SourceExtractor = {
   },
 };
 
-export const AGENT_EXTRACTORS: SourceExtractor[] = [MCP_SERVERS];
+export const AGENT_EXTRACTORS: SourceExtractor[] = [MCP_SERVERS, ...AGENT_GUARD_EXTRACTORS];

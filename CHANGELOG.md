@@ -6,6 +6,58 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+
+- **Notifications pass untrusted text more defensively.** `osascript` reads options until the
+  first plain word, so a notification text starting with `-e` could have become a script line.
+  No released version put repo-controlled text first in a notification, but the new Python
+  startup hook warnings name files a repo chooses: a fixed first argument now ends option
+  parsing, leading dashes are dropped, and those messages start with fixed text and only show
+  ordinary file names.
+
+### Added
+
+- **Agent guard: repo files that run code when you open the repo.** New warnings (kind
+  "agents") for Claude Code project hooks, `ANTHROPIC_BASE_URL`/API key/`NODE_OPTIONS`
+  overrides, `apiKeyHelper`-style commands and `bypassPermissions` (CVE-2025-59536,
+  CVE-2026-21852, CVE-2026-25725); Cursor, Gemini CLI and Codex hooks and equivalents; VS Code
+  tasks that run on folder open ("Contagious Interview") and terminal env injection; and
+  invisible Unicode (tags, bidi controls, zero-width runs, GlassWorm variation selectors) in
+  `CLAUDE.md`, `AGENTS.md`, Cursor rules, Claude commands, agents and skills. On this machine,
+  `bypassPermissions` and Codex's no-approval, no-sandbox mode are a moderate warning. Files are
+  read as data; messages never include values, URLs or hidden text. Warnings now carry an
+  optional `key` and `notify`. See docs/ci-and-agent-tools.md.
+- **Risky warnings now alert.** A warning of CI workflows, agent configs or this machine's own
+  config that is high severity (or whose rule asks to notify) gets a notification when it
+  appears, grouped per source ("3 new risks in acme/api (agent tools)"), with the same weight
+  as a high vulnerability (Bastion sounds the horn; never the malicious-package dialog). It
+  follows the same rules as findings: active repos only, the first scan of a source is a
+  baseline, and rules added by an upgrade don't alert about files that didn't change. A risk
+  that goes away gets a quiet "✓ resolved". **Urgent** warnings, which look like an attack (an
+  autorun VS Code task, a repo agent hook that downloads code, hidden Unicode tags/bidi/text, a
+  `.pth` that decodes code), alert like a malicious package: even on the first scan of a freshly
+  cloned repo, after an upgrade and in inactive repos. New risks show in the activity feed (filter
+  **Risks**) and the menu bar panel; `menubar.json` counts open risks; open high risks join
+  the daily reminder after the vulnerabilities.
+- **Dismiss a warning** you put there on purpose (a LaunchAgent, a repo hook):
+  `selfguard dismiss --warning <id>` (ids in `selfguard tools`), **Dismiss** in the dashboard,
+  or `selfguard_dismiss_warning` over MCP. It stays listed, marked, and never alerts.
+  `selfguard undismiss --warning <id>` undoes it.
+- **This machine: persistence and exposed credentials** (source kind `host`, warnings only, no
+  network). selfguard now reviews launch items (macOS LaunchAgents/LaunchDaemons, XML and
+  binary plists; systemd user units and autostart entries), flagging ones that run from `/tmp`,
+  hidden folders or Downloads, run inline code or `curl`, or use an Apple label; shell startup
+  files (downloads run at startup, `LD_PRELOAD`/`DYLD_INSERT_LIBRARIES`/`NODE_OPTIONS` hooks,
+  agents aliased with `--dangerously-skip-permissions`, `--yolo` or `--trust-all-tools`);
+  npm/pip registries and extra indexes, global git hooks and command settings; plaintext tokens
+  in `~/.npmrc`, `~/.aws/credentials`, `gh`, Docker, `.netrc`, `.git-credentials`, `.pypirc`,
+  kubeconfig and gcloud files (presence only, never the values); and Python startup hooks
+  (`.pth` import lines, `sitecustomize.py`) in repo virtualenvs, uv tools, pipx and the user
+  site, as used by the LiteLLM compromises. In `selfguard tools` ("This machine"), `--json`,
+  `selfguard_sources` and a new **This machine** dashboard card. See [docs/host.md](docs/host.md).
+- Source warnings may carry a stable `key` and `notify: true` (announced when they appear after
+  the baseline).
+
 ## [0.17.1] - 2026-11-20
 
 ### Added

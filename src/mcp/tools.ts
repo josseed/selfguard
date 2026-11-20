@@ -162,9 +162,9 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "selfguard_sources",
-    title: "CI workflows and agent tools",
+    title: "CI workflows, agent tools and this machine",
     description:
-      "Last results for sources beside lockfiles: `machine` lists this machine's agent tools (MCP servers from agent configs), `repos` each git repo's CI workflows (GitHub Actions) and project agent configs. Each has `references` (file and line), `findings` with a `certainty` (confirmed | may-be-affected for mutable tags like @v4 | version-unknown for branches, bare SHAs and unpinned packages) and `warnings` (risky practices, not vulnerabilities). `kinds` is empty when this version checks none yet. Local state only, no network." +
+      "Last results for sources beside lockfiles: `machine` lists this machine's agent tools (kind \"agents\": MCP servers from agent configs) and its host checks (kind \"host\": launch items, shell startup files, package manager/git config, plaintext credential files, Python startup hooks; warnings only, never file contents), `repos` each git repo's CI workflows (GitHub Actions), project agent configs and virtualenv startup hooks. Each has `references` (file and line), `findings` with a `certainty` (confirmed | may-be-affected for mutable tags like @v4 | version-unknown for branches, bare SHAs and unpinned packages) and `warnings` (risky practices, not vulnerabilities; each with an `id` to dismiss it, `alerts`: it notifies when it appears, and `dismissed`). `kinds` is empty when this version checks none yet. Local state only, no network." +
       UNTRUSTED,
     inputSchema: obj({ path: { type: "string", description: "Only the sources of the git repo around this folder." } }),
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -256,9 +256,26 @@ export const TOOLS: Tool[] = [
   {
     name: "selfguard_dismissed",
     title: "Dismissed repos",
-    description: "Repos the user turned off that have not had git activity since. Local state only.",
+    description: "Repos the user turned off that have not had git activity since (`dismissed`), and dismissed warnings (`warnings`). Local state only.",
     inputSchema: obj({}),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    run: () => ({ dismissed: api.listDismissed() }),
+    run: () => ({ dismissed: api.listDismissed(), warnings: api.listDismissedWarnings() }),
+  },
+  {
+    name: "selfguard_dismiss_warning",
+    title: "Dismiss a warning",
+    description:
+      "Stop alerting for one warning of selfguard_sources (a LaunchAgent, an agent hook or a CI step the user put there on purpose). It stays listed with `dismissed: true` but never notifies or reminds, until selfguard_undismiss_warning. `warning`: its `id` (or `warningKey`) from selfguard_sources. Confirm with the user first: a warning may be an attack.",
+    inputSchema: obj({ warning: { type: "string", description: "warnings[].id (or warningKey) from selfguard_sources." } }, ["warning"]),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    run: (a) => api.dismissWarning(str(a, "warning")),
+  },
+  {
+    name: "selfguard_undismiss_warning",
+    title: "Alert again for a warning",
+    description: "Undo selfguard_dismiss_warning: the warning alerts again when it reappears and counts in reminders.",
+    inputSchema: obj({ warning: { type: "string", description: "id or warningKey of a dismissed warning." } }, ["warning"]),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    run: (a) => api.undismissWarning(str(a, "warning")),
   },
 ];

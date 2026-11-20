@@ -90,6 +90,11 @@ export interface Config {
    * until one of its checkouts has git activity after `at`; then it comes back on its own.
    */
   dismissed: Dismissal[];
+  /**
+   * Warnings the user dismissed (a LaunchAgent or a hook they put there on purpose): still
+   * listed, marked, but they never alert or remind. Until undismissed.
+   */
+  dismissedWarnings: WarningDismissal[];
   /** Weekly search of the whole home folder that starts watching new places with active repos. */
   autoDiscover: boolean;
   /** Daily check of npm for a newer selfguard (only the package name is sent). */
@@ -107,6 +112,15 @@ export interface Dismissal {
   key: string;
   label: string;
   /** When it was dismissed (ISO). */
+  at: string;
+}
+
+export interface WarningDismissal {
+  /** warningKey (sources/warnings.ts) and its short id. */
+  key: string;
+  id: string;
+  /** What it was, for listing: "acme/api (agent tools): <message>". */
+  label: string;
   at: string;
 }
 
@@ -163,6 +177,13 @@ export function loadConfig(): Config {
       dismissed.push({ key: d.key, label: typeof d.label === "string" ? d.label : d.key, at: d.at });
     }
   }
+  const dismissedWarnings: WarningDismissal[] = [];
+  if (raw && isObject(raw) && Array.isArray(raw.dismissedWarnings)) {
+    for (const d of raw.dismissedWarnings as unknown[]) {
+      if (!isObject(d) || typeof d.key !== "string" || !d.key || typeof d.id !== "string" || typeof d.at !== "string") continue;
+      if (!dismissedWarnings.some((x) => x.key === d.key)) dismissedWarnings.push({ key: d.key, id: d.id, label: typeof d.label === "string" ? d.label : d.key, at: d.at });
+    }
+  }
   const ignored: Ignored[] = [];
   if (raw && isObject(raw) && Array.isArray(raw.ignored)) {
     for (const i of raw.ignored as unknown[]) {
@@ -178,7 +199,7 @@ export function loadConfig(): Config {
     port: typeof rs.port === "number" && Number.isInteger(rs.port) && rs.port > 1024 && rs.port < 65536 ? rs.port : DEFAULT_SHARE_PORT,
     allowOtherUsers: rs.allowOtherUsers === true,
   };
-  return { schema: 1, roots, exclude, ignored, remind, activeDays, machines, dismissed, autoDiscover, updateCheck, share };
+  return { schema: 1, roots, exclude, ignored, remind, activeDays, machines, dismissed, dismissedWarnings, autoDiscover, updateCheck, share };
 }
 
 export function isExcluded(path: string, exclude: readonly string[]): boolean {

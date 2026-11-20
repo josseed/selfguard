@@ -199,10 +199,29 @@ ones that came back.
 - **Fixes.** When a scan on the **same branch** no longer has a vulnerable package, you get a
   "✓ fixed" notification with what is left. Switching to a branch that happens to be clean
   isn't a fix.
+- **New risks.** Warnings of [CI workflows and agent tools](ci-and-agent-tools.md) (and any
+  other source: a repo's agent configs, this machine's own config) alert when they appear and
+  are either high severity or flagged by their rule as worth telling. A warning's identity is
+  its kind, rule, file and the rule's own key (a hook event, a plist label), not its line or
+  text, so edits around it don't re-alert. They are grouped per source in one notification
+  ("3 new risks in acme/api (agent tools)"; a single one shows its message). A high risk
+  weighs like a high vulnerability: a banner, Bastion sounds the horn, never the
+  malicious-package dialog. Same rules as findings: active repos only (this machine's own
+  config always counts), one alert per repo even with several checkouts, not again for a
+  warning seen there in the last 180 days. Baseline: a source's first scan never alerts, and
+  after an upgrade adds rules, a new warning only alerts if its file is new or changed since
+  the last scan (otherwise the rule is new, not the risk). A risk that goes away gets a quiet
+  "✓ resolved". `selfguard dismiss --warning <id>` silences one you put there on purpose.
+  **Urgent** warnings, the ones that look like an attack rather than a practice (a VS Code task
+  that runs on folder open, a repo agent hook that downloads or decodes code, Unicode tag or bidi
+  characters, hidden text in zero-width characters, a `.pth` that decodes or downloads code),
+  alert like a malicious package: also on a source's first scan (a freshly cloned repo), after an
+  upgrade and in inactive repos.
 - **Reminders.** Once a day by default (`settings --remind daily|weekly|off`), between 09:00
   and 21:00, if serious issues are still open in active repos: malicious packages, critical
   vulnerabilities outside dev dependencies, and high ones in direct dependencies. Each repo is
-  judged by the checkout that counts for it (see above).
+  judged by the checkout that counts for it (see above). Open high risks (not dismissed) follow
+  the vulnerabilities.
 
 How they are delivered:
 

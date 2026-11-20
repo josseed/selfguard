@@ -1,7 +1,9 @@
-// CI workflows and agent tools: the "Agent tools" card (Overview) and a repo's sources (repo page).
+// CI workflows, agent tools and host checks: the "Agent tools" and "This machine" cards
+// (Overview) and a repo's sources (repo page).
 // Everything here comes from files of the user's projects or OSV.dev: textContent only.
-import { advisoryUrl, ago, ecoTag, h, plural, sevBadge, state, tildify } from "./core.js";
-import { call } from "./api.js";
+import { advisoryUrl, ago, ecoTag, h, plural, sevBadge, state, tildify, toast } from "./core.js";
+import { busy, call } from "./api.js";
+import { refresh } from "./app.js";
 import { card, empty } from "./layout.js";
 
 const CERTAINTY = {
@@ -41,24 +43,42 @@ function findingItem(f, root) {
         : f.fixedIn ? h("span", { class: "fix-ok" }, `→ ${f.fixedIn}`) : h("span", { class: "fix-none" }, "No fix yet")));
 }
 
+/** Dismiss (or undo) a warning that alerts: for a LaunchAgent or a hook put there on purpose. */
+function dismissButton(w) {
+  const btn = h("button", { class: "btn small", type: "button", title: w.dismissed ? "Alert again when it reappears, and remind about it" : "Put there on purpose: keep it listed, never alert about it" }, w.dismissed ? "Undismiss" : "Dismiss");
+  btn.addEventListener("click", () => busy(btn, "…", async () => {
+    await call("POST", w.dismissed ? "/api/warning/undismiss" : "/api/warning/dismiss", { id: w.id });
+    toast(w.dismissed ? "It alerts again" : "Dismissed: it stays listed, no alerts");
+    await refresh();
+  }));
+  return btn;
+}
+
 function warningItem(w, root) {
-  return h("li", { class: "wrap" },
-    h("span", { class: "tag", title: `rule: ${w.rule}` }, `warning · ${w.severity}`),
+  const label = w.dismissed ? "dismissed" : w.alerts ? `risk · ${w.severity}` : `warning · ${w.severity}`;
+  return h("li", { class: `wrap${w.dismissed ? " dismissed" : ""}` },
+    w.alerts && !w.dismissed ? sevBadge(w.severity) : h("span", { class: "tag", title: `rule: ${w.rule}` }, label),
     h("div", { class: "grow" },
       h("div", { class: "title wrap" }, w.message),
-      h("div", { class: "sub mono" }, where(w.file, w.line, root))));
+      h("div", { class: "sub mono" }, `${where(w.file, w.line, root)} · ${w.rule}`)),
+    w.alerts || w.dismissed ? dismissButton(w) : null);
 }
+
+const WARNING_RANK = { high: 0, moderate: 1, low: 2 };
 
 function sourceBlock(s) {
   const refs = s.references;
+  const host = s.kind === "host";
   const agents = [...new Set(refs.map((r) => r.agent).filter(Boolean))];
   const head = [
-    plural(refs.length, "reference"),
-    s.skippedReferences ? `${s.skippedReferences} not checked` : null,
+    host ? plural(s.files.length, "file") + " checked" : plural(refs.length, "reference"),
+    s.skippedReferences ? `${s.skippedReferences} ${host ? "unreadable" : "not checked"}` : null,
     agents.length ? agents.join(", ") : null,
     s.scannedAt ? `checked ${ago(s.scannedAt)}` : "not checked yet",
   ].filter(Boolean).join(" · ");
-  const items = [...s.findings.map((f) => findingItem(f, s.path)), ...s.warnings.map((w) => warningItem(w, s.path))];
+  // Host checks: the high ones first, ordinary launch items last.
+  const warnings = host ? [...s.warnings].sort((a, b) => WARNING_RANK[a.severity] - WARNING_RANK[b.severity]) : s.warnings;
+  const items = [...s.findings.map((f) => findingItem(f, s.path)), ...warnings.map((w) => warningItem(w, s.path))];
   return h("div", {},
     h("div", { class: "card-head" },
       h("div", {}, h("h3", {}, s.label), h("div", { class: "sub" }, `${tildify(s.path)} · ${head}`))),
@@ -79,12 +99,19 @@ export function sourcesCard(title, sub, list, kinds) {
 export function agentToolsCard() {
   const s = state.sources;
   if (!s) return null;
-  return sourcesCard("Agent tools", "MCP servers configured for your AI agents on this machine", s.machine, s.kinds.filter((k) => k === "agents"));
+  return sourcesCard("Agent tools", "MCP servers configured for your AI agents on this machine", s.machine.filter((m) => m.kind === "agents"), s.kinds.filter((k) => k === "agents"));
+}
+
+/** Overview: this machine's persistence and credential checks (warnings only). */
+export function hostCard() {
+  const s = state.sources;
+  if (!s) return null;
+  return sourcesCard("This machine", "Launch items, shell startup files, package manager config, plaintext credentials and Python startup hooks", s.machine.filter((m) => m.kind === "host"), s.kinds.filter((k) => k === "host"));
 }
 
 /** Repo page: the repo's CI workflows and agent configs. */
 export function repoSourcesCard(key) {
   const r = state.repoSources;
   if (!r || r.key !== key || !state.sources) return null;
-  return sourcesCard("CI workflows and agent configs", "Actions and MCP servers referenced by this repo; warnings are practices, not vulnerabilities", r.list, state.sources.kinds);
+  return sourcesCard("CI workflows and agent configs", "Actions and MCP servers referenced by this repo, Python startup hooks in its virtualenvs; warnings are practices, not vulnerabilities", r.list, state.sources.kinds);
 }

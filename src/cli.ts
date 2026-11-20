@@ -62,8 +62,11 @@ Folders:
   selfguard dismiss [dir|key]        turn a repo off (all its checkouts): no reminders, alerts
                                      only for malicious packages. It turns back on by itself
                                      with the next git activity (commit, checkout, pull...)
-  selfguard dismiss --list           repos turned off
+  selfguard dismiss --list           repos and warnings turned off
+  selfguard dismiss --warning <id>   stop alerting for a warning you put there on purpose
+                                     (a LaunchAgent, a repo hook); ids: selfguard tools -v
   selfguard undismiss [dir|key]      turn a dismissed repo back on now
+  selfguard undismiss --warning <id> alert again for a dismissed warning
 
 Other machines (dev servers over SSH; read-only, project code never runs there):
   selfguard machines                 list machines and their last sync

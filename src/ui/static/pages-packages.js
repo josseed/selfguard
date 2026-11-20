@@ -64,17 +64,19 @@ export function pagePackages() {
 }
 
 export function feedList(events) {
-  const ICON = { new: "alert", resolved: "check", reminder: "bell", watching: "folder" };
+  const ICON = { new: "alert", resolved: "check", reminder: "bell", watching: "folder", risk: "alert", "risk-resolved": "check" };
   return h("ul", { class: "list" },
     ...events.map((e) => {
       const what =
         e.kind === "new" ? `${plural(e.total, "new vulnerable package")} in ${e.repo}`
         : e.kind === "resolved" ? `${plural(e.total, "vulnerable package")} fixed in ${e.repo}`
+        : e.kind === "risk" ? `${plural(e.total, "new risk")} in ${e.repo}`
+        : e.kind === "risk-resolved" ? `${plural(e.total, "risk")} resolved in ${e.repo}`
         : e.kind === "watching" ? `Now watching ${e.repo} (${plural(e.total, "project")} found)`
         : `Reminder: ${e.repo}`;
-      const pkgs = (e.packages || []).slice(0, 4).map((p) => `${p.name}@${p.version}${p.ecosystem && p.ecosystem !== "npm" ? ` (${p.ecosystem})` : ""}`).join(", ");
+      const pkgs = e.risks ? e.risks.slice(0, 2).map((r) => r.message).join(" · ") : (e.packages || []).slice(0, 4).map((p) => `${p.name}@${p.version}${p.ecosystem && p.ecosystem !== "npm" ? ` (${p.ecosystem})` : ""}`).join(", ");
       const more = e.total > 4 && e.packages?.length ? ` +${e.total - 4}` : "";
-      const clickable = e.repoKey && e.repoKey !== "reminder";
+      const clickable = e.repoKey && e.repoKey !== "reminder" && !e.repoKey.startsWith("sources:");
       const target = e.kind === "watching" ? "#/folders" : `#/repo/${encodeURIComponent(e.repoKey)}`;
       return h("li", { class: clickable ? "clickable" : null, onclick: clickable ? () => { location.hash = target; } : null },
         h("span", { class: `feed-icon ${e.kind}` }, icon(ICON[e.kind] || "alert")),
@@ -90,8 +92,8 @@ export function feedList(events) {
 export function pageActivity() {
   const o = state.overview;
   setHead("Activity", [], []);
-  const filters = [["all", "All"], ["new", "New"], ["resolved", "Fixed"], ["reminder", "Reminders"], ["watching", "New folders"], ["first", "First scans"]];
-  const match = (e, f) => (f === "first" ? e.kind === "new" && e.firstScan : !(e.kind === "new" && e.firstScan) && (f === "all" || e.kind === f));
+  const filters = [["all", "All"], ["new", "New"], ["resolved", "Fixed"], ["risk", "Risks"], ["reminder", "Reminders"], ["watching", "New folders"], ["first", "First scans"]];
+  const match = (e, f) => (f === "first" ? e.kind === "new" && e.firstScan : !(e.kind === "new" && e.firstScan) && (f === "all" || e.kind === f || (f === "risk" && e.kind === "risk-resolved")));
   const chips = h("div", { class: "chips" });
   const host = h("div", {});
   function render() {

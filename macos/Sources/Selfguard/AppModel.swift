@@ -143,9 +143,9 @@ final class AppModel: ObservableObject {
 
     // MARK: - What the icon and the menu show
 
-    /// New findings (not fixes) since the menu was last opened.
+    /// New findings and risks (not fixes) since the menu was last opened.
     var unseen: [MenuBarSummary.Event] {
-        (summary?.events ?? []).filter { $0.kind == "new" && ($0.date ?? .distantPast) > lastSeen }
+        (summary?.events ?? []).filter { ($0.kind == "new" || $0.kind == "risk") && ($0.date ?? .distantPast) > lastSeen }
     }
 
     /// News and fixes since the menu was last opened.
@@ -197,8 +197,8 @@ final class AppModel: ObservableObject {
             loadSummary()
             busy = nil
             let fresh = (summary?.events ?? []).filter { !before.contains($0.id) }
-            let found = fresh.filter { $0.kind == "new" }.count
-            let fixed = fresh.filter { $0.kind == "resolved" }.count
+            let found = fresh.filter { $0.kind == "new" || $0.kind == "risk" }.count
+            let fixed = fresh.filter { $0.kind == "resolved" || $0.kind == "risk-resolved" }.count
             let text: String
             if status != 0 && status != 1 {
                 text = "\(done) failed: see ~/.selfguard/selfguard.log"

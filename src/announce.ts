@@ -9,10 +9,13 @@ import { packageKey } from "./lockfile/types.ts";
 import { buildAlert, buildReminder, buildResolvedAlert, deliver, needsAttention, type AttentionRepo, type ProjectNews } from "./alerts.ts";
 import { loadConfig, type RemindEvery } from "./config.ts";
 import { writeMenuBar } from "./menubar.ts";
-import { appendEvents, eventPackages, type SelfguardEvent } from "./events.ts";
+import { appendEvents, eventPackages, eventRisks, type SelfguardEvent } from "./events.ts";
+import { buildRiskAlert, buildRiskResolvedAlert, withRisks, type RiskGroup } from "./riskalerts.ts";
+import { openRiskGroups } from "./api/risks.ts";
+import { alertWorthy } from "./sources/warnings.ts";
 import type { ScanOutcome } from "./scan.ts";
 import type { SourceOutcome } from "./sources/scan.ts";
-import { sourceNews } from "./sources/news.ts";
+import { riskNews, sourceNews } from "./sources/news.ts";
 import { loadState, updateState } from "./state.ts";
 import { liveDismissals, trackedActivity } from "./dismiss.ts";
 import { checkoutId, findingKey, identityOf, listAllRepos, repoKeyOf, type RepoRecord } from "./store.ts";
@@ -111,6 +114,8 @@ export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean
   // Dismissed repos count as inactive (malicious only) until git activity brings them back.
   const dismissed = cfg.dismissed.length ? liveDismissals(cfg.dismissed, trackedActivity(cfg)) : new Map<string, string>();
   const news = [...toNews(outcomes, cfg.activeDays, dismissed), ...sourceNews(opts.sources ?? [], cfg.activeDays, dismissed)];
+  // Source warnings ("risks"), without the ones the user dismissed.
+  const risks = riskNews(opts.sources ?? [], cfg.activeDays, dismissed, new Set(cfg.dismissedWarnings.map((d) => d.key)));
   const at = new Date().toISOString();
   const events: SelfguardEvent[] = [];
   for (const n of news) {
@@ -132,15 +137,22 @@ export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean
     const fixed = representative ? (n.resolvedFindings ?? []).filter((f) => !still.has(packageKey(f))) : [];
     if (fixed.length) events.push({ ...base, kind: "resolved", ...eventPackages(fixed) });
   }
+  for (const r of risks) {
+    const base = { at, repo: r.label, repoKey: r.key, path: r.path, branch: r.branch, active: r.active };
+    const appeared = r.newWarnings.filter(alertWorthy);
+    if (appeared.length) events.push({ ...base, active: r.active || appeared.some((w) => w.urgent === true), kind: "risk", ...eventRisks(appeared) });
+    const gone = r.resolvedWarnings.filter(alertWorthy);
+    if (gone.length) events.push({ ...base, kind: "risk-resolved", ...eventRisks(gone) });
+  }
   try {
     appendEvents(events);
   } catch {
     /* the log is a convenience; never fail a scan because of it */
   }
   // The Mac app reads its menu from this file; only rewritten when a scan brought news.
-  if (events.length || news.some((n) => n.newFindings.length || n.resolvedFindings?.length)) writeMenuBar();
+  if (events.length || risks.length || news.some((n) => n.newFindings.length || n.resolvedFindings?.length)) writeMenuBar();
   if (opts.notify === false) return false;
-  const alerts = [buildAlert(news), buildResolvedAlert(news)].filter((a) => a.kind !== "none");
+  const alerts = [buildAlert(news), buildRiskAlert(risks), buildResolvedAlert(news), buildRiskResolvedAlert(risks)].filter((a) => a.kind !== "none");
   for (const a of alerts) await deliver(a);
   return alerts.length > 0;
 }
@@ -156,15 +168,19 @@ export function reminderDue(every: RemindEvery, last: string | undefined, now = 
 }
 
 /**
- * Send the periodic reminder if it is due (or `force`). The input comes from api.getAttention().
- * Returns whether a notification was sent.
+ * Send the periodic reminder if it is due (or `force`). The input comes from api.getAttention();
+ * open high risks (api/risks.ts) follow the vulnerabilities. Returns whether a notification was sent.
  */
-export async function maybeRemind(source: AttentionRepo[] | (() => AttentionRepo[]), opts: { force?: boolean } = {}): Promise<boolean> {
+export async function maybeRemind(
+  source: AttentionRepo[] | (() => AttentionRepo[]),
+  opts: { force?: boolean; risks?: RiskGroup[] | (() => RiskGroup[]) } = {},
+): Promise<boolean> {
   const cfg = loadConfig();
   if (!opts.force && !reminderDue(cfg.remind, loadState().lastReminder)) return false;
   // Computed only when due: the watcher calls this often.
   const repos = typeof source === "function" ? source() : source;
-  const alert = buildReminder(repos);
+  const risks = typeof opts.risks === "function" ? opts.risks() : (opts.risks ?? openRiskGroups());
+  const alert = withRisks(buildReminder(repos), risks);
   // Mark the period as handled even when everything is fine, so a later finding waits its turn.
   updateState({ lastReminder: new Date().toISOString() });
   if (alert.kind === "none") return false;
@@ -178,7 +194,7 @@ export async function maybeRemind(source: AttentionRepo[] | (() => AttentionRepo
       path: null,
       branch: null,
       active: true,
-      total: repos.filter((r) => r.findings.some(needsAttention)).length,
+      total: repos.filter((r) => r.findings.some(needsAttention)).length + risks.filter((r) => r.warnings.some((w) => w.severity === "high")).length,
       packages: [],
     },
   ]);
