@@ -58,9 +58,22 @@ All notable changes to this project are documented here. The format is based on
 - Source warnings may carry a stable `key` and `notify: true` (announced when they appear after
   the baseline).
 
+## [0.17.1] - 2026-11-20
+
+### Added
+
 - **Check for Updates… is back in the Mac app's menu bar panel**, under Settings and Quit, with
   the app's version (⌘U). Before, the panel only offered an update once a scheduled check had
   found it.
+
+### Fixed
+
+- **The menu bar panel opens centered under the icon**, instead of starting at the icon's left
+  edge.
+- **The panel follows the system's light or dark appearance**, on the same see-through glass as
+  macOS's own popovers (Liquid Glass on macOS 26). It was always dark.
+- **The icon comes back as soon as it is allowed again** in System Settings → Menu Bar, without
+  relaunching selfguard.
 
 ## [0.17.0] - 2026-11-18
 
@@ -547,7 +560,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.17.1...HEAD
+[0.17.1]: https://github.com/josseed/selfguard/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/josseed/selfguard/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/josseed/selfguard/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/josseed/selfguard/compare/v0.14.0...v0.15.0
