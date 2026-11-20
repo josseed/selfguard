@@ -1,0 +1,125 @@
+// Bastion, played from the same sprite strips the dashboard uses (src/ui/static/mascot/).
+// Scene geometry mirrors src/ui/static/mascot/manifest.json: keep them in sync when the art changes.
+const SCENES = {
+  idle: { frames: 96, x: 11, y: 14, width: 94, height: 43, durationMs: 8000 },
+  high: { frames: 72, x: 17, y: 0, width: 33, height: 57, durationMs: 6000 },
+  crit: { frames: 72, x: 17, y: 12, width: 43, height: 45, durationMs: 6000 },
+  mal: { frames: 90, x: 13, y: 14, width: 107, height: 54, durationMs: 7500 },
+  fixed: { frames: 66, x: 0, y: 0, width: 117, height: 58, durationMs: 5500 },
+};
+const all = Object.values(SCENES);
+const BOX = {
+  x: Math.min(...all.map((s) => s.x)),
+  y: Math.min(...all.map((s) => s.y)),
+};
+BOX.w = Math.max(...all.map((s) => s.x + s.width)) - BOX.x;
+BOX.h = Math.max(...all.map((s) => s.y + s.height)) - BOX.y;
+
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** A mascot element that can switch scenes. Scale is in whole pixels so the art stays sharp. */
+function mount(el, scale) {
+  el.style.width = `${BOX.w * scale}px`;
+  el.style.height = `${BOX.h * scale}px`;
+  const sprite = document.createElement("div");
+  sprite.className = "mascot-sprite";
+  el.append(sprite);
+  let anim = null;
+
+  function play(scene) {
+    const s = SCENES[scene];
+    const st = sprite.style;
+    st.backgroundImage = `url("assets/mascot/${scene}.png")`;
+    st.width = `${s.width * scale}px`;
+    st.height = `${s.height * scale}px`;
+    st.left = `${(s.x - BOX.x) * scale}px`;
+    st.top = `${(s.y - BOX.y) * scale}px`;
+    st.backgroundSize = `${s.width * s.frames * scale}px ${s.height * scale}px`;
+    el.dataset.scene = scene;
+    anim?.cancel();
+    anim = null;
+    if (reducedMotion) {
+      st.backgroundPosition = scene === "idle" ? "0 0" : `${-(s.frames - 1) * s.width * scale}px 0`;
+      return;
+    }
+    anim = sprite.animate(
+      [
+        { backgroundPosition: "0 0" },
+        { backgroundPosition: `${-s.frames * s.width * scale}px 0` },
+      ],
+      { duration: s.durationMs, iterations: Infinity, easing: `steps(${s.frames}, jump-end)` },
+    );
+  }
+
+  play(el.dataset.scene || "idle");
+  return { play };
+}
+
+const pixelScale = (base) => (innerWidth < 600 ? Math.max(1, base - 1) : base);
+
+const hero = document.querySelector(".hero-mascot");
+if (hero) mount(hero, pixelScale(2));
+
+const final = document.querySelector(".final-mascot");
+if (final) mount(final, pixelScale(3));
+
+// The interactive stage: pick a scene, or let it cycle until the visitor picks one.
+const stageEl = document.querySelector(".stage-mascot");
+if (stageEl) {
+  const stage = mount(stageEl, pixelScale(3));
+  const screen = stageEl.parentElement;
+  const tabs = [...document.querySelectorAll(".scene")];
+  const order = tabs.map((t) => t.dataset.scene);
+  let i = 0;
+  let timer = null;
+
+  const select = (scene) => {
+    stage.play(scene);
+    screen.dataset.scene = scene;
+    stageEl.setAttribute("aria-label", `Bastion: ${tabs.find((t) => t.dataset.scene === scene).textContent.trim()}`);
+    for (const t of tabs) t.setAttribute("aria-selected", String(t.dataset.scene === scene));
+  };
+
+  const cycle = () => {
+    i = (i + 1) % order.length;
+    select(order[i]);
+    timer = setTimeout(cycle, SCENES[order[i]].durationMs);
+  };
+
+  for (const t of tabs) {
+    t.addEventListener("click", () => {
+      clearTimeout(timer);
+      timer = null;
+      i = order.indexOf(t.dataset.scene);
+      select(t.dataset.scene);
+    });
+  }
+
+  // Start cycling only once the stage is on screen.
+  if (!reducedMotion) {
+    new IntersectionObserver((entries, obs) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        timer = setTimeout(cycle, SCENES.idle.durationMs);
+        obs.disconnect();
+      }
+    }, { threshold: 0.4 }).observe(stageEl);
+  }
+}
+
+// Copy-to-clipboard install commands.
+for (const btn of document.querySelectorAll("[data-copy]")) {
+  const label = btn.querySelector(".copy-label");
+  btn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(btn.dataset.copy);
+      btn.classList.add("copied");
+      label.textContent = "Copied";
+    } catch {
+      label.textContent = "Press ⌘C";
+    }
+    setTimeout(() => {
+      btn.classList.remove("copied");
+      label.textContent = "Copy";
+    }, 1800);
+  });
+}

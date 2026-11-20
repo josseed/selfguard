@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>selfguard: a guard for every repo on your machine</title>
+  <meta name="description" content="Local-first guard that watches every JavaScript, Python, Rust and Go repo on your machine and alerts you about vulnerable or malicious dependencies. Mac menu bar app and CLI.">
+  <meta property="og:title" content="selfguard: a guard for every repo on your machine">
+  <meta property="og:description" content="Know the moment a vulnerable or malicious package lands in any project on your Mac, even the ones you haven't opened in months.">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#0b0b0d">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="selfguard home">
+        <img src="assets/favicon.svg" alt="" width="22" height="22">
+        <span>selfguard</span>
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a href="#features">Features</a>
+        <a href="#bastion">Bastion</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#compare">Compare</a>
+        <a href="https://github.com/josseed/selfguard/tree/main/docs">Docs</a>
+      </nav>
+      <a class="btn btn-ghost btn-sm" href="https://github.com/josseed/selfguard">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="dot"></span> v0.18 · now guards your AI agent configs</p>
+          <h1>A guard for <em>every</em> repo on your machine.</h1>
+          <p class="lede">selfguard watches the dependencies of all your JavaScript, Python, Rust and Go
+            projects and tells you the moment one is hit by a new vulnerability or a malicious package.
+            Even the repo you haven't opened since spring.</p>
+          <div class="cta">
+            <a class="btn btn-primary" href="https://github.com/josseed/selfguard/releases/latest">
+              <svg viewBox="0 0 17 20" width="15" height="18" aria-hidden="true"><path fill="currentColor" d="M14.1 10.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9C3.6 4.8 2 5.8 1.1 7.4c-1.8 3.2-.5 7.9 1.3 10.5.9 1.3 1.9 2.7 3.3 2.6 1.3-.1 1.8-.9 3.4-.9s2 .9 3.4.8c1.4 0 2.3-1.3 3.2-2.6 1-1.5 1.4-2.9 1.4-3-.1 0-2.9-1.1-3-4.2ZM11.5 3c.7-.9 1.2-2 1.1-3.2-1 0-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.1 1.1.1 2.3-.6 3-1.5Z"/></svg>
+              Download for Mac
+            </a>
+            <button class="install" type="button" data-copy="npm install -g selfguard" aria-label="Copy install command">
+              <span class="prompt">$</span> npm install -g selfguard
+              <span class="copy-label">Copy</span>
+            </button>
+          </div>
+          <p class="fine">Free and open source (MIT) · macOS &amp; Linux · zero runtime dependencies</p>
+        </div>
+
+        <div class="hero-visual">
+          <div class="window" aria-label="Example output of selfguard status">
+            <div class="window-bar">
+              <span class="light r"></span><span class="light y"></span><span class="light g"></span>
+              <span class="window-title">~ selfguard status</span>
+            </div>
+            <pre class="term"><code><span class="t-dim">$</span> selfguard status
+<span class="sev crit">CRITICAL</span> <b>acme/storefront</b>  <span class="t-dim">31 vulnerable on main · 82 on feat/checkout</span>
+   <span class="t-dim">├</span> main  <span class="t-crit">31 vulnerable</span>  <span class="t-dim">~/code/storefront</span>
+   <span class="t-dim">├</span> fix/query-perf <span class="t-dim">worktree</span>  <span class="t-crit">30 vulnerable</span>
+   <span class="t-dim">└</span> feat/checkout <span class="t-dim">worktree</span>  <span class="t-crit">82 vulnerable</span>
+<span class="sev high">HIGH</span>     <b>acme/payments-api</b>  <span class="t-high">3 vulnerable</span>  <span class="t-dim">~/code/payments-api</span>
+<span class="sev ok">✓</span>        <b>acme/docs-site</b>  <span class="t-ok">clean</span>  <span class="t-dim">~/code/docs-site</span></code></pre>
+          </div>
+
+          <div class="toast" role="img" aria-label="Notification: malicious package detected">
+            <img src="assets/mascot/helmet-watch.png" alt="" width="36" height="36" class="pixel">
+            <div>
+              <p class="toast-app">selfguard · now</p>
+              <p class="toast-title">Malicious package in acme/storefront</p>
+              <p class="toast-body">@ctrl/tinycolor@4.1.1 · compromised release</p>
+            </div>
+          </div>
+
+          <div class="mascot hero-mascot" data-scene="idle" aria-label="Bastion, the selfguard guard, patrolling"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ecosystems strip -->
+    <section class="strip" aria-label="Supported ecosystems">
+      <div class="wrap strip-inner">
+        <span class="strip-label">Reads the lockfiles you already have</span>
+        <ul class="chips">
+          <li>npm</li><li>pnpm</li><li>yarn</li><li>bun</li>
+          <li>uv</li><li>Poetry</li><li>Cargo</li><li>Go modules</li>
+          <li>GitHub Actions</li><li>MCP servers</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Problem -->
+    <section class="section">
+      <div class="wrap narrow center">
+        <h2>Scanners check the repo you remember. <br class="hide-sm">Attacks hit the ones you forgot.</h2>
+        <p class="sub">You have dozens of projects on your laptop: side projects, old clients, agent
+          worktrees, that tutorial from last year. When a worm like Shai-Hulud ships a compromised
+          release, <code>npm audit</code> won't run itself and Dependabot doesn't know those folders exist.
+          selfguard does.</p>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="section" id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">How it works</p>
+          <h2>Set it up once. It tells you on its own.</h2>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="icon i-blue"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 16a1 1 0 0 0 .9 1.5h13.6a1 1 0 0 0 .9-1.5L18 12.6V9a6 6 0 0 0-6-6Zm-2.5 16a2.5 2.5 0 0 0 5 0"/></svg></div>
+            <h3>Alerts without asking</h3>
+            <p>A watcher re-checks a repo seconds after its lockfile changes. A scheduled sync catches
+              newly published advisories, and you get a "✓ fixed" when you clean one up.</p>
+          </article>
+          <article class="card">
+            <div class="icon i-purple"><svg viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 3.8 9.3 9 10 5.2-.7 9-5 9-10V6l-9-4Zm-1 13-3.5-3.5 1.4-1.4L11 12.2l4.6-4.6L17 9l-6 6Z"/></svg></div>
+            <h3>Malicious packages first</h3>
+            <p>OSV's OpenSSF malicious-packages feed outranks every CVE. A compromised release opens a
+              dialog that stays on screen until you deal with it.</p>
+          </article>
+          <article class="card">
+            <div class="icon i-green"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h6"/><path d="m15 16 2 2 4-4"/></svg></div>
+            <h3>One fix per package</h3>
+            <p>"Upgrade lodash to 4.18.0", not a wall of advisories. Direct or transitive, with the
+              exact version that clears every finding.</p>
+          </article>
+          <article class="card">
+            <div class="icon i-orange"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><circle cx="12" cy="13" r="2.4"/></svg></div>
+            <h3>Finds your projects</h3>
+            <p>"Find my projects" searches your home folder, skips caches and cloud drives, and finds
+              agent worktrees through their repos. <code>cd</code> into a project and it's registered.</p>
+          </article>
+          <article class="card">
+            <div class="icon i-yellow"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="5"/></svg></div>
+            <h3>Signal over noise</h3>
+            <p>Only checkouts with recent git activity alert you. Old clones stay listed but quiet,
+              except for malicious packages, which always speak up.</p>
+          </article>
+          <article class="card">
+            <div class="icon i-blue"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+            <h3>All your machines</h3>
+            <p>Other Macs connect over Tailscale with a pairing code. Servers use SSH with a dedicated,
+              read-only key. Alerts name the machine.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Agent guard -->
+    <section class="section feature-split">
+      <div class="wrap split">
+        <div>
+          <p class="kicker kicker-purple">New in 0.18 · Agent guard</p>
+          <h2>Your AI tools are part of the supply chain now.</h2>
+          <p class="sub left">Opening a repo shouldn't run someone else's code. selfguard reads, as plain
+            data, the files that can: Claude Code project hooks, Cursor, Gemini CLI and Codex hooks,
+            VS Code tasks that run on folder open, and hidden Unicode in <code>CLAUDE.md</code>,
+            <code>AGENTS.md</code> and rules files.</p>
+          <ul class="checks">
+            <li>MCP servers configured for Claude, Cursor, VS Code, Codex and more, without reading their secrets</li>
+            <li>GitHub Actions: compromised actions, unpinned refs, script injection</li>
+            <li>Urgent warnings (autorun tasks, hooks that download code) alert like malware</li>
+          </ul>
+        </div>
+        <div class="window">
+          <div class="window-bar">
+            <span class="light r"></span><span class="light y"></span><span class="light g"></span>
+            <span class="window-title">~/code/payments-api</span>
+          </div>
+          <pre class="term"><code><span class="t-dim">$</span> selfguard scan
+<b>~/code/payments-api</b>  <span class="t-dim">412 packages</span>
+  <span class="t-dim">3 vulnerable package(s), 9 advisories</span>
+
+  <span class="sev crit">CRITICAL</span> minimist@1.2.5 <span class="t-dim">(transitive)</span>
+    <span class="t-ok">→ upgrade to 1.2.6 or later</span>
+
+  <span class="sev high">HIGH</span> axios@0.21.0 <span class="t-dim">(direct)</span>
+    <span class="t-ok">→ upgrade to 0.33.0 or later</span>
+
+  <span class="sev mal">URGENT</span> .vscode/tasks.json
+    <span class="t-mal">task runs on folder open</span></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bastion -->
+    <section class="section bastion" id="bastion">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">Meet Bastion</p>
+          <h2>A 16-bit castle guard who acts out what changed.</h2>
+          <p class="sub">He lives in the Mac app's dashboard and menu bar. One look tells you how your repos are doing.</p>
+        </div>
+        <div class="stage">
+          <div class="stage-screen">
+            <div class="mascot stage-mascot" data-scene="idle" role="img" aria-label="Bastion patrolling"></div>
+          </div>
+          <div class="scenes" role="tablist" aria-label="Bastion's scenes">
+            <button role="tab" class="scene" data-scene="idle" aria-selected="true"><span class="sw sw-ok"></span>All clear<small>patrols the walls</small></button>
+            <button role="tab" class="scene" data-scene="high" aria-selected="false"><span class="sw sw-high"></span>High<small>jumps to attention</small></button>
+            <button role="tab" class="scene" data-scene="crit" aria-selected="false"><span class="sw sw-crit"></span>Critical<small>sounds the horn</small></button>
+            <button role="tab" class="scene" data-scene="mal" aria-selected="false"><span class="sw sw-mal"></span>Malicious<small>fights it off</small></button>
+            <button role="tab" class="scene" data-scene="fixed" aria-selected="false"><span class="sw sw-fixed"></span>Fixed<small>celebrates with you</small></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Privacy -->
+    <section class="section" id="privacy">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker kicker-green">Safe by design</p>
+          <h2>Local-first. Nothing to trust but a lockfile.</h2>
+        </div>
+        <div class="grid grid-3">
+          <article class="card plain">
+            <p class="big">name@version</p>
+            <p>Only the ecosystem, name and version of your locked dependencies go to the
+              <a href="https://osv.dev">OSV.dev</a> API. No paths, repo names or source code.</p>
+          </article>
+          <article class="card plain">
+            <p class="big">0 deps</p>
+            <p>Zero runtime dependencies, published to npm with provenance. It never executes code from
+              your projects.</p>
+          </article>
+          <article class="card plain">
+            <p class="big">~/.selfguard</p>
+            <p>All state stays on your disk, readable only by your user. No account, no server, no browser
+              dashboard.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compare -->
+    <section class="section" id="compare">
+      <div class="wrap narrow">
+        <div class="section-head">
+          <p class="kicker">How it compares</p>
+          <h2>Complements your tools, covers the gap.</h2>
+          <p class="sub">Keep Dependabot or Renovate for fix PRs. Use selfguard to know what's vulnerable on your machine right now.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th></th><th class="us">selfguard</th><th>npm audit</th><th>osv-scanner</th><th>Dependabot</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Watches every project on your machine</td><td class="us yes">Yes</td><td class="no">One, on demand</td><td class="no">On demand</td><td class="no">Hosted only</td></tr>
+              <tr><td>Alerts when a new advisory hits an old project</td><td class="us yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+              <tr><td>Local-only, no repo hosting</td><td class="us yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+              <tr><td>Malicious package feed</td><td class="us yes">Yes</td><td class="no">No</td><td class="yes">Yes</td><td class="mid">Partial</td></tr>
+              <tr><td>AI agent &amp; CI config checks</td><td class="us yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="mid">Actions only</td></tr>
+              <tr><td>Opens fix PRs</td><td class="us no">No</td><td class="no">No</td><td class="mid">Guided</td><td class="yes">Yes</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI ready -->
+    <section class="section">
+      <div class="wrap split">
+        <div>
+          <p class="kicker">AI-ready &amp; scriptable</p>
+          <h2>"Do I use this package anywhere?"</h2>
+          <p class="sub left">When the next incident drops, <code>selfguard where</code> answers across every
+            repo in one command. A built-in MCP server lets your agent ask too, and every command speaks
+            <code>--json</code>.</p>
+          <a class="link-arrow" href="https://github.com/josseed/selfguard/blob/main/docs/ai-and-automation.md">AI and automation guide →</a>
+        </div>
+        <div class="window">
+          <div class="window-bar">
+            <span class="light r"></span><span class="light y"></span><span class="light g"></span>
+            <span class="window-title">incident response</span>
+          </div>
+          <pre class="term"><code><span class="t-dim">$</span> selfguard where @ctrl/tinycolor
+~/code/storefront      <span class="t-mal">4.1.1</span> <span class="t-dim">(transitive)</span>
+~/code/dashboard       4.0.4 <span class="t-dim">(transitive)</span>
+~/code/storefront-feat <span class="t-mal">4.1.1</span> <span class="t-dim">(transitive)</span>
+
+<span class="t-dim">$</span> selfguard status --json | jq '.repos[0].worstSeverity'
+<span class="t-high">"critical"</span></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="section final">
+      <div class="wrap narrow center">
+        <div class="mascot final-mascot" data-scene="fixed" aria-label="Bastion celebrating"></div>
+        <h2>Post a guard on every repo.</h2>
+        <p class="sub">Two minutes to set up. Then it's quiet until it matters.</p>
+        <div class="cta center">
+          <a class="btn btn-primary" href="https://github.com/josseed/selfguard/releases/latest">Download for Mac</a>
+          <button class="install" type="button" data-copy="npm install -g selfguard && selfguard setup" aria-label="Copy install and setup commands">
+            <span class="prompt">$</span> npm i -g selfguard &amp;&amp; selfguard setup
+            <span class="copy-label">Copy</span>
+          </button>
+        </div>
+        <p class="fine">Requires Node.js 20.10+ for the CLI. The Mac app bundles everything.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <div class="brand"><img src="assets/favicon.svg" alt="" width="18" height="18"><span>selfguard</span></div>
+      <nav aria-label="Footer">
+        <a href="https://github.com/josseed/selfguard/blob/main/docs/getting-started.md">Getting started</a>
+        <a href="https://github.com/josseed/selfguard/blob/main/docs/cli.md">CLI reference</a>
+        <a href="https://github.com/josseed/selfguard/blob/main/docs/security-model.md">Security model</a>
+        <a href="https://www.npmjs.com/package/selfguard">npm</a>
+        <a href="https://github.com/josseed/selfguard/blob/main/CHANGELOG.md">Changelog</a>
+      </nav>
+      <p class="fine">MIT licensed. Vulnerability data from <a href="https://osv.dev">OSV.dev</a>.</p>
+    </div>
+  </footer>
+
+  <script src="main.js" type="module"></script>
+</body>
+</html>
