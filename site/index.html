@@ -21,6 +21,7 @@
       </a>
       <nav class="nav-links" aria-label="Main">
         <a href="#layers">What it guards</a>
+        <a href="#privacy">Privacy</a>
         <a href="#how">How it works</a>
         <a href="https://github.com/josseed/selfguard/tree/main/docs">Docs</a>
       </nav>
@@ -50,7 +51,7 @@
             <span class="copy-label">Copy</span>
           </button>
         </div>
-        <p class="fine">Free and open source (MIT) · macOS &amp; Linux · zero runtime dependencies</p>
+        <p class="fine">Open source (MIT) · no account · no telemetry · macOS &amp; Linux</p>
       </div>
 
       <div class="wrap">
@@ -110,6 +111,49 @@
       </div>
     </section>
 
+    <!-- Privacy -->
+    <section class="section" id="privacy">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker kicker-green">Privacy</p>
+          <h2>It guards your secrets. It never takes them.</h2>
+          <p class="sub">selfguard runs entirely on your computer. No account, no telemetry, no server of ours.
+            The only thing that ever leaves is what's needed to look up a public package.</p>
+        </div>
+        <div class="privacy-grid">
+          <article class="card privacy-card">
+            <h3><span class="dot-ok"></span>The only thing it sends</h3>
+            <p>One lookup per dependency to <a href="https://osv.dev">OSV.dev</a>, Google's open vulnerability database:</p>
+            <div class="window payload">
+              <div class="window-bar"><span class="light r"></span><span class="light y"></span><span class="light g"></span><span class="window-title">POST api.osv.dev/v1/querybatch</span></div>
+              <pre class="term"><code>{
+  <span class="t-dim">"package"</span>: { <span class="t-dim">"ecosystem"</span>: <span class="t-ok">"npm"</span>, <span class="t-dim">"name"</span>: <span class="t-ok">"lodash"</span> },
+  <span class="t-dim">"version"</span>: <span class="t-ok">"4.17.21"</span>
+}</code></pre>
+            </div>
+            <p class="small">That's it: a public package name and version. Plus a daily "is there a newer selfguard?"
+              to the npm registry, which you can turn off. Want zero? Point it at your own OSV mirror.</p>
+          </article>
+          <article class="card privacy-card">
+            <h3><span class="dot-no"></span>Never leaves your machine</h3>
+            <ul class="nevers">
+              <li><b>Your code</b><span>Source files are never uploaded, and nothing in your projects is ever run.</span></li>
+              <li><b>Your secrets</b><span>Tokens in <code>~/.npmrc</code> or <code>~/.aws</code>, MCP keys and env vars: it only notes that they exist. The values are never stored, shown or sent.</span></li>
+              <li><b>Your projects</b><span>No file paths, repo names, git remotes or history.</span></li>
+              <li><b>You</b><span>No account, no email, no device ID, no usage tracking.</span></li>
+            </ul>
+          </article>
+        </div>
+        <ul class="proofs">
+          <li><b>Open source</b><span>MIT. Read every line it runs.</span></li>
+          <li><b>Zero dependencies</b><span>No third-party code to trust.</span></li>
+          <li><b>Signed releases</b><span>npm provenance, notarized Mac app.</span></li>
+          <li><b>Read-only</b><span>Files are parsed as data, never executed.</span></li>
+        </ul>
+        <p class="center"><a class="link-arrow" href="https://github.com/josseed/selfguard/blob/main/docs/security-model.md">Read the full security model →</a></p>
+      </div>
+    </section>
+
     <!-- How it works -->
     <section class="section" id="how">
       <div class="wrap">
@@ -134,7 +178,6 @@
             <p>Only active repos alert you, and the first scan is a baseline: you hear about what's new, not the backlog.</p>
           </article>
         </div>
-        <p class="privacy-line"><b>Local-first.</b> Only package names and versions go to OSV.dev. Machine checks make no network request, secrets are never read, and nothing from your projects is executed. <a href="https://github.com/josseed/selfguard/blob/main/docs/security-model.md">Security model →</a></p>
       </div>
     </section>
 

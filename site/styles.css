@@ -392,3 +392,28 @@ th { white-space: nowrap; }
 .layer-card .caught span { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--mal-text); margin-right: 6px; }
 .privacy-line { max-width: 52em; margin: 40px auto 0; text-align: center; font-size: 15px; color: var(--text-2); }
 .privacy-line b { color: var(--text); }
+
+/* Privacy */
+.privacy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.privacy-card { padding: 32px; }
+.privacy-card h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 19px; }
+.privacy-card .small { font-size: 14px; color: var(--text-3); margin-top: 16px; }
+.privacy-card .payload { margin-top: 16px; box-shadow: none; }
+.privacy-card .payload .window-title { margin-right: 52px; }
+.dot-ok, .dot-no { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.dot-ok { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+.dot-no { background: var(--critical); box-shadow: 0 0 10px var(--critical); }
+.nevers { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 16px; }
+.nevers li { position: relative; padding-left: 32px; }
+.nevers li::before {
+  content: ""; position: absolute; left: 0; top: 2px; width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(255,69,58,.14) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m5 5 6 6M11 5l-6 6' stroke='%23ff6961' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E") center/14px no-repeat;
+}
+.nevers b { display: block; font-size: 15.5px; }
+.nevers span { display: block; font-size: 14.5px; color: var(--text-2); }
+.proofs { list-style: none; padding: 0; margin: 28px 0 32px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.proofs li { padding: 18px 20px; border-radius: 14px; background: rgba(48,209,88,.05); border: 1px solid rgba(48,209,88,.16); }
+.proofs b { display: block; font-size: 15px; color: var(--ok-text); }
+.proofs span { display: block; font-size: 13.5px; color: var(--text-2); margin-top: 2px; }
+@media (max-width: 960px) { .privacy-grid { grid-template-columns: 1fr; } .proofs { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .proofs { grid-template-columns: 1fr; } }
