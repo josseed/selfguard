@@ -70,19 +70,19 @@ function attentionCard(o) {
   return card("Repos that need attention", null, table, null, all);
 }
 
-const EVENT_PILL = { resolved: ["Fixed", "ok"], reminder: ["Reminder", ""], watching: ["Watching", ""] };
+const EVENT_PILL = { resolved: ["Fixed", "ok"], "risk-resolved": ["Resolved", "ok"], reminder: ["Reminder", ""], watching: ["Watching", ""] };
 
 function activityCard(o) {
   const events = (o.events || []).filter((e) => !(e.kind === "new" && e.firstScan)).slice(0, 6);
   if (!events.length) return card("Recent activity", null, empty("No activity yet", "New findings, fixes and reminders show up here."));
   const list = h("ul", { class: "list" }, ...events.map((e) => {
-    const worst = (e.packages || []).map((p) => p.severity).sort((a, b) => (RANK[a] ?? 9) - (RANK[b] ?? 9))[0] || "low";
+    const worst = [...(e.packages || []), ...(e.risks || [])].map((p) => p.severity).sort((a, b) => (RANK[a] ?? 9) - (RANK[b] ?? 9))[0] || "low";
     const first = (e.packages || [])[0];
-    const what = e.kind === "reminder" ? null : e.kind === "watching" ? plural(e.total, "project") : first && e.total === 1 ? `${first.name} ${first.version}` : plural(e.total, "package");
-    const pill = e.kind === "new" ? sevBadge(worst) : h("span", { class: `badge ${EVENT_PILL[e.kind]?.[1] || ""}` }, EVENT_PILL[e.kind]?.[0] || e.kind);
-    const target = e.kind === "watching" ? "#/folders" : e.repoKey && e.repoKey !== "reminder" ? `#/repo/${encodeURIComponent(e.repoKey)}` : null;
+    const what = e.kind === "reminder" ? null : e.kind === "watching" ? plural(e.total, "project") : e.risks ? plural(e.total, "risk") : first && e.total === 1 ? `${first.name} ${first.version}` : plural(e.total, "package");
+    const pill = e.kind === "new" || e.kind === "risk" ? sevBadge(worst) : h("span", { class: `badge ${EVENT_PILL[e.kind]?.[1] || ""}` }, EVENT_PILL[e.kind]?.[0] || e.kind);
+    const target = e.kind === "watching" ? "#/folders" : e.repoKey && e.repoKey !== "reminder" && !e.repoKey.startsWith("sources:") ? `#/repo/${encodeURIComponent(e.repoKey)}` : null;
     return h("li", { class: `feed-row${target ? " clickable" : ""}`, onclick: target ? () => { location.hash = target; } : null },
-      h("span", { class: "dot", "data-sev": e.kind === "new" ? worst : e.kind === "resolved" ? "ok" : "low" }),
+      h("span", { class: "dot", "data-sev": e.kind === "new" || e.kind === "risk" ? worst : e.kind === "resolved" || e.kind === "risk-resolved" ? "ok" : "low" }),
       h("div", { class: "grow title" }, e.kind === "watching" ? tildify(e.repo) : e.repo, h("span", { class: "what", title: e.at }, ` · ${what ? `${what} · ` : ""}${ago(e.at)}`)),
       pill);
   }));

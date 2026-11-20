@@ -37,7 +37,9 @@ function renderSource(s: api.SourceReport, c: Painter, verbose: boolean): string
   if (shown.length < s.findings.length) lines.push(c.dim(`  …and ${s.findings.length - shown.length} more (--verbose)`));
   const warnings = verbose ? s.warnings : s.warnings.slice(0, 5);
   for (const w of warnings) {
-    lines.push(`  ${c.yellow("warning")} ${clean(w.message, 160)} ${c.dim(`[${clean(w.rule, 40)}] ${where(w.file, w.line, s.path)}`)}`);
+    const tag = w.dismissed ? c.dim("dismissed") : w.severity === "high" ? c.red("risk") : c.yellow("warning");
+    const id = verbose || w.alerts ? ` · id ${w.id}` : "";
+    lines.push(`  ${tag} ${clean(w.message, 160)} ${c.dim(`[${clean(w.rule, 40)}] ${where(w.file, w.line, s.path)}${id}`)}`);
   }
   if (warnings.length < s.warnings.length) lines.push(c.dim(`  …and ${s.warnings.length - warnings.length} more warning(s) (--verbose)`));
   return lines;
@@ -69,6 +71,7 @@ export function cmdTools(args: string[]): number {
   blocks.push(c.bold("Repos"));
   blocks.push(...(result.repos.length ? result.repos.flatMap((s) => [...renderSource(s, c, verbose), ""]) : [c.dim("  no CI workflows or agent configs found"), ""]));
   blocks.push(c.dim("Warnings are practices to review, not vulnerabilities. Details: https://osv.dev/vulnerability/<ID>"));
+  blocks.push(c.dim("A warning you put there on purpose: selfguard dismiss --warning <id> (it stays listed, no alerts)."));
   out.write(`${blocks.join("\n")}\n`);
   return 0;
 }

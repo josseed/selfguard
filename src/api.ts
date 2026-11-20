@@ -29,7 +29,8 @@ export { addRoot, discoverNew, forget, listRoots, removeRoot, unexclude, type Di
 export { applyPlaces, autoDiscover, findEverywhere, type ApplyPlacesResult, type AutoDiscoverResult, type EverywhereScan } from "./api/places.ts";
 export { dismissRepo, listDismissed, resolveRepoKey, undismissRepo, type DismissedRepo } from "./api/dismissals.ts";
 export { getFolders, getSettings, listDirectories, updateSettings, type DirectoryListing, type FoldersResult, type Settings } from "./api/settings.ts";
-export { getRepoSources, getSources, toSourceReport, type SourceFindingReport, type SourceReport, type SourcesResult } from "./api/sources.ts";
+export { getRepoSources, getSources, toSourceReport, type SourceFindingReport, type SourceReport, type SourcesResult, type SourceWarningReport } from "./api/sources.ts";
+export { dismissWarning, listDismissedWarnings, openRiskGroups, riskCounts, undismissWarning, type DismissedWarning } from "./api/risks.ts";
 export { getPackagesOverview, getVulnerability, whereUsed, type PackageOverview, type VulnerabilityDetail, type WhereResult } from "./api/packages.ts";
 export {
   addMachine,

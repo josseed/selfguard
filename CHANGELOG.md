@@ -8,6 +8,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Risky warnings now alert.** A warning of CI workflows, agent configs or this machine's own
+  config that is high severity (or whose rule asks to notify) gets a notification when it
+  appears, grouped per source ("3 new risks in acme/api (agent tools)"), with the same weight
+  as a high vulnerability (Bastion sounds the horn; never the malicious-package dialog). It
+  follows the same rules as findings: active repos only, the first scan of a source is a
+  baseline, and rules added by an upgrade don't alert about files that didn't change. A risk
+  that goes away gets a quiet "✓ resolved". New risks show in the activity feed (filter
+  **Risks**) and the menu bar panel; `menubar.json` counts open risks; open high risks join
+  the daily reminder after the vulnerabilities.
+- **Dismiss a warning** you put there on purpose (a LaunchAgent, a repo hook):
+  `selfguard dismiss --warning <id>` (ids in `selfguard tools`), **Dismiss** in the dashboard,
+  or `selfguard_dismiss_warning` over MCP. It stays listed, marked, and never alerts.
+  `selfguard undismiss --warning <id>` undoes it.
+
 - **Check for Updates… is back in the Mac app's menu bar panel**, under Settings and Quit, with
   the app's version (⌘U). Before, the panel only offered an update once a scheduled check had
   found it.

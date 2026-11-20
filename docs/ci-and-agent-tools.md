@@ -29,7 +29,9 @@ lockfiles only; sources are shown separately.
 
   Malicious advisories (`MAL-*`) always apply, whatever the version.
 - **Warnings** are risky practices found without the network. They are never counted as
-  vulnerable packages.
+  vulnerable packages. High-severity ones (and those whose rule asks for it) notify you when
+  they appear after the first scan; `selfguard dismiss --warning <id>` silences one you put
+  there on purpose. See [alerts](how-it-works.md#alerts).
 
 ## GitHub Actions
 

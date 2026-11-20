@@ -148,8 +148,9 @@ Last results for what runs beside your lockfiles: this machine's **agent tools**
 from Claude Code, Claude Desktop, Cursor, VS Code, Windsurf, Codex and Gemini CLI configs) and
 each repo's **GitHub Actions** workflows and project agent configs. With `dir`, only the git
 repo around it. Shows findings with their certainty (confirmed, may be affected, version
-unknown), file and line, and warnings such as unpinned actions or MCP servers. Reads local
-state only; `scan`, `sync` and `check` refresh it. See
+unknown), file and line, and warnings such as unpinned actions or MCP servers. Warnings that
+alert when they appear (high severity, or their rule asks) are shown as `risk` with an `id`
+(`-v` shows every warning's id); dismissed ones are marked `dismissed`. Reads local state only; `scan`, `sync` and `check` refresh it. See
 [CI workflows and agent tools](ci-and-agent-tools.md).
 
 ### `selfguard report [dir] [-v|--verbose] [-m|--markdown]`
@@ -249,11 +250,23 @@ Turns off the repo containing `dir` (default: current directory), or the repo wi
 (as shown by `status --json` or `dismiss --list`, useful for other machines). Every checkout of
 the repo counts as inactive (no reminders, alerts only for malicious packages, hidden from
 `status` without `--all`) until one of them has git activity again: then it turns back on by
-itself. Dismissing again restarts the clock. `--list` shows the dismissed repos.
+itself. Dismissing again restarts the clock. `--list` shows the dismissed repos and warnings.
+
+### `selfguard dismiss --warning <id>`
+
+Stops alerting for one warning of `selfguard tools` (its `id`, or its full `warningKey` from
+`tools --json`): a LaunchAgent, an agent hook or a CI step you put there on purpose. It stays
+listed, marked `dismissed`, but never notifies again and leaves the reminder and the menu bar
+counts. Unlike a repo, it doesn't come back by itself. Also from the dashboard (**Dismiss** next
+to the warning) and MCP (`selfguard_dismiss_warning`).
 
 ### `selfguard undismiss [dir|key]`
 
 Turns a dismissed repo back on now.
+
+### `selfguard undismiss --warning <id>`
+
+The warning alerts again (when it reappears) and counts in reminders.
 
 ---
 

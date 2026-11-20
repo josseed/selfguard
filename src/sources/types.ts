@@ -68,6 +68,10 @@ export interface SourceWarning {
   file: string;
   line: number;
   severity: "high" | "moderate" | "low";
+  /** Stable identity within the file (e.g. a hook event, a plist label). Default: rule + file. */
+  key?: string;
+  /** Tell the user when it appears after the baseline, even if severity isn't "high". */
+  notify?: boolean;
 }
 
 /** A finding of a source, with where its reference appears. `certainty` absent = "confirmed". */
@@ -118,6 +122,13 @@ export interface SourceRecord {
   error?: string;
   /** findingKey -> last time seen (ISO), as RepoRecord.seen. */
   seen?: Record<string, string>;
+  /** warningKey -> last time seen (ISO): a warning that comes back soon isn't news. */
+  warningSeen?: Record<string, string>;
+  /**
+   * selfguard version whose rules produced `warnings`. After an upgrade, warnings of files
+   * that didn't change are the new rules' baseline, not news (sources/warnings.ts).
+   */
+  warningsBy?: string;
 }
 
 /** What an extractor returns for one file. `file` is filled in by the core. */

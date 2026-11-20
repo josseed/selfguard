@@ -1,6 +1,7 @@
 // Bastion, the guard on the Overview page. His animation says what changed: he patrols when
 // all is clear, jumps at a new high finding, sounds the horn for a critical one, fights off a
-// malicious package and celebrates a fix. Frames are strips in /mascot/ (drawn by
+// malicious package and celebrates a fix. A new risk (agent config, CI, this machine) sounds the
+// horn when it is high, and makes him jump otherwise. Frames are strips in /mascot/ (drawn by
 // scripts/mascot/bastion.html, exported by scripts/mascot/export.mjs) played with the Web
 // Animations API: no per-frame JavaScript, and a still frame under reduced motion.
 import { call } from "./api.js";
@@ -10,6 +11,7 @@ const SCALE = 1; // CSS pixels per art pixel (2 device pixels on Retina): whole 
 const SEEN_KEY = "selfguard-mascot-seen";
 const ALERT_LOOPS = 2;
 const ALERT_FOR = { malicious: "mal", critical: "crit", high: "high" };
+const SCENE_RANK = ["mal", "crit", "high"];
 const LABEL = {
   idle: "all clear, patrolling",
   high: "alarmed by a new high-severity finding",
@@ -47,8 +49,11 @@ export function newsScene(events, seen) {
     .filter((e) => e.kind === "new")
     .flatMap((e) => e.packages.map((p) => p.severity))
     .sort((a, b) => (RANK[a] ?? 9) - (RANK[b] ?? 9))[0];
-  if (worst && ALERT_FOR[worst]) return ALERT_FOR[worst];
-  return fresh.some((e) => e.kind === "resolved") ? "fixed" : null;
+  const risks = fresh.filter((e) => e.kind === "risk").flatMap((e) => e.risks || []);
+  const riskScene = risks.length ? (risks.some((r) => r.severity === "high") ? "crit" : "high") : null;
+  const scene = [worst && ALERT_FOR[worst], riskScene].filter(Boolean).sort((a, b) => SCENE_RANK.indexOf(a) - SCENE_RANK.indexOf(b))[0];
+  if (scene) return scene;
+  return fresh.some((e) => e.kind === "resolved" || e.kind === "risk-resolved") ? "fixed" : null;
 }
 
 const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;

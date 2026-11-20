@@ -142,13 +142,23 @@ export function cmdUnexclude(args: string[]): number {
 }
 
 export function cmdDismiss(args: string[]): number {
-  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { ...JSON_OPT, list: { type: "boolean" } } });
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { ...JSON_OPT, list: { type: "boolean" }, warning: { type: "string" } } });
   const c = paint(out);
   if (values.list) {
     const list = api.listDismissed();
-    if (values.json) emit({ dismissed: list });
-    else if (!list.length) out.write("No dismissed repos.\n");
-    else for (const d of list) out.write(`${c.bold(clean(d.label, 80))}  ${c.dim(`dismissed ${ago(d.dismissedAt)} · ${clean(d.key, 120)}`)}\n`);
+    const warnings = api.listDismissedWarnings();
+    if (values.json) emit({ dismissed: list, warnings });
+    else if (!list.length && !warnings.length) out.write("No dismissed repos or warnings.\n");
+    else {
+      for (const d of list) out.write(`${c.bold(clean(d.label, 80))}  ${c.dim(`dismissed ${ago(d.dismissedAt)} · ${clean(d.key, 120)}`)}\n`);
+      for (const d of warnings) out.write(`${c.yellow("warning")} ${clean(d.label, 160)}  ${c.dim(`dismissed ${ago(d.dismissedAt)} · ${d.id}`)}\n`);
+    }
+    return 0;
+  }
+  if (values.warning !== undefined) {
+    const w = api.dismissWarning(values.warning);
+    if (values.json) emit(w);
+    else out.write(`Dismissed: ${clean(w.label, 160)}. It stays listed but no longer alerts (undo: selfguard undismiss --warning ${w.id}).\n`);
     return 0;
   }
   const r = api.dismissRepo(api.resolveRepoKey(positionals[0] ?? "."));
@@ -158,7 +168,13 @@ export function cmdDismiss(args: string[]): number {
 }
 
 export function cmdUndismiss(args: string[]): number {
-  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: JSON_OPT });
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { ...JSON_OPT, warning: { type: "string" } } });
+  if (values.warning !== undefined) {
+    const w = api.undismissWarning(values.warning);
+    if (values.json) emit(w);
+    else out.write(w.removed ? "That warning alerts again.\n" : "That warning was not dismissed.\n");
+    return 0;
+  }
   const r = api.undismissRepo(api.resolveRepoKey(positionals[0] ?? "."));
   if (values.json) emit(r);
   else out.write(r.removed ? "Turned back on.\n" : "That repo was not dismissed.\n");

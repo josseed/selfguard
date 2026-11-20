@@ -10,6 +10,8 @@ import { gitRootsOf } from "../sources/run.ts";
 import { sourceExtractors } from "../sources/registry.ts";
 import { listSources } from "../sources/store.ts";
 import type { SourceKind, SourceRecord, SourceRef, SourceScope, SourceWarning } from "../sources/types.ts";
+import { alertWorthy, warningId, warningKey } from "../sources/warnings.ts";
+import { loadConfig } from "../config.ts";
 import { advisoryUrl } from "./common.ts";
 import { getRepoDetail } from "./reports.ts";
 
@@ -51,8 +53,15 @@ export interface SourceReport {
   worstSeverity: Severity | null;
   findings: SourceFindingReport[];
   /** Practices found without the network (unpinned references…). Not vulnerabilities. */
-  warnings: SourceWarning[];
+  warnings: SourceWarningReport[];
 }
+
+/**
+ * `id`: short id to dismiss it (selfguard dismiss --warning <id>); `warningKey`: its identity
+ * (kind|rule|file|key). `alerts`: it notifies when it appears (high, or its rule asks).
+ * `dismissed`: the user dismissed it: still listed, never alerts.
+ */
+export type SourceWarningReport = SourceWarning & { id: string; warningKey: string; alerts: boolean; dismissed: boolean };
 
 export interface SourcesResult {
   /** Kinds with an extractor in this version ([]: nothing is read yet). */
@@ -63,7 +72,7 @@ export interface SourcesResult {
   repos: SourceReport[];
 }
 
-export function toSourceReport(rec: SourceRecord): SourceReport {
+export function toSourceReport(rec: SourceRecord, dismissed: ReadonlySet<string> = new Set(loadConfig().dismissedWarnings.map((d) => d.key))): SourceReport {
   const s = sourceLabel(rec);
   return {
     kind: rec.kind,
@@ -106,7 +115,10 @@ export function toSourceReport(rec: SourceRecord): SourceReport {
       url: advisoryUrl(f.id),
       locations: f.locations,
     })),
-    warnings: rec.warnings,
+    warnings: rec.warnings.map((w) => {
+      const key = warningKey(rec.kind, w);
+      return { ...w, id: warningId(key), warningKey: key, alerts: alertWorthy(w), dismissed: dismissed.has(key) };
+    }),
   };
 }
 
@@ -125,7 +137,8 @@ export function getSources(opts: { path?: string; kind?: SourceKind } = {}): Sou
     if (roots.size === 0) throw new ApiError("not_found", `no git repository around ${resolve(opts.path)}`);
     records = records.filter((r) => r.scope === "repo" && roots.has(r.path));
   }
-  const reports = records.map(toSourceReport);
+  const dismissed = new Set(loadConfig().dismissedWarnings.map((d) => d.key));
+  const reports = records.map((r) => toSourceReport(r, dismissed));
   return {
     kinds,
     machine: reports.filter((r) => r.scope === "machine").sort(byRisk),
@@ -139,6 +152,6 @@ export function getRepoSources(key: string): SourceReport[] {
   const roots = new Set(gitRootsOf(detail.checkouts.filter((k) => !k.machine).map((k) => k.path)));
   return listSources({ scope: "repo" })
     .filter((r) => roots.has(r.path))
-    .map(toSourceReport)
+    .map((r) => toSourceReport(r))
     .sort(byRisk);
 }

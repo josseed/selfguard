@@ -19,6 +19,10 @@ project code, package managers or language toolchains.
   machine's agent configs and per-repo ones like .mcp.json). Their findings carry \`certainty\`: confirmed,
   may-be-affected (mutable tag like @v4) or version-unknown (branch, bare SHA, unpinned package), plus file
   and line; \`warnings\` are risky practices (unpinned actions/servers, script injection), not vulnerabilities.
+- risks: warnings with \`alerts: true\` (severity high, or their rule asks) notify the user when they appear
+  after a source's first scan, in active repos or on this machine, and high ones join the daily reminder.
+  A warning put there on purpose (a LaunchAgent, a repo hook) can be dismissed by its \`id\`: it stays listed
+  with \`dismissed: true\` and never alerts. Confirm with the user first: a warning may be an attack.
 - roots: folders where projects are discovered (recursive, depth-limited, skips node_modules-like dirs).
 - exclude: paths never tracked (fixtures, examples, archived repos).
 - severity order: malicious > critical > high > moderate > low > unknown.
@@ -63,6 +67,7 @@ project code, package managers or language toolchains.
 | Find new projects | selfguard_discover | selfguard discover [--dry-run] --json |
 | Find projects anywhere in the home folder | selfguard_discover (everywhere: true) | selfguard discover --everywhere --json |
 | Turn a repo off until its next git activity | selfguard_dismiss / selfguard_undismiss / selfguard_dismissed | selfguard dismiss [dir|key] / selfguard undismiss [dir|key] / selfguard dismiss --list |
+| Stop alerting for a warning put there on purpose | selfguard_dismiss_warning / selfguard_undismiss_warning | selfguard dismiss --warning <id> / selfguard undismiss --warning <id> |
 | Stop tracking / exclude | selfguard_forget / selfguard_unexclude | selfguard forget <dir> / selfguard unexclude <dir> |
 
 CLI conventions: with --json, stdout is a single JSON document; errors are {"error":{"code","message"}}.
