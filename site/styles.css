@@ -359,3 +359,30 @@ th { white-space: nowrap; }
 @media (max-width: 600px) { .attacks { grid-template-columns: 1fr; } }
 .strip-inner { flex-direction: column; align-items: center; gap: 14px; text-align: center; }
 .strip .chips { justify-content: center; }
+
+/* Hero: centered copy over the castle scene */
+.hero-center { position: relative; text-align: center; display: flex; flex-direction: column; align-items: center; }
+.hero-center h1 { font-size: clamp(46px, 7.4vw, 92px); margin-bottom: 24px; }
+.hero-center .lede { max-width: 40em; margin-left: auto; margin-right: auto; }
+.castle-frame {
+  position: relative; margin: 64px auto 0; padding: 0; width: fit-content; max-width: 100%;
+  display: flex; flex-direction: column; align-items: center;
+}
+.castle-frame canvas {
+  display: block; image-rendering: pixelated; border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.1);
+  box-shadow: 0 50px 120px -40px rgba(10,132,255,.45), 0 30px 80px -30px rgba(0,0,0,.9);
+}
+.castle-frame figcaption { margin-top: 18px; font-size: 13.5px; color: var(--text-3); text-align: center; }
+.castle-toast {
+  position: absolute; right: 18px; top: 18px; bottom: auto; width: 340px; text-align: left;
+  opacity: 0; transform: translateY(-8px) scale(.97); animation: none;
+  transition: opacity .35s, transform .45s cubic-bezier(.2,.9,.3,1.2);
+}
+.castle-toast.show { opacity: 1; transform: none; }
+.castle-toast[data-sev="mal"] { box-shadow: 0 20px 50px -12px rgba(0,0,0,.7), 0 0 0 1px rgba(191,90,242,.3), 0 0 40px -10px rgba(191,90,242,.6); }
+.castle-toast[data-sev="crit"] { box-shadow: 0 20px 50px -12px rgba(0,0,0,.7), 0 0 0 1px rgba(255,69,58,.3), 0 0 40px -10px rgba(255,69,58,.6); }
+.castle-toast[data-sev="high"] { box-shadow: 0 20px 50px -12px rgba(0,0,0,.7), 0 0 0 1px rgba(255,159,10,.3), 0 0 40px -10px rgba(255,159,10,.6); }
+@media (max-width: 960px) {
+  .castle-toast { position: relative; right: auto; top: auto; width: min(100%, 380px); margin-top: 14px; }
+}

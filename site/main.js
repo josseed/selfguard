@@ -1,3 +1,5 @@
+import { mountCastle } from "./castle.js";
+
 // Bastion, played from the same sprite strips the dashboard uses (src/ui/static/mascot/).
 // Scene geometry mirrors src/ui/static/mascot/manifest.json: keep them in sync when the art changes.
 const SCENES = {
@@ -57,8 +59,26 @@ function mount(el, scale) {
 
 const pixelScale = (base) => (innerWidth < 600 ? Math.max(1, base - 1) : base);
 
-const hero = document.querySelector(".hero-mascot");
-if (hero) mount(hero, pixelScale(2));
+// The hero castle: each caught Trojan horse raises the matching notification.
+const castleCanvas = document.getElementById("castle");
+if (castleCanvas) {
+  const toast = document.querySelector(".castle-toast");
+  const title = toast.querySelector(".toast-title");
+  const body = toast.querySelector(".toast-body");
+  let hide = null;
+  mountCastle(castleCanvas, {
+    onCatch(h) {
+      title.textContent = h.title;
+      body.textContent = h.body;
+      toast.dataset.sev = h.sev;
+      toast.classList.remove("show");
+      void toast.offsetWidth; // restart the entrance animation
+      toast.classList.add("show");
+      clearTimeout(hide);
+      hide = setTimeout(() => toast.classList.remove("show"), 3600);
+    },
+  });
+}
 
 const final = document.querySelector(".final-mascot");
 if (final) mount(final, pixelScale(3));
