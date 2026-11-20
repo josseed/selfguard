@@ -38,6 +38,18 @@ The first version with the updater is 0.13.0: Macs on 0.12.0 or earlier install 
   repos anywhere on the disk, as the CLI does).
 - The DMG: signed, notarized and stapled too, so it opens offline without warnings.
 
+## The DMG window
+
+Opening the DMG shows a window laid out for installing: selfguard.app on the left, a link to
+Applications on the right, and Bastion on the castle wall with an arrow between them. It's
+built with [dmgbuild](https://github.com/dmgbuild/dmgbuild), pinned by hash in
+`scripts/dmg/requirements.txt` and installed in a throwaway venv (needs Python 3.11+).
+
+- `scripts/dmg/settings.py`: window size, icon size and positions.
+- `scripts/dmg/background.html`: the background. After changing it (or Bastion), run
+  `node scripts/dmg/render.mjs` (Google Chrome) and commit `macos/Resources/dmg/background*.png`.
+  Its window size and icon centers must match `settings.py`.
+
 `scripts/notarize-app.sh` refuses an app whose binaries lack the hardened runtime or a
 Developer ID signature, then checks the result with `spctl` (Gatekeeper).
 
