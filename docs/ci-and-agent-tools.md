@@ -37,7 +37,9 @@ lockfiles only; sources are shown separately.
 - **Warnings** are risky practices found without the network. They are never counted as
   vulnerable packages. High-severity ones (and those whose rule asks for it) notify you when
   they appear after the first scan; `selfguard dismiss --warning <id>` silences one you put
-  there on purpose. See [alerts](how-it-works.md#alerts).
+  there on purpose. Urgent ones (an autorun task, a repo hook that downloads code, hidden
+  Unicode tags, bidi controls or hidden text) alert even on the first scan of a freshly cloned
+  repo. See [alerts](how-it-works.md#alerts).
 
 ## GitHub Actions
 

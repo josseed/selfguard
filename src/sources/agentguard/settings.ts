@@ -81,6 +81,8 @@ export function checkSettings(data: Record<string, unknown>, text: string, ctx: 
         key: rule.each ? hit.name.slice(0, 64) || "unnamed" : (rule.lineKey ?? (rule.path.join(".") || rule.rule)),
       };
       if (rule.notify && ctx.scope === "repo") w.notify = true;
+      // A repo hook that downloads or decodes code is an attack shape, not a practice.
+      if (rule.rule === "repo-agent-hooks" && hit.detail && ctx.scope === "repo") w.urgent = true;
       out.push(w);
     }
   }

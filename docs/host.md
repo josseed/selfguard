@@ -129,6 +129,7 @@ read.
   their parents); the watcher also wakes up when a launch item folder, a shell startup file,
   a package manager config or a site-packages folder (up to 20) changes. A rewrite of an already known, allowlisted `.pth` in place
   is caught by check as a changed file.
-- The first check is the baseline: N warnings are news only when they appear afterwards.
+- The first check is the baseline: N warnings are news only when they appear afterwards, except
+  `malicious-looking-startup-hook`, which is urgent and alerts even on the first check.
 
 `SELFGUARD_SYSTEM_ROOT` moves `/Library/…` under another folder (tests only).

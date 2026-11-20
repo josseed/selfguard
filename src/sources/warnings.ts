@@ -3,7 +3,8 @@
  * scan, for any kind and rule. Pure (no disk), like findingKey/updateSeen for findings.
  *
  * Baseline rules (nothing here floods the user):
- * - A record's first scan announces no warning (like findings).
+ * - A record's first scan announces no warning (like findings), except urgent ones: they look
+ *   like an attack, as a malicious package does, and a freshly cloned repo is exactly when.
  * - A warning seen recently (warningSeen) that comes back isn't news (branch switches).
  * - After an upgrade (the record's warnings were produced by another selfguard version), new
  *   rules may start firing on files that were already there: a new warning is news only if
@@ -52,7 +53,12 @@ export function diffWarnings(record: Pick<SourceRecord, "kind" | "warnings" | "f
   const entries = Object.entries(seen);
   const warningSeen = entries.length <= SEEN_MAX ? seen : Object.fromEntries(entries.sort((a, b) => b[1].localeCompare(a[1])).slice(0, SEEN_MAX));
 
-  if (!previous) return { newWarnings: [], resolvedWarnings: [], warningSeen };
+  if (!previous) {
+    // A first scan is a baseline, except for what looks like an attack (a freshly cloned repo).
+    const done = new Set<string>();
+    const newWarnings = record.warnings.filter((w) => w.urgent === true && !done.has(key(w)) && (done.add(key(w)), true));
+    return { newWarnings, resolvedWarnings: [], warningSeen };
+  }
   const sameRules = previous.warningsBy === version;
   const before = new Map((previous.files ?? []).map((f) => [f.path, f.hash]));
   const changed = new Set(record.files.filter((f) => before.get(f.path) !== f.hash).map((f) => f.path));
@@ -61,7 +67,7 @@ export function diffWarnings(record: Pick<SourceRecord, "kind" | "warnings" | "f
     const k = key(w);
     if (done.has(k) || Object.hasOwn(history, k)) return false;
     done.add(k);
-    return sameRules || changed.has(w.file);
+    return sameRules || changed.has(w.file) || w.urgent === true;
   });
   const after = new Set(record.warnings.map(key));
   const resolvedWarnings = previous.warnings.filter((w) => !after.has(key(w)) && (after.add(key(w)), true));

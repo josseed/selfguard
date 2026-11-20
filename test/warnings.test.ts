@@ -117,3 +117,20 @@ test("withRisks: open high risks come after the vulnerabilities in the reminder"
   assert.equal(alone.kind === "banner" && alone.body, "Hook runs curl | sh");
   assert.equal(withRisks({ kind: "none" }, []).kind, "none");
 });
+
+test("urgent warnings: news on a first scan, after an upgrade, and in inactive repos", () => {
+  const attack = warn({ rule: "autorun-task", key: "setup", urgent: true, notify: true });
+  // A freshly cloned repo: only the urgent one is news, once.
+  const first = diffWarnings(fresh([warn(), attack, attack]), null, T1, "9.9.9");
+  assert.deepEqual(first.newWarnings, [attack]);
+  // After an upgrade, on a file that didn't change.
+  assert.deepEqual(diffWarnings(fresh([warn(), attack], "h1"), rec([], { warningsBy: "1.0.0" }), T1, "2.0.0").newWarnings, [attack]);
+  // Seen recently: still not repeated.
+  const seen = rec([], { warningSeen: { [warningKey("agents", attack)]: T0 } });
+  assert.deepEqual(diffWarnings(fresh([attack], "h2"), seen, T1, "9.9.9").newWarnings, []);
+  // An inactive repo stays quiet, except for urgent risks.
+  assert.equal(buildRiskAlert([news({ active: false, newWarnings: [warn()] })]).kind, "none");
+  const alert = buildRiskAlert([news({ active: false, newWarnings: [warn(), attack] })]);
+  assert.equal(alert.kind, "banner");
+  if (alert.kind === "banner") assert.equal(alert.title, "selfguard: new risk in acme/api (agent tools)");
+});

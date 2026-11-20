@@ -41,8 +41,8 @@ const listLabels = (labels: string[]): string => `${labels.slice(0, 3).join(", "
 function bySource(news: RiskNews[], pick: (n: RiskNews) => SourceWarning[]): Array<RiskNews & { list: SourceWarning[] }> {
   const groups = new Map<string, RiskNews & { list: SourceWarning[]; ids: Set<string> }>();
   for (const n of news) {
-    if (!n.active) continue;
-    const ws = pick(n).filter(alertWorthy);
+    // Inactive repos stay quiet, except for urgent risks (like malicious packages).
+    const ws = pick(n).filter((w) => alertWorthy(w) && (n.active || w.urgent === true));
     if (!ws.length) continue;
     const id = `${n.key}|${n.label}`;
     let g = groups.get(id);

@@ -73,6 +73,12 @@ export interface SourceWarning {
   key?: string;
   /** Tell the user when it appears after the baseline, even if severity isn't "high". */
   notify?: boolean;
+  /**
+   * Looks like an attack, not a practice (a task that runs on folder open, a hook that downloads
+   * code, hidden Unicode tags, a .pth that decodes code): announced like a malicious package,
+   * even on the source's first scan, after an upgrade or in an inactive repo.
+   */
+  urgent?: boolean;
 }
 
 /** A finding of a source, with where its reference appears. `certainty` absent = "confirmed". */

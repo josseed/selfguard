@@ -140,7 +140,7 @@ export async function announce(outcomes: ScanOutcome[], opts: { notify?: boolean
   for (const r of risks) {
     const base = { at, repo: r.label, repoKey: r.key, path: r.path, branch: r.branch, active: r.active };
     const appeared = r.newWarnings.filter(alertWorthy);
-    if (appeared.length) events.push({ ...base, kind: "risk", ...eventRisks(appeared) });
+    if (appeared.length) events.push({ ...base, active: r.active || appeared.some((w) => w.urgent === true), kind: "risk", ...eventRisks(appeared) });
     const gone = r.resolvedWarnings.filter(alertWorthy);
     if (gone.length) events.push({ ...base, kind: "risk-resolved", ...eventRisks(gone) });
   }

@@ -83,6 +83,7 @@ function cleanWarning(w: ExtractResult["warnings"][number], file: string): Sourc
   const key = opt(w.key, 120);
   if (key) out.key = key;
   if (w.notify === true) out.notify = true;
+  if (w.urgent === true) out.urgent = out.notify = true;
   return out;
 }
 

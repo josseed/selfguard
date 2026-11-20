@@ -28,5 +28,6 @@ export function autorunTasks(data: Record<string, unknown>, text: string, file: 
     severity: "high" as const,
     key: typeof t?.label === "string" && t.label.trim() ? t.label.slice(0, 80) : `task ${i + 1}`,
     notify: true,
+    urgent: true,
   }));
 }

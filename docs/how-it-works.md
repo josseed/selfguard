@@ -212,6 +212,11 @@ ones that came back.
   after an upgrade adds rules, a new warning only alerts if its file is new or changed since
   the last scan (otherwise the rule is new, not the risk). A risk that goes away gets a quiet
   "✓ resolved". `selfguard dismiss --warning <id>` silences one you put there on purpose.
+  **Urgent** warnings, the ones that look like an attack rather than a practice (a VS Code task
+  that runs on folder open, a repo agent hook that downloads or decodes code, Unicode tag or bidi
+  characters, hidden text in zero-width characters, a `.pth` that decodes or downloads code),
+  alert like a malicious package: also on a source's first scan (a freshly cloned repo), after an
+  upgrade and in inactive repos.
 - **Reminders.** Once a day by default (`settings --remind daily|weekly|off`), between 09:00
   and 21:00, if serious issues are still open in active repos: malicious packages, critical
   vulnerabilities outside dev dependencies, and high ones in direct dependencies. Each repo is

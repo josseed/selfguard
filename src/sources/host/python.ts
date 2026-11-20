@@ -109,6 +109,7 @@ export function extractPythonHook(file: string, text: string, where: string): Ex
             rule: "malicious-looking-startup-hook",
             severity: "high",
             notify: true,
+            urgent: true,
             key: name,
             line,
             message: `${name} in ${where} runs hidden code at every Python start (decodes, evaluates or downloads code), like the LiteLLM .pth stealer. Remove the package that installed it and rotate credentials.`,

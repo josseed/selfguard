@@ -27,6 +27,8 @@ project code, package managers or language toolchains.
   after a source's first scan, in active repos or on this machine, and high ones join the daily reminder.
   A warning put there on purpose (a LaunchAgent, a repo hook) can be dismissed by its \`id\`: it stays listed
   with \`dismissed: true\` and never alerts. Confirm with the user first: a warning may be an attack.
+  \`urgent: true\` ones look like an attack (autorun task, hook that downloads code, hidden Unicode, decoding .pth):
+  they alert even on a fresh clone; tell the user not to open that repo with an agent or editor until reviewed.
 - host (sources of kind "host", warnings only): this machine's launch items, shell startup files, npm/pip/git
   config, plaintext credential files (presence only, never values) and Python startup hooks (.pth,
   sitecustomize.py, also in each repo's .venv). High ones (suspicious launch item, shell-fetch-exec,

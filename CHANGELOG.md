@@ -24,7 +24,10 @@ All notable changes to this project are documented here. The format is based on
   as a high vulnerability (Bastion sounds the horn; never the malicious-package dialog). It
   follows the same rules as findings: active repos only, the first scan of a source is a
   baseline, and rules added by an upgrade don't alert about files that didn't change. A risk
-  that goes away gets a quiet "✓ resolved". New risks show in the activity feed (filter
+  that goes away gets a quiet "✓ resolved". **Urgent** warnings, which look like an attack (an
+  autorun VS Code task, a repo agent hook that downloads code, hidden Unicode tags/bidi/text, a
+  `.pth` that decodes code), alert like a malicious package: even on the first scan of a freshly
+  cloned repo, after an upgrade and in inactive repos. New risks show in the activity feed (filter
   **Risks**) and the menu bar panel; `menubar.json` counts open risks; open high risks join
   the daily reminder after the vulnerabilities.
 - **Dismiss a warning** you put there on purpose (a LaunchAgent, a repo hook):

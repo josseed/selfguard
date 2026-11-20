@@ -120,6 +120,8 @@ test("Cursor, Gemini CLI and Codex repo configs; VS Code autorun tasks and termi
     "terminal-env-injection|high|N|LD_PRELOAD|.vscode/settings.json:8",
     "agent-permissions-bypassed|high|N|chat.tools.autoApprove|.vscode/settings.json:10",
   ]);
+  // Attack shapes are urgent (announced even on a fresh clone): autorun tasks, hooks that fetch code.
+  assert.deepEqual(rec.warnings.filter((w) => w.urgent).map((w) => w.key).sort(), ["SessionStart", "beforeShellExecution", "setup"].sort());
   const msg = (k: string) => rec.warnings.find((w) => w.key === k)!.message;
   assert.match(msg("beforeShellExecution"), /in Cursor on beforeShellExecution \(one downloads or decodes code\)/);
   assert.match(msg("SessionStart"), /in Codex on SessionStart \(one downloads/);

@@ -115,6 +115,7 @@ export function hiddenUnicode(text: string): Warning[] {
       severity: "high",
       key: "tags",
       notify: true,
+      urgent: true,
     });
   }
   if (bidi.count) {
@@ -125,6 +126,7 @@ export function hiddenUnicode(text: string): Warning[] {
       severity: "high",
       key: "bidi",
       notify: true,
+      urgent: true,
     });
   }
   if (hidden.count) {
@@ -139,6 +141,7 @@ export function hiddenUnicode(text: string): Warning[] {
       key: "invisible",
     };
     if (deliberate) w.notify = true;
+    if (decodes) w.urgent = true;
     out.push(w);
   }
   return out;
