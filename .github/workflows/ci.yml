@@ -31,8 +31,9 @@ jobs:
 
   # The macOS app (macos/): build the bundle with the pinned Node, check its signature and
   # that the bundled CLI runs. Unsigned (ad-hoc); release signing is a separate job.
+  # Same image as the release job (release.yml): the app needs the macOS 26 SDK (Liquid Glass).
   macos-app:
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

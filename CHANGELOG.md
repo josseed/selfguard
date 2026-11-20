@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Mac app is built again for releases.** Since 0.17.1 the app uses the macOS 26 SDK
+  (Liquid Glass), but the release job still ran on a macOS 15 image, so the 0.17.1 and 0.18.0
+  releases have no DMG. Releases and CI now build on the same macOS 26 image, and
+  `scripts/build-app.sh` shows the compiler's errors when the Swift build fails.
+
 ## [0.18.0] - 2026-11-20
 
 ### Security
