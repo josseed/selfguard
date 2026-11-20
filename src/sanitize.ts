@@ -11,6 +11,14 @@ const CONTROL = new RegExp(
 
 export function clean(input: unknown, maxLen = 300, opts: { multiline?: boolean } = {}): string {
   const stripped = String(input ?? "").replace(CONTROL, "");
-  const s = (opts.multiline ? stripped.replace(/\n{3,}/g, "\n\n") : stripped.replace(/\s*\n\s*/g, " ")).trim();
+  // Linear on purpose: a regex like /\s*\n\s*/ is quadratic on long runs of spaces, and this
+  // text comes from lockfiles and advisories (seconds of CPU for a 100 KB field).
+  const s = (opts.multiline ? stripped.replace(/\n{3,}/g, "\n\n") : oneLine(stripped)).trim();
   return s.length > maxLen ? `${s.slice(0, maxLen - 1)}…` : s;
+}
+
+/** Lines joined by a single space, blank lines dropped (what /\s*\n\s* / → " " did). */
+function oneLine(s: string): string {
+  if (!s.includes("\n")) return s;
+  return s.split("\n").map((l) => l.trim()).filter(Boolean).join(" ");
 }

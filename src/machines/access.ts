@@ -5,7 +5,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { MACHINE_NAME_RE, DEFAULT_SHARE_PORT, loadConfig, type Machine } from "../config.ts";
 import { isObject, readJsonFile } from "../fsutil.ts";
-import { machineDir, stateRoot } from "../paths.ts";
+import { machineDir, program, stateRoot } from "../paths.ts";
 import type { Target } from "../remote.ts";
 import { unpair } from "../share/client.ts";
 import { clean } from "../sanitize.ts";
@@ -29,7 +29,7 @@ export function ensureKey(name: string): string {
     mkdirSync(keysDir(), { recursive: true, mode: 0o700 });
     chmodSync(keysDir(), 0o700);
     try {
-      execFileSync(process.env.SELFGUARD_SSH_KEYGEN || "ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-C", keyMarker(name), "-f", key], { stdio: "ignore", timeout: 20_000 });
+      execFileSync(program("SELFGUARD_SSH_KEYGEN", "ssh-keygen", "/usr/bin/ssh-keygen"), ["-q", "-t", "ed25519", "-N", "", "-C", keyMarker(name), "-f", key], { stdio: "ignore", timeout: 20_000 });
     } catch (e) {
       throw new MachineError("failed", `could not create the key with ssh-keygen: ${clean((e as Error).message, 200)}`);
     }

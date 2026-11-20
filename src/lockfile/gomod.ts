@@ -40,8 +40,11 @@ function tokenize(line: string): { tokens: string[]; comment: string } {
       tokens.push(c === '"' ? line.slice(i + 1, end).replace(/\\(.)/g, "$1") : line.slice(i + 1, end));
       i = end + 1;
     } else {
-      let j = i;
-      while (j < line.length && !/[\s"`]/.test(line[j]!) && !line.startsWith("//", j)) j++;
+      // Same separators as the branches above (Go's own: space, tab, \r). Any other character,
+      // a no-break space or a BOM included, is part of the token, so `j` always advances: a
+      // hostile go.mod can't make this loop spin forever.
+      let j = i + 1;
+      while (j < line.length && !' \t\r"`'.includes(line[j]!) && !line.startsWith("//", j)) j++;
       tokens.push(line.slice(i, j));
       i = j;
     }

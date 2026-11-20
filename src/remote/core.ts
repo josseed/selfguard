@@ -27,6 +27,13 @@ export const isReader = (t: Target): boolean => Boolean(t.key) || t.transport ==
 
 /** Bumped when the reader's request/answer format changes (installed readers then need an update). */
 export const READER_PROTOCOL = "r1";
+/**
+ * Bumped when the installed sh reader changes in a way that matters (a security fix) but its
+ * format doesn't. Restricted readers that report an older revision (or none) must be
+ * reinstalled. Answers from selfguard sharing aren't held to it: that reader updates with
+ * selfguard on the other machine, and nothing here can reinstall it.
+ */
+export const READER_REVISION = 2;
 export const READER_PATH = ".selfguard-reader/reader.sh";
 export const READER_COMMAND = `/bin/sh ${READER_PATH}`;
 
@@ -39,6 +46,11 @@ export function shq(s: string): string {
 export const FETCHABLE: ReadonlySet<string> = new Set([...LOCKFILES.map(([f]) => f).filter((f) => f !== "bun.lockb"), "package.json", "pyproject.toml"]);
 export const SKIP: readonly string[] = ["node_modules", "bower_components", "jspm_packages", "vendor", "Pods", "venv", "__pycache__", "site-packages", "__pypackages__", "target", "testdata"];
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
+/**
+ * File bytes one fetch answer carries at most (both readers). Files past it are answered as
+ * unreadable (F -1), so a request can't make the other side read and send gigabytes.
+ */
+export const MAX_ANSWER_BYTES = 64 * 1024 * 1024;
 export const MAX_LIST_BYTES = 16 * 1024 * 1024;
 export const MAX_FETCH_BYTES = 200 * 1024 * 1024;
 

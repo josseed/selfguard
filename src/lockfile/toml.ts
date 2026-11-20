@@ -229,7 +229,7 @@ class Parser {
         const parent = descend(root, path.slice(0, -1), this);
         const last = path[path.length - 1]!;
         const existing = parent[last];
-        const arr = Array.isArray(existing) ? existing : existing === undefined ? (parent[last] = []) : this.fail(`${last} is not an array`);
+        const arr = Array.isArray(existing) ? existing : existing === undefined ? (parent[last] = []) : this.fail("a key is not an array");
         current = table();
         (arr as unknown[]).push(current);
       } else if (this.peek() === "[") {
@@ -258,7 +258,7 @@ function descend(root: TomlTable, path: string[], p: Parser): TomlTable {
     let next = t[part];
     if (next === undefined) next = t[part] = table();
     if (Array.isArray(next)) next = next[next.length - 1];
-    if (!isTable(next)) p.fail(`${part} is not a table`);
+    if (!isTable(next)) p.fail("a key is not a table");
     t = next;
   }
   return t;

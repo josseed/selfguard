@@ -29,7 +29,11 @@ export function stripTrailingCommas(text: string): string {
     if (ch === ",") {
       let j = i + 1;
       while (j < text.length && /\s/.test(text[j]!)) j++;
-      if (text[j] === "}" || text[j] === "]") continue;
+      // A space, not nothing: JSON.parse error positions then still point into `text`.
+      if (text[j] === "}" || text[j] === "]") {
+        out += " ";
+        continue;
+      }
     }
     out += ch;
   }

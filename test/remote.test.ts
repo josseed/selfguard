@@ -221,7 +221,7 @@ test("answers are parsed strictly", () => {
   assert.deepEqual(list.projects.map((p) => p.root), ["/home/me/code/ok"]);
   assert.equal(list.projects[0]!.mtimeMs, 20_000);
   // a reader only reports projects inside its folder
-  const scoped = parseList(Buffer.from("SG1\t/home/me\tLinux\treader r1\t/home/me/code\nP\t/home/me/other\tpackage-lock.json\t1\t1\nP\t/home/me/code/a\tpackage-lock.json\t1\t1\n"), { host: "x", key: "/k" });
+  const scoped = parseList(Buffer.from("SG1\t/home/me\tLinux\treader r1\t/home/me/code\t2\nP\t/home/me/other\tpackage-lock.json\t1\t1\nP\t/home/me/code/a\tpackage-lock.json\t1\t1\n"), { host: "x", key: "/k" });
   assert.deepEqual(scoped.projects.map((p) => p.root), ["/home/me/code/a"]);
   const head = Buffer.from("SG1\t/home/me\tLinux\tsh\t\n\n");
   const files = parseFetch(Buffer.concat([head, gzipSync(Buffer.from("F\t3\t/home/me/a/package-lock.json\nabcF\t-1\t/home/me/b/yarn.lock\n"))]));

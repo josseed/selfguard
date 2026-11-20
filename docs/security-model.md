@@ -3,18 +3,18 @@
 selfguard runs on developer machines and reads untrusted input every time you open a project, so
 it holds itself to a stricter standard than a typical CLI. This page explains what it trusts,
 what it sends, and how it is built and released. To report a vulnerability, see
-[SECURITY.md](../SECURITY.md).
+[SECURITY.md](../SECURITY.md). Past reviews: [November 2026 audit](security-audit-2026-11.md).
 
 ## Threats considered
 
 | Threat | Mitigation |
 |---|---|
 | A hostile repository runs code when you `cd` into it or scan it | Lockfiles, `package.json`, `pyproject.toml` and `go.mod` are parsed as data by selfguard's own parsers. No package manager (`npm`, `pip`, `uv`, `poetry`, `cargo`, `go`), lifecycle or build script, `.npmrc` or project config is ever executed or loaded. |
-| A crafted lockfile crashes or abuses the parser | Lockfiles over 100 MB are refused. The YAML reader supports only the subset lockfiles use: no anchors, aliases or tags, so no "billion laughs". The TOML reader (Cargo.lock, uv.lock, poetry.lock, pyproject.toml) has no evaluation features either. Nesting depth is bounded and objects have no prototype, so keys like `__proto__` are plain data. |
+| A crafted lockfile crashes or abuses the parser | Lockfiles and manifests must be regular files: a symlink, a FIFO or a device such as `/dev/zero` is refused, and lockfiles over 50 MB too. The parsers are fuzzed with mutated real lockfiles, workflows and agent configs on every test run, checking for hangs, crashes and prototype pollution. The YAML reader supports only the subset lockfiles use: no anchors, aliases or tags, so no "billion laughs". The TOML reader (Cargo.lock, uv.lock, poetry.lock, pyproject.toml) has no evaluation features either. Nesting depth is bounded and objects have no prototype, so keys like `__proto__` are plain data. |
 | Package names or advisory text inject terminal escape sequences | Everything printed is stripped of C0/C1 control characters and bidirectional overrides ("Trojan Source"), and truncated. |
 | Notification text injects AppleScript | Text is passed to `osascript` as arguments to an `on run` handler, never interpolated into script source. The dialog's button only opens `https://osv.dev/vulnerability/<id>` URLs built by selfguard. |
 | A website talks to the local dashboard | There is nothing to talk to: the dashboard has no HTTP server, no port and no token. The page runs inside the Mac app's WKWebView under a custom scheme, and its API is reachable only through the app's message handler. See [Dashboard](#dashboard). |
-| Prompt injection through the MCP server | Tool descriptions and the agent guide label advisory text and package names as third-party data. No MCP tool can run commands, install packages or edit files. |
+| Prompt injection through the MCP server | Tool descriptions and the agent guide label advisory text and package names as third-party data. No MCP tool can run commands, install packages or edit files. Every tool that makes selfguard watch or alert less (forget, remove a watched folder, dismiss a repo or a warning) is marked destructive, so clients ask before running it. `forget` refuses `/`, your home folder, a watched folder and any folder above one. Urgent warnings can't be dismissed over MCP, nor their repo forgotten. |
 | selfguard's own dependencies get compromised | Zero runtime dependencies, enforced in CI. Dev tooling updates go through Dependabot with a 7-day cooldown and review. |
 | A compromised CI or stolen token publishes a malicious selfguard | See [Releases](#releases). |
 
@@ -22,8 +22,8 @@ what it sends, and how it is built and released. To report a vulnerability, see
 
 The whole-home search ("find my projects") only lists folders and reads a few small files:
 `.gitignore` and `.git/worktrees/*/gitdir`, each capped at 64 KB. It never opens your other
-files or runs anything. It stays inside your home folder, on the same disk, doesn't follow
-symlinks, and skips cloud drives, because listing them can trigger downloads. Results stay in
+files or runs anything. It stays inside your home folder, on the same disk (worktree pointers
+included), doesn't follow symlinks, and skips cloud drives, because listing them can trigger downloads. Results stay in
 `~/.selfguard`. On macOS, the weekly background pass doesn't enter Desktop, Documents or
 Downloads unless you already watch a folder there, so it never shows a privacy prompt on its own.
 
@@ -36,7 +36,9 @@ per-repo counterparts (`.mcp.json`, `.cursor/mcp.json`, …). These configs ofte
 From each server only the agent, server name, launcher, package name, version or pin, file
 and line are kept; environment variables, headers, URLs, tokens and other arguments are never
 stored, logged, printed, returned to an AI or sent anywhere. Remote MCP servers are recorded by
-host only. Nothing is executed, and GitHub is never queried to resolve commit SHAs. See
+host only. When an option selfguard doesn't know comes before the package, the server is skipped
+with a warning instead of guessing, so an option's value (often a token) is never taken for a
+package name. Nothing is executed, and GitHub is never queried to resolve commit SHAs. See
 [CI workflows and agent tools](ci-and-agent-tools.md).
 
 ## What leaves your machine
@@ -58,17 +60,19 @@ daily update check described below:
 
 Requests carry the `User-Agent: selfguard/<version>` header. No file paths, project or repo
 names, git remotes, source code or identifiers are sent. Redirects are refused, responses are
-size-capped, and requests time out.
+size-capped (the download stops at the cap), and requests time out.
 
 OSV can infer which open-source packages and versions you use, but not who you are or what you
-build. If even that is too much, point `SELFGUARD_OSV_API` (and `SELFGUARD_OSV_BUCKET` for the
+build. Names from private registries are sent the same way: a private scoped npm package, an
+internal PyPI name, or a Go module on a company host (`git.corp.example/team/repo`); `GOPRIVATE`
+isn't consulted. If even that is too much, point `SELFGUARD_OSV_API` (and `SELFGUARD_OSV_BUCKET` for the
 GitHub Actions list) at a mirror you control.
 
 **Update check.** At most once a day, selfguard sends `GET https://registry.npmjs.org/selfguard/latest`
 to learn whether a newer selfguard exists. The request has the same safeguards (no redirects,
 timeout, size cap) and carries nothing about your projects: npm only sees that someone asked
-about selfguard, as with any `npm view`. The answer is used only if it holds a valid version,
-and it is never executed. selfguard **never installs or updates itself**. It shows the command
+about selfguard, as with any `npm view`. The answer is used only if it is an exact `x.y.z`
+version, and it is never executed. selfguard **never installs or updates itself**. It shows the command
 (`npm i -g selfguard@<version> --ignore-scripts`), the release notes, and whether the release
 carries an npm provenance attestation, meaning it was built and signed by the project's GitHub
 Actions. Turn the check off with `selfguard settings --update-check off` or
@@ -110,14 +114,19 @@ starts a small HTTP service (a launchd agent, or a systemd user unit on Linux):
   browse, ping; `reader.ts` produces byte-identical answers) with the same limits: lockfile,
   `package.json` and `pyproject.toml` names only, no symlinked files, 50 MB per file, at most 1,000 files and 64
   folders per request, nothing outside the granted folder (paths resolved with `realpath`, so
-  symlinks and `..` can't escape). Git facts (branch, remote URL, activity) also come only from
-  a `.git` and a common git dir inside the granted folder. A narrower grant never reveals a
-  parent repo's remote URL, which may embed a token. It has no endpoint that writes files or runs
-  anything from a project.
+  symlinks and `..` can't escape). A fetch answer holds each file once and at most 64 MB of
+  files; the rest is reported unreadable and asked for again in another request. It is streamed,
+  never built in memory. Folders whose names contain control characters are skipped. Git facts
+  (branch, remote URL, activity) also come only from a `.git` and a common git dir inside the
+  granted folder, and `HEAD`, `commondir` and `config` are never read through a symlink. A
+  narrower grant never reveals a parent repo's remote URL, which may embed a token. It has no
+  endpoint that writes files or runs anything from a project.
 - **Pairing, approved over there.** Machine A sends `POST /pair/request` with its name and an
   ephemeral X25519 public key. B identifies the caller with `tailscale whois`: it must be a
   machine of the tailnet and, by default, of **the same Tailscale user**
-  (`--allow-other-users` widens that on purpose). The request waits 5 minutes, with a
+  (`--allow-other-users` widens that on purpose). Tagged devices have no user (Tailscale
+  reports them all as `tagged-devices`), so if either machine is tagged, pairing needs
+  `--allow-other-users` too. The request waits 5 minutes, with a
   notification and a card in B's dashboard. Both screens show the same 6-digit code, derived
   from both public keys, so you can check that you approve the request you sent. On approval,
   B chooses the folder A may read, creates a random 256-bit credential, keeps only its SHA-256
@@ -132,7 +141,8 @@ starts a small HTTP service (a launchd agent, or a systemd user unit on Linux):
   can't read anything. Moving a machine from sharing to SSH, or removing it, drops its grant
   over there and deletes the credential here.
 - **Limits and logs.** Pairing requests are rate limited (5 per address every 10 minutes),
-  failed credentials too. Every access is logged in `~/.selfguard/share/access.log` (capped).
+  failed credentials too. Answers from other machines (`/hello`, pairing) are read up to
+  256 KB, and the download stops there. Every access is logged in `~/.selfguard/share/access.log` (capped).
   B's dashboard lists "Machines that can see this one" with their last connection and
   **Revoke**, and `selfguard share list | revoke <name>` does the same. `share off` stops
   answering at once, before the service is even unloaded.
@@ -146,7 +156,7 @@ A was granted on B, and nothing more.
 1. selfguard creates an ed25519 key just for that machine in `~/.selfguard/ssh/<name>_ed25519`
    (mode `0600`).
 2. Using your own SSH access **once**, it installs two things on the machine:
-   - `~/.selfguard-reader/reader.sh`, the *reader*: about 150 lines of POSIX `sh`. You can
+   - `~/.selfguard-reader/reader.sh`, the *reader*: about 200 lines of POSIX `sh`. You can
      read it with `selfguard machines setup <name>`, or install it by hand with the same
      command.
    - one line in `~/.ssh/authorized_keys`:
@@ -162,15 +172,21 @@ What the key can do on the machine:
   not open a shell, copy files or reach other hosts.
 - **Only inside one folder.** The reader is installed for one folder (`--scope`, default `~`).
   It resolves every requested path with `pwd -P` and refuses anything outside, including
-  through symlinks or `..`. The dashboard's folder picker stops at that folder.
+  through symlinks or `..`. Git's `HEAD`, `commondir` and `config` are never read through a
+  symlink, and folders whose names contain control characters are skipped, so a crafted name
+  can't point the reader elsewhere. The dashboard's folder picker stops at that folder.
 - **Only lockfiles.** Answers contain lockfile names, sizes and dates, the bytes of files
-  named like a lockfile (`go.mod` included), `package.json` or `pyproject.toml` (never symlinks, at most 50 MB each), and a few git
+  named like a lockfile (`go.mod` included), `package.json` or `pyproject.toml` (never symlinks, at most 50 MB each and 64 MB per answer), and a few git
   facts: branch, worktree pointer, remote URL and last activity. No `.env`, keys or source
   files.
 - **Only from this Mac.** When the machine is on your tailnet, the line is pinned to this Mac's
   Tailscale addresses (`from=`).
 - **Requests are data.** The reader reads a request (`SGREQ1 list` plus folder lines) from
   stdin with `read -r` and never evaluates it.
+
+When a selfguard update changes the reader, the reader reports an older revision and the machine
+shows "reader outdated" until you reinstall it (`selfguard machines install <name>`), so a fix
+never silently stays off over there.
 
 Removing the machine (`selfguard machines remove`) deletes the key here and, with your SSH
 access, its line and the reader there. If that cleanup can't connect, the line left behind
@@ -215,11 +231,12 @@ inside the selfguard Mac app:
   named in `dist/ui/static/files.json`, generated at build time from the allowlist in
   `src/ui/assets.ts`; the lookup is an exact match on the URL path, never a path join, so
   there is no traversal. Everything else is a 404.
-- **Navigation** is limited to `selfguard://dashboard/…`. https links (osv.dev advisories,
-  GitHub) open in your default browser; any other scheme is cancelled. Website data is kept in
-  memory only.
-- **CSP** on every response: `default-src 'none'`, scripts, styles and images only from the
-  page's own origin, `connect-src 'none'` (the page cannot make requests at all),
+- **Navigation** is limited to `selfguard://dashboard/…`. Two kinds of https link open in your
+  default browser: `https://osv.dev/vulnerability/<id>` and selfguard's own GitHub page (README
+  and release notes). Any other URL is dropped, even when a script asks, and any other scheme is
+  cancelled. Website data is kept in memory only.
+- **CSP** on every response: `default-src 'none'`, scripts and styles only from the page's own
+  origin, images from it or `data:` URLs, `connect-src 'none'` (the page cannot make requests at all),
   `form-action 'none'`, `frame-ancestors 'none'`. No inline scripts or styles, no third-party
   resources.
 - **The API** is reachable only through a script message handler (`selfguard`, page world
@@ -230,10 +247,19 @@ inside the selfguard Mac app:
   then runs the same code the CLI uses. The bridge's stdout carries only the protocol. It starts
   with the first request, stops a minute after the window closes, and exits if the app dies
   (its stdin closes).
+- **The engine** (the bundled Node and `selfguard` the app runs) gets a filtered environment:
+  `NODE_*` and `DYLD_*` variables are never passed, `PATH` is the system's, and release builds
+  ignore the variables that would point the app at another engine. The engine itself, when it
+  runs from the app's bundle, always uses `/usr/bin/ssh` and ignores `SELFGUARD_SSH` and
+  `SELFGUARD_TAILSCALE`, and its background agents get an empty `NODE_OPTIONS`. So neither
+  `open --env NODE_OPTIONS=… -a selfguard` nor `launchctl setenv` can run code with the privacy
+  permissions macOS gave the app.
 - untrusted text (package names, advisory summaries, paths) is inserted with `textContent`,
   never as HTML;
 - actions (re-scan, ignore) only accept projects selfguard already tracks; links only go to
-  `osv.dev` advisory pages;
+  `osv.dev` advisory pages and selfguard's GitHub page, and the app enforces that list;
+- the "Copy markdown" report escapes advisory text and repo names, so pasted into an issue or
+  an AI agent they can't form links, images or HTML;
 - the folder browser lists only the names of visible subfolders (no files, no contents), and
   adding a folder only changes `config.json`. Discovery still reads lockfiles as data and never
   runs anything.

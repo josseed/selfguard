@@ -26,7 +26,7 @@ import {
 import { unpair } from "../share/client.ts";
 import { forgetMachine, forgetRepo, listRepos } from "../store.ts";
 import { deleteKey, dropShareCredential, ensureKey, keyMarker, loadShareCredential, ownAccess, targetOf } from "./access.ts";
-import { MachineError, getMachine, listMachines, saveMachineStatus, toMachineError, updateMachine, type MachineInfo } from "./core.ts";
+import { MachineError, expandRemote, getMachine, listMachines, loadMachineStatus, saveMachineStatus, toMachineError, updateMachine, type MachineInfo } from "./core.ts";
 import { explainUnreachable, probeSsh, sshOffHint } from "./peers.ts";
 
 export interface MachineSetup {
@@ -219,6 +219,11 @@ export function removeMachineRoot(name: string, path: string): Machine {
 export function excludeOnMachine(name: string, path: string): { path: string; wasTracked: boolean; alsoForgotten: string[] } {
   const p = validRemotePath(path);
   if (!p || !p.startsWith("/")) throw new MachineError("invalid", "invalid path");
+  // Same rule as excludeRefusal here: never "/", that machine's home or a watched folder (or above).
+  const home = loadMachineStatus(name).home;
+  const kept = ["/", ...(home ? [home] : []), ...getMachine(name).roots.map((r) => expandRemote(r.path, home))];
+  const hit = kept.find((k) => k.startsWith("/") && isExcluded(k, [p]));
+  if (hit) throw new MachineError("invalid", `refusing to exclude ${p} on ${name}: it would hide ${hit === p ? "everything watched there" : `the watched folder ${hit}`}`);
   const wasTracked = forgetRepo(p, name);
   updateMachine(name, (m) => {
     if (!m.exclude.includes(p)) m.exclude.push(p);

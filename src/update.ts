@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.ts";
+import { readCapped } from "./net.ts";
 import { compare, isValid } from "./semver.ts";
 import { loadState, updateState } from "./state.ts";
 import { VERSION } from "./version.ts";
@@ -45,10 +46,17 @@ export function updateCheckEnabled(): boolean {
 
 const newer = (a: string, b: string): boolean => isValid(a) && isValid(b) && compare(a, b) > 0;
 
+/**
+ * A plain release, exactly `x.y.z`: the version goes into a command the user pastes and a URL,
+ * so no whitespace, prefix, pre-release or build tag (isValid would trim and accept those).
+ */
+const RELEASE_RE = /^(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})$/;
+const release = (v: unknown): string | null => (typeof v === "string" && RELEASE_RE.test(v) ? v : null);
+
 /** What we know without touching the network. */
 export function cachedUpdate(): UpdateInfo {
   const st = loadState();
-  const latest = st.latestVersion ?? null;
+  const latest = release(st.latestVersion); // state written before the check was strict
   const available = latest !== null && newer(latest, VERSION);
   return {
     current: VERSION,
@@ -75,10 +83,10 @@ export async function checkForUpdate(opts: { force?: boolean } = {}): Promise<Up
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) throw new Error(`registry answered ${res.status}`);
-    const text = await res.text();
-    if (text.length > MAX_BYTES) throw new Error("registry answer too large");
+    const text = await readCapped(res, MAX_BYTES);
+    if (text === null) throw new Error("registry answer too large");
     const doc = JSON.parse(text) as { version?: unknown; dist?: { attestations?: { provenance?: { predicateType?: unknown } } } };
-    const version = typeof doc.version === "string" && isValid(doc.version) && doc.version.length < 64 ? doc.version : null;
+    const version = release(doc.version);
     if (!version) throw new Error("no valid version in the registry answer");
     updateState({
       latestVersion: version,

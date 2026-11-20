@@ -51,7 +51,7 @@ export function parsePnpmLockfile(text: string, manifest?: unknown): ParsedLockf
   const doc = docs.find((d) => isMap(d.importers) || isMap(d.packages)) ?? docs.find((d) => d.lockfileVersion !== undefined);
   if (!doc || doc.lockfileVersion === undefined) throw new Error("not a pnpm lockfile");
   const major = Math.trunc(Number.parseFloat(String(doc.lockfileVersion)));
-  if (!Number.isFinite(major) || major < 5) throw new Error(`unsupported pnpm lockfileVersion ${String(doc.lockfileVersion)}`);
+  if (!Number.isFinite(major) || major < 5) throw new Error(`unsupported pnpm lockfileVersion${/^[\d.]{1,12}$/.test(String(doc.lockfileVersion)) ? ` ${String(doc.lockfileVersion)}` : ""}`); // never quote other text
 
   const importers: YamlMap = isMap(doc.importers) ? doc.importers : ({ ".": doc } as YamlMap);
   const packages: YamlMap = isMap(doc.packages) ? doc.packages : (Object.create(null) as YamlMap);

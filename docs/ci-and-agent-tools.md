@@ -64,6 +64,15 @@ composite actions found.
 | SHA without a version comment, or a branch | version unknown |
 | `./local` | through that folder's `action.yml` |
 | `docker://…`, values with `${{ }}` | skipped and counted |
+| a `uses` written in a form selfguard can't read (see Limits) | skipped, counted and warned about (`workflow-not-parsed`) |
+
+Values are decoded as YAML does before they are matched: single and double quotes with every
+escape (`"\u0074j-actions\x2Fchanged-files@v45"` is `tj-actions/changed-files@v45`), anchors
+and tags (`&x`, `!!str`), aliases of scalars (`uses: *x`), a value on the lines below `uses:`,
+block scalars (`uses: |-`), quoted values spanning lines, and flow mappings and sequences
+(`- { uses: x }`, `steps: [ { uses: x } ]`, a workflow written as JSON). CR, NEL, LS and PS
+count as line breaks, as for YAML 1.1 parsers. A value that can't be decoded never becomes a
+name: it is skipped and counted.
 
 Action names are matched **case-insensitively**, as GitHub resolves them: `azure/setup-kubectl`
 gets the advisories OSV stores as `Azure/setup-kubectl`. OSV's API matches names
@@ -86,12 +95,22 @@ The index is stored in `~/.selfguard/cache/github-actions-index.json`.
 | Rule | Severity | When |
 |---|---|---|
 | `unpinned-action` | moderate | A third-party action isn't pinned to a full commit SHA (`actions/*` and `github/*` are exempt). |
-| `pr-target-checkout` | high | A `pull_request_target` or `workflow_run` workflow checks out the pull request head with `actions/checkout`. |
-| `script-injection` | high | Untrusted event text (issue, PR, comment and review titles and bodies, head ref, commit messages, page names…) is interpolated with `${{ }}` into a `run:` script. Passing it through `env:` is the safe form and isn't flagged. |
+| `pr-target-checkout` | high | A `pull_request_target` or `workflow_run` workflow checks out the pull request's code with `actions/checkout`: a `ref:` naming the PR head, its merge commit (`merge_commit_sha`, `refs/pull/…`) or the triggering run's head, or a `repository:` naming the PR's head repository (the fork). One warning per checkout step. |
+| `script-injection` | high | Untrusted event text (issue, PR, comment and review titles and bodies, head ref, commit messages, page names…) is interpolated with `${{ }}` into a `run:` script, or into the `script:` input of `actions/github-script` (any version or pin). Expressions are read as GitHub reads them: context names in any case, `github.event['issue']['title']` as `github.event.issue.title`, spaces around `.` and `[]` ignored, an expression split across lines. Passing it through `env:` is the safe form and isn't flagged. |
+| `workflow-not-parsed` | low | A `uses` written in a form selfguard can't read, so the action it runs wasn't checked: an explicit `? uses` key, an alias with no earlier anchor selfguard knows, an invalid escape or an unterminated quote, a `uses:` inside a flow collection that can't be read, or a `uses:` key on a line that isn't read as one (`-<tab>uses:`). One warning per file, with the count; it never quotes the file. |
 
-Limits: flow mappings (`- { uses: x }`), anchors, multi-line quoted scalars and expressions
-split across lines aren't interpreted; a checkout done with `run: git …`, or untrusted text
-passed through an intermediate `env:` or step output, isn't detected.
+Limits: explicit keys (`? uses`) aren't interpreted, nor are aliases of an anchor placed before
+a key (`- &a uses: x`) or on a flow mapping inside a list; they give `workflow-not-parsed`. A
+`uses:` whose value is a mapping or a list (directly or through an alias) is skipped and
+counted: GitHub rejects it. An alias of a whole step (`- *step`) adds no reference: the
+anchored step is read where it is written. A flow collection is read up to 32 levels deep, 4096
+lines and 20,000 entries per file, indented up to 256 columns; past that, or when it is unclosed
+or holds explicit `?` keys, its `uses` give `workflow-not-parsed`. Version comments are read on
+block lines only, not inside flow collections. A multi-line quoted scalar is read leniently (its
+lines may be indented less than YAML requires). Not detected: triggers declared through
+anchors, a checkout done with `run: git …`, untrusted text passed through an intermediate
+`env:` or step output (or as a whole object, such as `toJSON(github.event)`), and actions other
+than `actions/github-script` that evaluate their inputs as code.
 
 ## MCP servers of AI agents
 
@@ -118,6 +137,13 @@ JSON with comments and trailing commas is accepted. A file that can't be parsed 
 | `uvx`, `uv tool run` (`--from`), `pipx run` (`--spec`) | PyPI package |
 | absolute paths to those, `cmd /c …`, a whole command in one string | as above |
 | `docker`, `node`, `python`, other binaries, git URLs, tarballs, local paths | skipped and counted |
+| an option selfguard doesn't know, followed by a plain word, before the package (`npx --foo bar pkg`) | skipped, counted and warned about (`unparsed-mcp-server`, low) |
+
+npx and npm disagree on such an option: npx's own argument pass reads the next word as its value,
+npm's parser reads it as the package to run. Guessing either way is wrong (a token after
+`--_authToken` would be taken for a package and sent to OSV, or a package hidden behind the
+option would go unchecked), so selfguard doesn't guess. Options it knows, with or without a
+value, are read as npm, uv and pipx read them.
 
 Only an exact version (`@1.2.3`, `==1.2.3`) is pinned. Tags and ranges (`@latest`, `^1`) are a
 version-unknown reference plus an `unpinned-mcp-server` warning (moderate): the server runs
@@ -133,7 +159,8 @@ launcher, package name, version or pin, file and line. Environment variables, he
 tokens and other arguments are never stored, printed, logged, returned to an AI or sent. Remote
 servers (`url`, `httpUrl`, `serverUrl`, HTTP/SSE types) aren't checked; a low
 `remote-mcp-server` warning names the host only. A test puts secrets in every one of those
-places and checks that none reaches records, events, logs, CLI and MCP output or OSV requests.
+places, before and after the package, and checks that none reaches records, events, logs, CLI
+and MCP output or OSV requests.
 
 Limits: line numbers are best effort; changes to the npx cache don't trigger a rescan; VS Code's
 `settings.json` (`mcp.servers`), Windows paths, `CLAUDE_CONFIG_DIR`/`CODEX_HOME` overrides,

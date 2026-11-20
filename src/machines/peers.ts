@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { connect } from "node:net";
 import { DEFAULT_SHARE_PORT, loadConfig, type Machine } from "../config.ts";
+import { inAppBundle, program } from "../paths.ts";
 import { probeShare } from "../share/client.ts";
 import { tailnet, type TailnetPeer, type TailnetState } from "../tailnet.ts";
 import { machineNameFor } from "./access.ts";
@@ -58,10 +59,10 @@ export type SshProbe = "open" | "refused" | "timeout" | "unknown";
 export async function probeSsh(host: string, port?: number, timeoutMs = 2500): Promise<SshProbe> {
   let target = host.replace(/^[^@]*@/, "");
   let p = port ?? 22;
-  if (!process.env.SELFGUARD_SSH) {
+  if (inAppBundle() || !process.env.SELFGUARD_SSH) {
     try {
       const args = ["-G", ...(port ? ["-p", String(port)] : []), "--", host];
-      const cfg = execFileSync("ssh", args, { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      const cfg = execFileSync(program("SELFGUARD_SSH", "ssh", "/usr/bin/ssh"), args, { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
       const get = (k: string): string => cfg.match(new RegExp(`^${k} (.+)$`, "m"))?.[1]?.trim() ?? "";
       const via = [get("proxyjump"), get("proxycommand")].filter((v) => v && v !== "none");
       if (via.length) return "unknown";

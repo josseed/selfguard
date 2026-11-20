@@ -6,10 +6,11 @@
 import { execFile, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { SSH_HOST_RE } from "./config.ts";
+import { inAppBundle } from "./paths.ts";
 import { clean } from "./sanitize.ts";
 
 export function tailscaleBin(): string | null {
-  const override = process.env.SELFGUARD_TAILSCALE;
+  const override = inAppBundle() ? undefined : process.env.SELFGUARD_TAILSCALE;
   if (override) return existsSync(override) ? override : null;
   for (const p of ["/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/usr/bin/tailscale", "/usr/sbin/tailscale"]) {
     if (existsSync(p)) return p;
@@ -30,6 +31,13 @@ function rawStatus(): Json | null {
   }
 }
 
+/**
+ * Tagged nodes belong to their tags, not to a person: Tailscale reports every one of them as
+ * the same pseudo-user, so their login says nothing about who owns them.
+ */
+const TAGGED_LOGIN = "tagged-devices";
+const isTagged = (tags: unknown, login: string | null): boolean => (Array.isArray(tags) && tags.length > 0) || login === TAGGED_LOGIN;
+
 const ipsOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && /^[0-9a-fA-F.:]+$/.test(x)) : []);
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const dns = (v: unknown): string => str(v).replace(/\.$/, "");
@@ -45,6 +53,8 @@ export interface TailnetSelf {
   ips: string[];
   /** Login of the Tailscale user owning this machine (to pair only with your own machines). */
   login: string | null;
+  /** A tagged node: owned by its tags, no user (its login is the "tagged-devices" pseudo-user). */
+  tagged: boolean;
 }
 
 export interface TailnetPeer {
@@ -83,12 +93,14 @@ export function tailnet(): Tailnet {
     return u && typeof u.LoginName === "string" ? u.LoginName : null;
   };
   const s = (st.Self ?? {}) as Json;
+  const selfLogin = loginOf(s.UserID);
   const self: TailnetSelf = {
     nodeId: str(s.ID),
     name: clean(str(s.HostName) || dns(s.DNSName).split(".")[0] || "this machine", 64),
     dnsName: dns(s.DNSName),
     ips: ipsOf(s.TailscaleIPs),
-    login: loginOf(s.UserID),
+    login: selfLogin,
+    tagged: isTagged(s.Tags, selfLogin),
   };
   const peers: TailnetPeer[] = [];
   for (const p of Object.values((st.Peer ?? {}) as Record<string, Json>)) {
@@ -116,6 +128,8 @@ export function tailnet(): Tailnet {
 export interface Whois {
   nodeId: string;
   login: string | null;
+  /** A tagged node (see TailnetSelf.tagged): its login names no one. */
+  tagged: boolean;
   name: string;
 }
 
@@ -143,11 +157,13 @@ export function whoisDetailed(ip: string): Promise<WhoisResult> {
         const nodeId = str(node.StableID);
         if (!nodeId) return resolve({ ok: false, reason: "error" });
         const host = (node.Hostinfo ?? {}) as Json;
+        const login = typeof user.LoginName === "string" ? user.LoginName : null;
         resolve({
           ok: true,
           who: {
             nodeId,
-            login: typeof user.LoginName === "string" ? user.LoginName : null,
+            login,
+            tagged: isTagged(node.Tags, login),
             name: clean(str(host.Hostname) || str(node.ComputedName) || dns(node.Name).split(".")[0] || nodeId, 64),
           },
         });

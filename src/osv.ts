@@ -5,6 +5,7 @@
 import { join } from "node:path";
 import { atomicWrite, isObject, readJsonFile } from "./fsutil.ts";
 import type { Ecosystem } from "./lockfile/types.ts";
+import { readCapped } from "./net.ts";
 import { vulnCacheDir } from "./paths.ts";
 import { normalizeName } from "./versions.ts";
 import { VERSION } from "./version.ts";
@@ -91,10 +92,8 @@ async function request(method: "GET" | "POST", path: string, body?: unknown): Pr
       const res = await fetch(`${API}${path}`, init);
       if (res.status === 429 || res.status >= 500) throw new Error(`OSV API ${res.status}`);
       if (!res.ok) throw Object.assign(new Error(`OSV API ${res.status}`), { fatal: true });
-      const len = Number(res.headers.get("content-length") ?? 0);
-      if (len > MAX_RESPONSE_BYTES) throw Object.assign(new Error("OSV response too large"), { fatal: true });
-      const text = await res.text();
-      if (text.length > MAX_RESPONSE_BYTES) throw Object.assign(new Error("OSV response too large"), { fatal: true });
+      const text = await readCapped(res, MAX_RESPONSE_BYTES);
+      if (text === null) throw Object.assign(new Error("OSV response too large"), { fatal: true });
       return JSON.parse(text);
     } catch (err) {
       lastErr = err;
@@ -164,7 +163,9 @@ function asVuln(data: unknown): OsvVuln | null {
 
 export function getCachedVuln(id: string): OsvVuln | null {
   if (!ID_RE.test(id)) return null;
-  return readJsonFile<CacheEntry>(cachePath(id))?.vuln ?? null;
+  // On a case-insensitive disk, ids differing only in case share one file: check it's this one.
+  const vuln = asVuln(readJsonFile<CacheEntry>(cachePath(id))?.vuln);
+  return vuln?.id === id ? vuln : null;
 }
 
 /** Fetch full advisories, reusing the local cache when `modified` hasn't changed. */

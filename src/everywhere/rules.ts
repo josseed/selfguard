@@ -1,7 +1,7 @@
 /** What the whole-home walk prunes or flags, and the few small files it reads. */
-import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { readRegularFile } from "../fsutil.ts";
 
 /** Never project code, anywhere: dependencies, build output, caches. */
 export const PRUNE_NAMES: ReadonlySet<string> = new Set([
@@ -37,20 +37,9 @@ export const DUMPS = new Set([
 
 const MAX_SMALL = 64 * 1024;
 
+/** The first 64 KB of a regular file (never a FIFO or device), or null. */
 export function readSmall(file: string): string | null {
-  let fd: number | undefined;
-  try {
-    const st = statSync(file);
-    if (!st.isFile()) return null;
-    fd = openSync(file, "r");
-    const buf = Buffer.alloc(Math.min(MAX_SMALL, st.size));
-    const n = readSync(fd, buf, 0, buf.length, 0);
-    return buf.subarray(0, n).toString("utf8");
-  } catch {
-    return null;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
+  return readRegularFile(file, MAX_SMALL, { truncate: true })?.data.toString("utf8") ?? null;
 }
 
 /**
@@ -94,7 +83,7 @@ export async function worktreesOf(gitDir: string): Promise<string[]> {
   for (const n of names.slice(0, 500)) {
     const pointer = readSmall(join(gitDir, "worktrees", n, "gitdir"))?.trim();
     if (!pointer) continue;
-    const dotgit = isAbsolute(pointer) ? pointer : resolve(gitDir, "worktrees", n, pointer);
+    const dotgit = resolve(gitDir, "worktrees", n, pointer); // normalized, absolute or not
     if (basename(dotgit) === ".git") out.push(dirname(dotgit));
   }
   return out;

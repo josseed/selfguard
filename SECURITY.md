@@ -24,6 +24,11 @@ In scope, for example:
 
 Only the latest release gets fixes.
 
+## Audits
+
+- [November 2026, internal review of 0.18.2](docs/security-audit-2026-11.md): no critical or
+  high findings; 6 medium and 15 low, all fixed.
+
 ## Verifying releases
 
 Every npm version and Mac app DMG carries a signed provenance attestation. See

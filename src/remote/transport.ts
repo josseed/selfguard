@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { DEFAULT_SHARE_PORT, SSH_HOST_RE } from "../config.ts";
+import { program } from "../paths.ts";
 import { clean } from "../sanitize.ts";
 import { urlHost } from "../tailnet.ts";
 import { notReader, RemoteError, type Target } from "./core.ts";
@@ -33,7 +34,7 @@ export function sshArgs(t: Target): string[] {
   return args;
 }
 
-const sshBin = (): string => process.env.SELFGUARD_SSH || "ssh";
+const sshBin = (): string => program("SELFGUARD_SSH", "ssh", "/usr/bin/ssh");
 
 /** Send `input` on stdin (a script, or a reader request); resolves with stdout (capped). */
 export function runRemote(t: Target, input: string, opts: { maxBytes: number; timeoutMs: number }): Promise<Buffer> {

@@ -1,5 +1,5 @@
-import { statSync } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { realpathSync, statSync } from "node:fs";
+import { readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { isExcluded } from "../config.ts";
@@ -66,6 +66,32 @@ export async function discoverEverywhere(opts: EverywhereOptions = {}): Promise<
   const emptyBudget = opts.emptyZoneBudget ?? 40_000;
   const homeDev = statSync(home).dev;
   const prunePaths = HOME_PRUNE_PATHS.map((p) => join(home, p));
+  const inside = (p: string, dir: string): boolean => p.startsWith(dir.endsWith(sep) ? dir : `${dir}${sep}`);
+  let realHome = home;
+  try {
+    realHome = realpathSync(home);
+  } catch {
+    /* keep it as given */
+  }
+
+  /**
+   * A worktree pointer (.git/worktrees/<name>/gitdir) may name any folder: follow it only where
+   * the walk itself could go, inside the home and not through a symlink out of it, not into a
+   * pruned or (skipProtected) protected top folder. The same-disk check runs when it's visited.
+   */
+  const reachable = async (wt: string): Promise<boolean> => {
+    // git writes real paths, so a home reached through a symlink gives pointers under realHome.
+    const base = inside(wt, home) ? home : inside(wt, realHome) ? realHome : null;
+    if (!base) return false;
+    const top = relative(base, wt).split(sep)[0]!;
+    if (HOME_PRUNE.has(top) || (opts.skipProtected && PROTECTED.includes(top))) return false;
+    if (prunePaths.some((p) => wt === p || inside(wt, p))) return false;
+    try {
+      return inside(await realpath(wt), realHome);
+    } catch {
+      return false;
+    }
+  };
 
   const projects = new Map<string, FoundProject>();
   const heavy: string[] = [];
@@ -89,7 +115,7 @@ export async function discoverEverywhere(opts: EverywhereOptions = {}): Promise<
     if (f.zone && cutZones.has(f.zone)) continue;
 
     // Don't wander onto other disks or network mounts that live inside the home.
-    if (!f.worktreeRoot && f.dir !== home) {
+    if (f.dir !== home) {
       try {
         if ((await stat(f.dir)).dev !== homeDev) continue;
       } catch {
@@ -132,7 +158,7 @@ export async function discoverEverywhere(opts: EverywhereOptions = {}): Promise<
       const dotgit = entries.find((e) => e.name === ".git");
       if (dotgit?.isDirectory()) {
         for (const wt of await worktreesOf(join(f.dir, ".git"))) {
-          if (!seenDirs.has(wt) && !isExcluded(wt, exclude)) {
+          if (!seenDirs.has(wt) && !isExcluded(wt, exclude) && (await reachable(wt))) {
             stack.push({ dir: wt, zone: `worktree:${wt}`, repo: null, ignore: null, worktreeRoot: wt });
           }
         }
