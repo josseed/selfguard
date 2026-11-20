@@ -23,3 +23,8 @@ In scope, for example:
 ## Supported versions
 
 Only the latest release gets fixes.
+
+## Verifying releases
+
+Every npm version and Mac app DMG carries a signed provenance attestation. See
+[Verify your download](docs/verify.md).

@@ -4,6 +4,8 @@
 [![CI](https://github.com/josseed/selfguard/actions/workflows/ci.yml/badge.svg)](https://github.com/josseed/selfguard/actions/workflows/ci.yml)
 [![provenance](https://img.shields.io/badge/npm-provenance-blue)](https://www.npmjs.com/package/selfguard#provenance)
 [![license](https://img.shields.io/npm/l/selfguard)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/josseed/selfguard/badge)](https://scorecard.dev/viewer/?uri=github.com/josseed/selfguard)
+[![CodeQL](https://github.com/josseed/selfguard/actions/workflows/codeql.yml/badge.svg)](https://github.com/josseed/selfguard/actions/workflows/codeql.yml)
 
 **A local-first guard for the dependencies of every JavaScript, Python, Rust and Go repo on your machine.**
 
@@ -134,6 +136,7 @@ $ selfguard scan
 | [How it works](docs/how-it-works.md) | Discovery, lockfile parsing, repo grouping, OSV, caching, alerts |
 | [AI and automation](docs/ai-and-automation.md) | MCP server setup, tools, JSON output, scripting and CI |
 | [Security model](docs/security-model.md) | What selfguard trusts, what it sends, how it is released |
+| [Verify your download](docs/verify.md) | Check the provenance of the npm package, the DMG and the SBOM yourself |
 | [Troubleshooting](docs/troubleshooting.md) | Notifications, hook, scheduling, unsupported lockfiles |
 
 ## How it compares
