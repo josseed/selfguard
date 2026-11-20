@@ -145,17 +145,43 @@ final class PanelBackground: NSView {
             wrapInGlass(window)
         }
         center(window)
-        DispatchQueue.main.async { [weak self] in if let window = self?.window { self?.center(window) } }
+        DispatchQueue.main.async { [weak self] in
+            self?.fit()
+            if let window = self?.window { self?.center(window) }
+        }
         observer = NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let window = self.window else { return }
                 self.center(window)
-                DispatchQueue.main.async { [weak self] in if let window = self?.window { self?.center(window) } }
+                DispatchQueue.main.async { [weak self] in
+                    self?.fit()
+                    if let window = self?.window { self?.center(window) }
+                }
             }
         }
     }
 
     deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
+
+    /// This view is the panel content's background, so its size is the content's size.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        DispatchQueue.main.async { [weak self] in self?.fit() }
+    }
+
+    /// Keep the panel window as tall as its content, top edge fixed. Once the content sits inside
+    /// the glass view, SwiftUI grows the window when the content grows but never shrinks it back,
+    /// which left empty glass under the footer (e.g. after a notice was closed or the news went away).
+    private func fit() {
+        guard let window, !window.styleMask.contains(.titled), bounds.width > 0, bounds.height > 0 else { return }
+        let size = window.frameRect(forContentRect: NSRect(origin: .zero, size: bounds.size)).size
+        guard abs(window.frame.height - size.height) > 0.5 || abs(window.frame.width - size.width) > 0.5 else { return }
+        var frame = window.frame
+        frame.origin.y = frame.maxY - size.height
+        frame.size = size
+        window.setFrame(frame, display: true)
+        center(window)
+    }
 
     /// Under the icon's middle, kept on screen. Only for the menu bar panel (not the preview).
     private func center(_ window: NSWindow) {
