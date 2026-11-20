@@ -8,11 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Security
 
-- **Notifications can no longer run script from a scanned repo.** macOS alerts pass their text
-  to `osascript` as arguments, but `osascript` reads options until the first plain word, so a
-  text starting with `-e` (such as a `.pth` file name chosen by a repo) became another script
-  line. A fixed first argument now ends option parsing, leading dashes are dropped, and
-  Python startup hook messages start with fixed text and only show ordinary file names.
+- **Notifications pass untrusted text more defensively.** `osascript` reads options until the
+  first plain word, so a notification text starting with `-e` could have become a script line.
+  No released version put repo-controlled text first in a notification, but the new Python
+  startup hook warnings name files a repo chooses: a fixed first argument now ends option
+  parsing, leading dashes are dropped, and those messages start with fixed text and only show
+  ordinary file names.
 
 ### Added
 
