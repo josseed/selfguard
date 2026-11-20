@@ -127,7 +127,8 @@ test("Cursor, Gemini CLI and Codex repo configs; VS Code autorun tasks and termi
   assert.match(msg("SessionStart"), /in Codex on SessionStart \(one downloads/);
   assert.doesNotMatch(msg("BeforeTool"), /downloads/);
   assert.match(msg("setup"), /runs automatically when this folder opens/);
-  assert.doesNotMatch(JSON.stringify(rec.warnings), /SECRET_|x\.example|node \.vscode|tmp/);
+  // Values never appear (paths are dropped: the temp folder is /tmp on Linux, like a value here).
+  assert.doesNotMatch(JSON.stringify(rec.warnings.map(({ file: _f, ...w }) => w)), /SECRET_|x\.example|node \.vscode|\/tmp\//);
 });
 
 test("normal settings files give no warning", () => {
