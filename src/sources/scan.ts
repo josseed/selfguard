@@ -80,7 +80,7 @@ function cleanWarning(w: ExtractResult["warnings"][number], file: string): Sourc
   const message = opt(w?.message, 300);
   if (!rule || !message) return null;
   const out: SourceWarning = { rule, message, file, line: lineOf(w.line), severity: SEVERITIES.has(w.severity) ? w.severity : "low" };
-  const key = opt(w.key, 160);
+  const key = opt(w.key, 120);
   if (key) out.key = key;
   if (w.notify === true) out.notify = true;
   return out;

@@ -9,15 +9,21 @@ import { listSources } from "./store.ts";
 import type { SourceKind, SourceRecord, SourceWarning } from "./types.ts";
 import { warningKey } from "./warnings.ts";
 
-export const KIND_LABEL: Record<SourceKind, string> = { ci: "CI workflows", agents: "agent tools" };
+export const KIND_LABEL: Record<SourceKind, string> = { ci: "CI workflows", agents: "agent tools", host: "this machine" };
 
-export const MACHINE_AGENTS_KEY = "sources:agents:machine";
+/** Label of each kind's machine-wide record. */
+export const MACHINE_LABEL: Record<SourceKind, string> = { ci: "CI workflows", agents: "Agent tools", host: "This machine" };
+
+/** Grouping key of a kind's machine-wide record (alerts and the activity feed). */
+export const machineKey = (kind: SourceKind): string => `sources:${kind}:machine`;
+
+export const MACHINE_AGENTS_KEY = machineKey("agents");
 
 export type SourceNews = ProjectNews & { branch: string | null; firstScan: boolean; machine: string | null };
 
-/** Label and grouping key of a source: its repo's (so alerts and the activity feed join it), or "Agent tools". */
+/** Label and grouping key of a source: its repo's (so alerts and the activity feed join it), or its kind's machine-wide one. */
 export function sourceLabel(rec: Pick<SourceRecord, "kind" | "scope" | "path">): { key: string; label: string; branch: string | null; active: (activeDays: number, dismissed: Map<string, string>) => boolean } {
-  if (rec.scope === "machine") return { key: MACHINE_AGENTS_KEY, label: "Agent tools", branch: null, active: () => true };
+  if (rec.scope === "machine") return { key: machineKey(rec.kind), label: MACHINE_LABEL[rec.kind], branch: null, active: () => true };
   const identity = repoIdentity(rec.path);
   const key = identity?.key ?? `path:${rec.path}`;
   return {

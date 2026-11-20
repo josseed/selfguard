@@ -1,15 +1,16 @@
 /**
- * Sources beside the lockfile: CI workflows ("ci") and AI-agent configs ("agents"). Their
- * records are separate from lockfile records (one per git root and kind, plus one
- * machine-wide "agents" record), so the one-lockfile-per-folder model stays untouched.
+ * Sources beside the lockfile: CI workflows ("ci"), AI-agent configs ("agents") and this
+ * machine's persistence and credential posture ("host", docs/host.md). Their records are
+ * separate from lockfile records (one per git root and kind, plus one machine-wide record per
+ * kind), so the one-lockfile-per-folder model stays untouched.
  */
 import type { Ecosystem } from "../lockfile/types.ts";
 import type { Finding } from "../store.ts";
 
-export type SourceKind = "ci" | "agents";
-export const SOURCE_KINDS: readonly SourceKind[] = ["ci", "agents"];
+export type SourceKind = "ci" | "agents" | "host";
+export const SOURCE_KINDS: readonly SourceKind[] = ["ci", "agents", "host"];
 
-/** "repo": files of one git root. "machine": this machine's own config (agents only). */
+/** "repo": files of one git root. "machine": this machine's own files (agents, host). */
 export type SourceScope = "repo" | "machine";
 
 /** What a source is read for: a git root, or the home folder for the machine-wide scope. */

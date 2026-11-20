@@ -1,4 +1,5 @@
-// `selfguard tools`: this machine's agent tools and each repo's CI workflows / agent configs.
+// `selfguard tools`: this machine's agent tools and host checks, and each repo's CI workflows /
+// agent configs / Python startup hooks.
 import { relative } from "node:path";
 import { parseArgs } from "node:util";
 import * as api from "../api.ts";
@@ -12,6 +13,8 @@ const CERTAINTY: Record<api.SourceFindingReport["certainty"], string> = {
   "version-unknown": "version unknown",
 };
 
+const WARNING_RANK: Record<api.SourceReport["warnings"][number]["severity"], number> = { high: 0, moderate: 1, low: 2 };
+
 function where(file: string, line: number, root: string): string {
   const rel = file.startsWith(`${root}/`) ? relative(root, file) : tildify(file);
   return `${clean(rel, 200)}${line > 0 ? `:${line}` : ""}`;
@@ -19,10 +22,14 @@ function where(file: string, line: number, root: string): string {
 
 function renderSource(s: api.SourceReport, c: Painter, verbose: boolean): string[] {
   const lines: string[] = [];
-  const counts = [`${s.references.length} reference(s)`, s.skippedReferences ? `${s.skippedReferences} not checked` : ""].filter(Boolean).join(", ");
+  const host = s.kind === "host";
+  const counts = host
+    ? [`${s.files.length} file(s) checked`, s.skippedReferences ? `${s.skippedReferences} unreadable` : ""].filter(Boolean).join(", ")
+    : [`${s.references.length} reference(s)`, s.skippedReferences ? `${s.skippedReferences} not checked` : ""].filter(Boolean).join(", ");
   lines.push(`${c.bold(clean(s.label, 120))}  ${c.dim(`${tildify(s.path)} · ${counts}`)}`);
   if (s.error) lines.push(`  ${c.yellow("!")} ${clean(s.error, 200)}`);
-  if (s.findings.length === 0 && !s.error) lines.push(`  ${c.green("✓")} no known advisories`);
+  if (host && s.warnings.length === 0) lines.push(`  ${c.green("✓")} nothing to review`);
+  if (!host && s.findings.length === 0 && !s.error) lines.push(`  ${c.green("✓")} no known advisories`);
   const shown = verbose ? s.findings : s.findings.slice(0, 10);
   for (const f of shown) {
     const pkg = `${clean(f.name, 120)}@${clean(f.version, 60)}`;
@@ -35,11 +42,13 @@ function renderSource(s: api.SourceReport, c: Painter, verbose: boolean): string
     if (f.severity !== "malicious" && f.fixedIn) lines.push(`    ${c.green(`→ use ${clean(f.fixedIn, 60)} or later`)}`);
   }
   if (shown.length < s.findings.length) lines.push(c.dim(`  …and ${s.findings.length - shown.length} more (--verbose)`));
-  const warnings = verbose ? s.warnings : s.warnings.slice(0, 5);
+  // This machine's checks: the high ones first (a dozen ordinary launch items come after).
+  const all = host ? [...s.warnings].sort((a, b) => WARNING_RANK[a.severity] - WARNING_RANK[b.severity]) : s.warnings;
+  const warnings = verbose ? all : all.slice(0, host ? 8 : 5);
   for (const w of warnings) {
-    const tag = w.dismissed ? c.dim("dismissed") : w.severity === "high" ? c.red("risk") : c.yellow("warning");
+    const tag = w.dismissed ? c.dim("dismissed") : w.severity === "high" ? c.red("risk") : w.severity === "low" && host ? c.dim("note") : c.yellow("warning");
     const id = verbose || w.alerts ? ` · id ${w.id}` : "";
-    lines.push(`  ${tag} ${clean(w.message, 160)} ${c.dim(`[${clean(w.rule, 40)}] ${where(w.file, w.line, s.path)}${id}`)}`);
+    lines.push(`  ${tag} ${clean(w.message, host ? 240 : 160)} ${c.dim(`[${clean(w.rule, 40)}] ${where(w.file, w.line, s.path)}${id}`)}`);
   }
   if (warnings.length < s.warnings.length) lines.push(c.dim(`  …and ${s.warnings.length - warnings.length} more warning(s) (--verbose)`));
   return lines;
@@ -64,9 +73,16 @@ export function cmdTools(args: string[]): number {
   }
   const blocks: string[] = [];
   if (positionals[0] === undefined) {
+    const agents = result.machine.filter((s) => s.kind !== "host");
     blocks.push(c.bold("Agent tools on this machine"));
-    blocks.push(...(result.machine.length ? result.machine.flatMap((s) => renderSource(s, c, verbose)) : [c.dim("  none found")]));
+    blocks.push(...(agents.length ? agents.flatMap((s) => renderSource(s, c, verbose)) : [c.dim("  none found")]));
     blocks.push("");
+    if (result.kinds.includes("host")) {
+      const host = result.machine.filter((s) => s.kind === "host");
+      blocks.push(c.bold("This machine"), c.dim("  launch items, shell startup files, package manager config, plaintext credentials, Python startup hooks"));
+      blocks.push(...(host.length ? host.flatMap((s) => renderSource(s, c, verbose)) : [c.dim("  not checked yet (selfguard sync)")]));
+      blocks.push("");
+    }
   }
   blocks.push(c.bold("Repos"));
   blocks.push(...(result.repos.length ? result.repos.flatMap((s) => [...renderSource(s, c, verbose), ""]) : [c.dim("  no CI workflows or agent configs found"), ""]));

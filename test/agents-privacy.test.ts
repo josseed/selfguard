@@ -34,7 +34,7 @@ before(async () => {
   writeFileSync(join(npx, "package.json"), JSON.stringify({ _npx: { packages: ["lodash"] } }));
   const resolved = "https://user:SECRET_NPX_12@registry.example.com/lodash.tgz";
   writeFileSync(join(npx, "package-lock.json"), JSON.stringify({ packages: { "node_modules/lodash": { version: "4.17.20", resolved } } }));
-  env = { ...process.env, HOME: home, SELFGUARD_HOME: state, SELFGUARD_NO_NOTIFY: "1", SELFGUARD_NO_LAUNCHD: "1", NO_COLOR: "1" };
+  env = { ...process.env, HOME: home, SELFGUARD_HOME: state, SELFGUARD_SYSTEM_ROOT: home, SELFGUARD_NO_NOTIFY: "1", SELFGUARD_NO_LAUNCHD: "1", NO_COLOR: "1" };
   delete env.npm_config_cache;
 });
 after(() => server.close());
