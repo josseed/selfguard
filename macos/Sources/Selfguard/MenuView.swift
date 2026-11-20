@@ -2,12 +2,13 @@ import AppKit
 import SwiftUI
 
 /// The panel under the menu bar icon: what changed and how things stand, nothing to configure
-/// (settings live in the dashboard). Always dark, on the system's frosted glass.
+/// (settings live in the dashboard). On the system's frosted glass, light or dark as the system is.
 struct MenuView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var updates: Updates
     /// Notices closed with their x, for as long as the app runs.
     @State private var dismissed: Set<String> = []
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -26,7 +27,6 @@ struct MenuView: View {
         .padding(16)
         .frame(width: 320)
         .background(Glass())
-        .preferredColorScheme(.dark)
         // Closing the panel means what it showed has been seen.
         .onDisappear { model.markSeen() }
         .background(shortcuts)
@@ -37,7 +37,7 @@ struct MenuView: View {
     private var header: some View {
         HStack(spacing: 10) {
             ZStack {
-                Circle().fill(active ? Color.white.opacity(0.16) : Style.card)
+                Circle().fill(active ? Color.primary.opacity(scheme == .dark ? 0.16 : 0.1) : Style.card)
                 if let image = Mascot.menuBarIcon(model.mascotIcon) {
                     Image(nsImage: image).interpolation(.none).resizable().frame(width: 22, height: 22)
                 }
@@ -119,14 +119,16 @@ struct MenuView: View {
                     Text("Open Dashboard").font(.system(size: 13, weight: .semibold))
                     Spacer()
                     Text("⌘D").font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(.primary.opacity(0.7))
                         .padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(Color.white.opacity(0.1), in: Capsule())
+                        .background(Color.primary.opacity(0.1), in: Capsule())
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10)
-                .background(LinearGradient(colors: [Color(white: 0.24), Color(white: 0.12)], startPoint: .top, endPoint: .bottom),
+                .background(LinearGradient(colors: scheme == .dark ? [.white.opacity(0.12), .white.opacity(0.04)] : [.white.opacity(0.55), .white.opacity(0.3)],
+                                           startPoint: .top, endPoint: .bottom),
                             in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.1)))
+                .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.06), radius: 1, y: 1)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

@@ -8,14 +8,15 @@ struct SelfguardApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
     @StateObject private var updates = Updates()
-    /// Always true. Passing a binding (rather than none) is what keeps the app running when
-    /// macOS hides the icon (System Settings → Menu Bar, or ⌘-dragging it out): without one,
-    /// SwiftUI quits the app, so it never shows up in that list to be allowed again. Opening
-    /// the app again then shows the dashboard.
-    @State private var menuBarInserted = true
+    /// Always true, and it ignores false. Passing a binding (rather than none) is what keeps the
+    /// app running when macOS hides the icon (System Settings → Menu Bar, or ⌘-dragging it out):
+    /// without one, SwiftUI quits the app. Ignoring false keeps the status item itself: if it were
+    /// removed, allowing selfguard again in System Settings would have nothing to show, and the
+    /// icon would only come back after a relaunch (and not even then once macOS hid it at launch).
+    private let menuBarInserted = Binding<Bool>(get: { true }, set: { _ in })
 
     var body: some Scene {
-        MenuBarExtra(isInserted: $menuBarInserted) {
+        MenuBarExtra(isInserted: menuBarInserted) {
             MenuView(model: model, updates: updates)
         } label: {
             MenuBarIcon(model: model, updates: updates, delegate: delegate)
