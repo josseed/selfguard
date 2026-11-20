@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-11-20
+
+### Changed
+
+- **The Mac app's DMG opens as an install window.** Opening the DMG used to show a plain Finder
+  window with the app and the Applications link wherever they landed. It now shows selfguard
+  on the left, Applications on the right, and Bastion on the castle wall with an arrow between
+  them: drag one onto the other to install. Built with dmgbuild, pinned by hash.
+
 ## [0.18.1] - 2026-11-20
 
 ### Fixed
@@ -571,7 +580,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.18.1...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.18.2...HEAD
+[0.18.2]: https://github.com/josseed/selfguard/compare/v0.18.1...v0.18.2
 [0.18.1]: https://github.com/josseed/selfguard/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/josseed/selfguard/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/josseed/selfguard/compare/v0.17.0...v0.17.1
