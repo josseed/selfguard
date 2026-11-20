@@ -2,9 +2,10 @@
  * Identify which repository a project belongs to, so worktrees and separate clones of
  * the same repo are grouped. Reads a few small files under .git as data; never runs git.
  */
-import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { readRegularFile } from "./fsutil.ts";
 
 export interface RepoIdentity {
   /** Grouping key: same repo (remote or common git dir) + same subfolder. */
@@ -32,18 +33,7 @@ export interface RepoIdentity {
 const MAX_FILE = 64 * 1024;
 
 function readSmall(file: string): string | null {
-  let fd: number | undefined;
-  try {
-    if (!statSync(file).isFile()) return null;
-    fd = openSync(file, "r");
-    const buf = Buffer.alloc(MAX_FILE);
-    const n = readSync(fd, buf, 0, MAX_FILE, 0);
-    return buf.subarray(0, n).toString("utf8");
-  } catch {
-    return null;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
+  return readRegularFile(file, MAX_FILE, { truncate: true })?.data.toString("utf8") ?? null;
 }
 
 /** Newest mtime among this checkout's own git files (not the shared ones, like FETCH_HEAD). */

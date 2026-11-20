@@ -1,8 +1,8 @@
 /** Share state on machine B: grants and pending requests on disk, the lock, the access log. */
-import { appendFileSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
-import { atomicWrite, ensureDir, isObject, readJsonFile, tryLock } from "../fsutil.ts";
+import { atomicWrite, ensureDir, isObject, readIfOver, readJsonFile, tryLock } from "../fsutil.ts";
 import { stateRoot } from "../paths.ts";
 import { clean } from "../sanitize.ts";
 import { tailnet } from "../tailnet.ts";
@@ -112,8 +112,9 @@ export function logAccess(entry: Record<string, unknown>): void {
     ensureDir(shareDir());
     const file = accessLogFile();
     try {
-      if (statSync(file).size > 512 * 1024) {
-        const lines = readFileSync(file, "utf8").trim().split("\n").slice(-1000);
+      const big = readIfOver(file, 512 * 1024);
+      if (big !== null) {
+        const lines = big.trim().split("\n").slice(-1000);
         writeFileSync(file, `${lines.join("\n")}\n`, { mode: 0o600 });
       }
     } catch {

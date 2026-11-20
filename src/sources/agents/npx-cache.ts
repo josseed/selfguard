@@ -4,9 +4,10 @@
  * to npx, and a package-lock.json (or node_modules/<name>/package.json) with what was
  * installed. Read-only and bounded; nothing is run.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { readRegularFile } from "../../fsutil.ts";
 import { parseNpmSpec } from "./specs.ts";
 
 const MAX_DIRS = 1000;
@@ -30,10 +31,9 @@ export function npxCacheDir(): string {
 }
 
 function readJson(path: string, max: number): unknown {
+  const r = readRegularFile(path, max);
   try {
-    const st = statSync(path);
-    if (!st.isFile() || st.size > max) return null;
-    return JSON.parse(readFileSync(path, "utf8"));
+    return r ? JSON.parse(r.data.toString("utf8")) : null;
   } catch {
     return null;
   }

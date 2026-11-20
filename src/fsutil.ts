@@ -64,6 +64,19 @@ export function readRegularFile(file: string, max: number, opts: { nofollow?: bo
   }
 }
 
+/** Our own log file's text if it grew past `limit` bytes (checked on the open file), else null. */
+export function readIfOver(file: string, limit: number): string | null {
+  let fd: number | undefined;
+  try {
+    fd = openSync(file, "r");
+    return fstatSync(fd).size > limit ? readFileSync(fd, "utf8") : null;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
 export function sha256(data: string | Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }

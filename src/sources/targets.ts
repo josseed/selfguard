@@ -1,8 +1,8 @@
 /** Which files each source reads, and whether they changed since the last scan. */
-import { readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { sha256 } from "../fsutil.ts";
+import { readRegularFile, sha256 } from "../fsutil.ts";
 import { activeKinds, sourceExtractors } from "./registry.ts";
 import { loadSource } from "./store.ts";
 import type { SourceExtractor, SourceFileState, SourceKind, SourceMarker, SourceRecord, SourceTarget } from "./types.ts";
@@ -107,14 +107,9 @@ export function markerStates(kind: SourceKind, target: SourceTarget, files: stri
 }
 
 export function fileState(path: string): { state: SourceFileState; text: string } | null {
-  try {
-    const st = statSync(path);
-    if (!st.isFile() || st.size > MAX_SOURCE_BYTES) return null;
-    const buf = readFileSync(path);
-    return { state: { path, size: st.size, mtimeMs: st.mtimeMs, hash: sha256(buf) }, text: buf.toString("utf8") };
-  } catch {
-    return null;
-  }
+  const r = readRegularFile(path, MAX_SOURCE_BYTES);
+  if (!r) return null;
+  return { state: { path, size: r.stat.size, mtimeMs: r.stat.mtimeMs, hash: sha256(r.data) }, text: r.data.toString("utf8") };
 }
 
 /** Cheap check first (file set, mtime and size), hash only when those changed. */
