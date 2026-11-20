@@ -8,6 +8,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Agent guard: repo files that run code when you open the repo.** New warnings (kind
+  "agents") for Claude Code project hooks, `ANTHROPIC_BASE_URL`/API key/`NODE_OPTIONS`
+  overrides, `apiKeyHelper`-style commands and `bypassPermissions` (CVE-2025-59536,
+  CVE-2026-21852, CVE-2026-25725); Cursor, Gemini CLI and Codex hooks and equivalents; VS Code
+  tasks that run on folder open ("Contagious Interview") and terminal env injection; and
+  invisible Unicode (tags, bidi controls, zero-width runs, GlassWorm variation selectors) in
+  `CLAUDE.md`, `AGENTS.md`, Cursor rules, Claude commands, agents and skills. On this machine,
+  `bypassPermissions` and Codex's no-approval, no-sandbox mode are a moderate warning. Files are
+  read as data; messages never include values, URLs or hidden text. Warnings now carry an
+  optional `key` and `notify`. See docs/ci-and-agent-tools.md.
+
 - **Check for Updates… is back in the Mac app's menu bar panel**, under Settings and Quit, with
   the app's version (⌘U). Before, the panel only offered an update once a scheduled check had
   found it.

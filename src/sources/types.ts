@@ -68,6 +68,10 @@ export interface SourceWarning {
   file: string;
   line: number;
   severity: "high" | "moderate" | "low";
+  /** Stable identity within the file (e.g. a hook event, a plist label). Default: rule + file. */
+  key?: string;
+  /** Tell the user when it appears after the baseline, even if severity isn't "high". */
+  notify?: boolean;
 }
 
 /** A finding of a source, with where its reference appears. `certainty` absent = "confirmed". */
