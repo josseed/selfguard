@@ -5,6 +5,7 @@
 [![provenance](https://img.shields.io/badge/npm-provenance-blue)](https://www.npmjs.com/package/selfguard#provenance)
 [![license](https://img.shields.io/npm/l/selfguard)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/josseed/selfguard/badge)](https://scorecard.dev/viewer/?uri=github.com/josseed/selfguard)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16958/badge)](https://www.bestpractices.dev/projects/16958)
 [![CodeQL](https://github.com/josseed/selfguard/actions/workflows/codeql.yml/badge.svg)](https://github.com/josseed/selfguard/actions/workflows/codeql.yml)
 
 **A local-first guard for the dependencies of every JavaScript, Python, Rust and Go repo on your machine.**
