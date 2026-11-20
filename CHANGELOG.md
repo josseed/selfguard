@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+
+- **Releases you can verify yourself.** Each Mac app DMG now has a GitHub artifact attestation
+  (SLSA provenance, signed with Sigstore), also attached to the release as `.sigstore.json`, and
+  each release carries a CycloneDX SBOM of the npm package with its own attestation. The
+  release fails if the SBOM ever lists a runtime dependency. See
+  [Verify your download](docs/verify.md).
+- **Release jobs no longer use a dependency cache**, so a cache written by another workflow
+  can't reach what gets published. Dependabot now waits 7 days before proposing GitHub Actions
+  updates too, like it already did for npm.
+- **Public, continuous checks of the repository:** OpenSSF Scorecard (score and badge),
+  CodeQL for the TypeScript sources and the workflows, and zizmor for every workflow change.
+
 ## [0.18.2] - 2026-11-20
 
 ### Changed

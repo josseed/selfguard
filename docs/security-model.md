@@ -267,12 +267,22 @@ Every published version is:
    maintainer must approve it on npmjs.com with 2FA before anyone can install it. The deploy
    job itself also requires a maintainer's approval in GitHub.
 
+The Mac app is built in the same workflow, in a job that requires a maintainer's approval and
+is the only place the Apple and Sparkle keys exist. Each DMG is signed with Developer ID,
+notarized, given a GitHub artifact attestation (SLSA provenance) and published with its
+checksum. Sparkle updates are accepted only with a valid EdDSA signature of both the feed and
+the DMG. Each release also carries a CycloneDX SBOM with its own attestation.
+
 Verify an installed copy:
 
 ```sh
 npm audit signatures
 npm view selfguard@<version> dist.attestations
+gh attestation verify selfguard-<version>-<arch>.dmg --repo josseed/selfguard
 ```
+
+All the commands, for the CLI, the DMG and the SBOM, are in [Verify your download](verify.md).
+The repository is also checked continuously by OpenSSF Scorecard, CodeQL and zizmor.
 
 ## Known limitations
 
