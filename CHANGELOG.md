@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-11-20
+
 ### Added
 
 - **Check for Updates… is back in the Mac app's menu bar panel**, under Settings and Quit, with
@@ -506,7 +508,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.17.1...HEAD
+[0.17.1]: https://github.com/josseed/selfguard/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/josseed/selfguard/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/josseed/selfguard/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/josseed/selfguard/compare/v0.14.0...v0.15.0
