@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-20
+
 ### Security
 
 - **Releases you can verify yourself.** Each Mac app DMG now has a GitHub artifact attestation
@@ -655,7 +657,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.18.2...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/josseed/selfguard/compare/v0.18.2...v0.19.0
 [0.18.2]: https://github.com/josseed/selfguard/compare/v0.18.1...v0.18.2
 [0.18.1]: https://github.com/josseed/selfguard/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/josseed/selfguard/compare/v0.17.1...v0.18.0
