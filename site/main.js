@@ -83,49 +83,6 @@ if (castleCanvas) {
 const final = document.querySelector(".final-mascot");
 if (final) mount(final, pixelScale(3));
 
-// The interactive stage: pick a scene, or let it cycle until the visitor picks one.
-const stageEl = document.querySelector(".stage-mascot");
-if (stageEl) {
-  const stage = mount(stageEl, pixelScale(3));
-  const screen = stageEl.parentElement;
-  const tabs = [...document.querySelectorAll(".scene")];
-  const order = tabs.map((t) => t.dataset.scene);
-  let i = 0;
-  let timer = null;
-
-  const select = (scene) => {
-    stage.play(scene);
-    screen.dataset.scene = scene;
-    stageEl.setAttribute("aria-label", `Bastion: ${tabs.find((t) => t.dataset.scene === scene).textContent.trim()}`);
-    for (const t of tabs) t.setAttribute("aria-selected", String(t.dataset.scene === scene));
-  };
-
-  const cycle = () => {
-    i = (i + 1) % order.length;
-    select(order[i]);
-    timer = setTimeout(cycle, SCENES[order[i]].durationMs);
-  };
-
-  for (const t of tabs) {
-    t.addEventListener("click", () => {
-      clearTimeout(timer);
-      timer = null;
-      i = order.indexOf(t.dataset.scene);
-      select(t.dataset.scene);
-    });
-  }
-
-  // Start cycling only once the stage is on screen.
-  if (!reducedMotion) {
-    new IntersectionObserver((entries, obs) => {
-      if (entries.some((e) => e.isIntersecting)) {
-        timer = setTimeout(cycle, SCENES.idle.durationMs);
-        obs.disconnect();
-      }
-    }, { threshold: 0.4 }).observe(stageEl);
-  }
-}
-
 // Copy-to-clipboard install commands.
 for (const btn of document.querySelectorAll("[data-copy]")) {
   const label = btn.querySelector(".copy-label");

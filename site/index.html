@@ -21,10 +21,7 @@
       </a>
       <nav class="nav-links" aria-label="Main">
         <a href="#layers">What it guards</a>
-        <a href="#attacks">Attacks</a>
-        <a href="#bastion">Bastion</a>
-        <a href="#privacy">Privacy</a>
-        <a href="#compare">Compare</a>
+        <a href="#how">How it works</a>
         <a href="https://github.com/josseed/selfguard/tree/main/docs">Docs</a>
       </nav>
       <a class="btn btn-ghost btn-sm" href="https://github.com/josseed/selfguard">
@@ -72,150 +69,49 @@
       </div>
     </section>
 
-    <!-- Roadmap strip -->
-    <section class="strip" aria-label="What selfguard covers">
-      <div class="wrap strip-inner">
-        <span class="strip-label">It started with your repos. It doesn't stop there.</span>
-        <ul class="chips">
-          <li>lockfiles</li><li>GitHub Actions</li><li>MCP servers</li><li>agent hooks</li>
-          <li>CLAUDE.md</li><li>LaunchAgents</li><li>~/.zshrc</li><li>~/.npmrc</li><li>.pth files</li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- Problem -->
-    <section class="section">
-      <div class="wrap narrow center">
-        <h2>Your laptop is the softest target <br class="hide-sm">in your supply chain.</h2>
-        <p class="sub">It holds your npm, GitHub and cloud tokens, runs install scripts from strangers,
-          and now lets AI agents execute commands for you. Malware that lands there does two things: it
-          makes sure it runs again, and it takes the credentials lying around. Scanners in the cloud never see any of it.</p>
-      </div>
-    </section>
-
-    <!-- Layers -->
+    <!-- What it guards -->
     <section class="section" id="layers">
       <div class="wrap">
         <div class="section-head">
           <p class="kicker">What it guards</p>
-          <h2>Four layers, one guard.</h2>
-          <p class="sub">Every check runs locally and reads files as data. Nothing from your projects is ever executed.</p>
+          <h2>Four ways in. One guard.</h2>
+          <p class="sub">It started with your repos. It doesn't stop there.</p>
         </div>
         <div class="grid grid-2">
           <article class="card layer-card">
             <div class="icon i-blue"><svg viewBox="0 0 24 24"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="m3 13 9 5 9-5M3 8v10l9 5 9-5V8"/></svg></div>
             <h3>Dependencies of every repo</h3>
-            <p>Every project on your machine, checked against OSV.dev, including the ones you haven't opened in
-              months. Malicious packages (OpenSSF <code>MAL-*</code>) outrank any CVE, and you get one upgrade target per package.</p>
-            <p class="tags">npm · pnpm · yarn · bun · uv · Poetry · Cargo · Go modules</p>
+            <p>Every project on your machine, checked against OSV.dev, even the ones you haven't opened in months. Malicious packages outrank any CVE, with one upgrade target per package.</p>
+            <p class="tags">npm · pnpm · yarn · bun · uv · Poetry · Cargo · Go</p>
+            <p class="caught"><span>Catches</span> Shai-Hulud, the npm worm that shipped compromised releases</p>
           </article>
           <article class="card layer-card">
             <div class="icon i-orange"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M6 8.5v7M8.3 7.2l7.4 3.6"/></svg></div>
             <h3>CI workflows</h3>
-            <p>The GitHub Actions your workflows use: compromised actions, references not pinned to a commit
-              SHA, and script injection from untrusted input.</p>
-            <p class="tags">.github/workflows/*.yml</p>
+            <p>The GitHub Actions your workflows use: compromised actions, references not pinned to a commit SHA, and script injection.</p>
+            <p class="tags">.github/workflows</p>
+            <p class="caught"><span>Catches</span> tj-actions/changed-files, retagged to leak CI secrets</p>
           </article>
           <article class="card layer-card">
             <div class="icon i-purple"><svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4M9 13h.01M15 13h.01"/></svg></div>
             <h3>AI agents</h3>
-            <p>MCP servers configured for Claude, Cursor, VS Code, Codex and more, without reading their secrets.
-              Repo files that run code when you open the repo: agent hooks, autorun VS Code tasks, API overrides,
-              and hidden Unicode in instruction files.</p>
-            <p class="tags">MCP configs · .claude · .cursor · .vscode · CLAUDE.md · AGENTS.md</p>
+            <p>MCP servers for Claude, Cursor, VS Code and Codex, without reading their secrets. Repo files that run code when you open the repo, and hidden Unicode in instruction files.</p>
+            <p class="tags">MCP configs · .claude · .cursor · .vscode · AGENTS.md</p>
+            <p class="caught"><span>Catches</span> Contagious Interview's autorun VS Code tasks</p>
           </article>
           <article class="card layer-card">
             <div class="icon i-green"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
             <h3>This machine</h3>
-            <p>Where malware hides and what it steals: suspicious launch items, downloads and injection hooks in
-              shell startup files, agents aliased to skip permissions, plaintext tokens (presence only, never the
-              values) and Python startup hooks.</p>
-            <p class="tags">LaunchAgents · systemd · ~/.zshrc · ~/.npmrc · ~/.aws · .pth · sitecustomize.py</p>
+            <p>What malware leaves behind: suspicious launch items, hooks in shell startup files, agents aliased to skip permissions, plaintext tokens (presence only) and Python startup hooks.</p>
+            <p class="tags">LaunchAgents · ~/.zshrc · ~/.npmrc · ~/.aws · .pth</p>
+            <p class="caught"><span>Catches</span> LiteLLM's .pth stealer and ClickFix's fake updaters</p>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- Real attacks -->
-    <section class="section" id="attacks">
-      <div class="wrap">
-        <div class="section-head">
-          <p class="kicker kicker-purple">Built for real attacks</p>
-          <h2>Not hypotheticals. Things that happened to developers.</h2>
-        </div>
-        <div class="attacks">
-          <article class="attack">
-            <p class="attack-name">Shai-Hulud</p>
-            <p class="attack-kind">npm worm</p>
-            <p>Compromised releases stole npm, GitHub and AWS tokens from plaintext files and republished themselves.</p>
-            <p class="attack-guard">→ malicious package alert · plaintext credentials</p>
-          </article>
-          <article class="attack">
-            <p class="attack-name">s1ngularity</p>
-            <p class="attack-kind">npm + AI agents</p>
-            <p>Ran the local Claude, Gemini and Q CLIs with their permission checks turned off to hunt for secrets.</p>
-            <p class="attack-guard">→ agent aliases in shell startup · bypass modes</p>
-          </article>
-          <article class="attack">
-            <p class="attack-name">LiteLLM</p>
-            <p class="attack-kind">PyPI</p>
-            <p>A <code>.pth</code> file in site-packages ran a stealer on every Python start.</p>
-            <p class="attack-guard">→ Python startup hooks in venvs, uv tools, pipx</p>
-          </article>
-          <article class="attack">
-            <p class="attack-name">ClickFix</p>
-            <p class="attack-kind">fake Homebrew pages</p>
-            <p>A pasted command installed a LaunchAgent disguised as an updater.</p>
-            <p class="attack-guard">→ suspicious launch items</p>
-          </article>
-          <article class="attack">
-            <p class="attack-name">Contagious Interview</p>
-            <p class="attack-kind">fake job tasks</p>
-            <p>A take-home repo whose VS Code task runs the moment you open the folder.</p>
-            <p class="attack-guard">→ urgent: autorun task</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <!-- This machine demo -->
-    <section class="section feature-split">
-      <div class="wrap split">
-        <div>
-          <p class="kicker kicker-green">New in 0.18 · This machine</p>
-          <h2>It checks the machine, not just the code on it.</h2>
-          <p class="sub left">No network, nothing executed. selfguard reviews what starts at login, what your
-            shell runs, where your package managers install from and which tokens sit on disk, then tells
-            you what to do instead.</p>
-          <ul class="checks">
-            <li>Launch items that run from <code>/tmp</code>, hidden folders or Downloads, or use an Apple label</li>
-            <li><code>curl | sh</code>, <code>DYLD_INSERT_LIBRARIES</code> and <code>NODE_OPTIONS</code> hooks in shell startup files</li>
-            <li>Dismiss what you put there on purpose. It stays listed and never alerts.</li>
-          </ul>
-        </div>
-        <div class="window">
-          <div class="window-bar">
-            <span class="light r"></span><span class="light y"></span><span class="light g"></span>
-            <span class="window-title">~ selfguard tools</span>
-          </div>
-          <pre class="term"><code><span class="t-dim">$</span> selfguard tools
-<b>This machine</b>  <span class="t-dim">~ · 25 file(s) checked</span>
-  <span class="sev crit">risk</span> Suspicious launch item <b>"com.apple.updater"</b> runs
-       updater: <span class="t-dim">Apple label, program in ~/Downloads</span>
-  <span class="sev high">warning</span> ~/.npmrc holds an npm token in plain text
-       <span class="t-ok">→ use ${NPM_TOKEN} or npm login when publishing</span>
-  <span class="sev high">warning</span> ~/.aws/credentials holds a secret access key
-       <span class="t-ok">→ use aws sso login or a credential_process</span>
-
-<b>acme/storefront</b>  <span class="t-dim">(agent tools)</span>
-  <span class="sev mal">urgent</span> .claude/settings.json hook downloads code
-  <span class="sev high">warning</span> MCP server runs @acme/mcp (npx) unpinned</code></pre>
-        </div>
-      </div>
-    </section>
-
-    <!-- Features -->
-    <section class="section" id="features">
+    <!-- How it works -->
+    <section class="section" id="how">
       <div class="wrap">
         <div class="section-head">
           <p class="kicker">How it works</p>
@@ -225,14 +121,7 @@
           <article class="card">
             <div class="icon i-blue"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 16a1 1 0 0 0 .9 1.5h13.6a1 1 0 0 0 .9-1.5L18 12.6V9a6 6 0 0 0-6-6Zm-2.5 16a2.5 2.5 0 0 0 5 0"/></svg></div>
             <h3>Alerts without asking</h3>
-            <p>Re-checks seconds after a lockfile or config changes, syncs new advisories on a schedule, and
-              sends a "✓ fixed" when you clean something up.</p>
-          </article>
-          <article class="card">
-            <div class="icon i-purple"><svg viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 3.8 9.3 9 10 5.2-.7 9-5 9-10V6l-9-4Zm-1 13-3.5-3.5 1.4-1.4L11 12.2l4.6-4.6L17 9l-6 6Z"/></svg></div>
-            <h3>Attacks first</h3>
-            <p>Malicious packages and anything that looks like an attack open a dialog that stays on screen,
-              even in a repo you cloned a minute ago.</p>
+            <p>Re-checks seconds after a lockfile or config changes and syncs new advisories on a schedule. Attacks open a dialog that stays on screen.</p>
           </article>
           <article class="card">
             <div class="icon i-green"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h6"/><path d="m15 16 2 2 4-4"/></svg></div>
@@ -240,129 +129,12 @@
             <p>"Upgrade lodash to 4.18.0", "pin this action to a SHA", "use a short-lived token". Not a wall of advisories.</p>
           </article>
           <article class="card">
-            <div class="icon i-orange"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><circle cx="12" cy="13" r="2.4"/></svg></div>
-            <h3>Finds your projects</h3>
-            <p>Searches your home folder, skips caches and cloud drives, and finds agent worktrees.
-              <code>cd</code> into a project and it's registered.</p>
-          </article>
-          <article class="card">
             <div class="icon i-yellow"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="5"/></svg></div>
-            <h3>Signal over noise</h3>
-            <p>Only active checkouts alert you. The first scan is a baseline, so you hear about what's new,
-              not the backlog.</p>
-          </article>
-          <article class="card">
-            <div class="icon i-blue"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
-            <h3>All your machines</h3>
-            <p>Other Macs connect over Tailscale with a pairing code. Servers use SSH with a dedicated,
-              read-only key. Alerts name the machine.</p>
+            <h3>Quiet until it matters</h3>
+            <p>Only active repos alert you, and the first scan is a baseline: you hear about what's new, not the backlog.</p>
           </article>
         </div>
-      </div>
-    </section>
-
-    <!-- Bastion -->
-    <section class="section bastion" id="bastion">
-      <div class="wrap">
-        <div class="section-head">
-          <p class="kicker">Meet Bastion</p>
-          <h2>A 16-bit castle guard who acts out what changed.</h2>
-          <p class="sub">He lives in the Mac app's dashboard and menu bar. One look tells you how your machine is doing.</p>
-        </div>
-        <div class="stage">
-          <div class="stage-screen">
-            <div class="mascot stage-mascot" data-scene="idle" role="img" aria-label="Bastion patrolling"></div>
-          </div>
-          <div class="scenes" role="tablist" aria-label="Bastion's scenes">
-            <button role="tab" class="scene" data-scene="idle" aria-selected="true"><span class="sw sw-ok"></span>All clear<small>patrols the walls</small></button>
-            <button role="tab" class="scene" data-scene="high" aria-selected="false"><span class="sw sw-high"></span>High<small>jumps to attention</small></button>
-            <button role="tab" class="scene" data-scene="crit" aria-selected="false"><span class="sw sw-crit"></span>Critical<small>sounds the horn</small></button>
-            <button role="tab" class="scene" data-scene="mal" aria-selected="false"><span class="sw sw-mal"></span>Malicious<small>fights it off</small></button>
-            <button role="tab" class="scene" data-scene="fixed" aria-selected="false"><span class="sw sw-fixed"></span>Fixed<small>celebrates with you</small></button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Privacy -->
-    <section class="section" id="privacy">
-      <div class="wrap">
-        <div class="section-head">
-          <p class="kicker kicker-green">Safe by design</p>
-          <h2>A guard that never phones home with your secrets.</h2>
-        </div>
-        <div class="grid grid-3">
-          <article class="card plain">
-            <p class="big">name@version</p>
-            <p>The only network call: ecosystem, name and version of your dependencies to
-              <a href="https://osv.dev">OSV.dev</a>. No paths, repo names or code. Machine checks make no request at all.</p>
-          </article>
-          <article class="card plain">
-            <p class="big">0 deps</p>
-            <p>Zero runtime dependencies, published to npm with provenance. It never executes code from
-              your projects.</p>
-          </article>
-          <article class="card plain">
-            <p class="big">never the values</p>
-            <p>Tokens, MCP secrets and hidden text are detected by presence only and never shown or stored. State
-              lives in <code>~/.selfguard</code>, readable only by you.</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <!-- Compare -->
-    <section class="section" id="compare">
-      <div class="wrap narrow">
-        <div class="section-head">
-          <p class="kicker">How it compares</p>
-          <h2>Your other tools watch the code. This one watches where you write it.</h2>
-          <p class="sub">Keep Dependabot or Renovate for fix PRs. Use selfguard to know what's exposed on your machine right now.</p>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th></th><th class="us">selfguard</th><th>npm audit</th><th>osv-scanner</th><th>Dependabot</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>Watches every project on your machine</td><td class="us yes">Yes</td><td class="no">One, on demand</td><td class="no">On demand</td><td class="no">Hosted only</td></tr>
-              <tr><td>Alerts when a new advisory hits an old project</td><td class="us yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
-              <tr><td>Local-only, no repo hosting</td><td class="us yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-              <tr><td>Malicious package feed</td><td class="us yes">Yes</td><td class="no">No</td><td class="yes">Yes</td><td class="mid">Partial</td></tr>
-              <tr><td>CI workflow checks</td><td class="us yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="mid">Action updates</td></tr>
-              <tr><td>AI agent configs &amp; repo hooks</td><td class="us yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
-              <tr><td>Launch items, shell startup, plaintext tokens</td><td class="us yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
-              <tr><td>Opens fix PRs</td><td class="us no">No</td><td class="no">No</td><td class="mid">Guided</td><td class="yes">Yes</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- AI ready -->
-    <section class="section">
-      <div class="wrap split">
-        <div>
-          <p class="kicker">AI-ready &amp; scriptable</p>
-          <h2>"Do I use this package anywhere?"</h2>
-          <p class="sub left">When the next incident drops, <code>selfguard where</code> answers across every
-            repo in one command. A built-in MCP server lets your agent ask too, and every command speaks
-            <code>--json</code>.</p>
-          <a class="link-arrow" href="https://github.com/josseed/selfguard/blob/main/docs/ai-and-automation.md">AI and automation guide →</a>
-        </div>
-        <div class="window">
-          <div class="window-bar">
-            <span class="light r"></span><span class="light y"></span><span class="light g"></span>
-            <span class="window-title">incident response</span>
-          </div>
-          <pre class="term"><code><span class="t-dim">$</span> selfguard where @ctrl/tinycolor
-~/code/storefront      <span class="t-mal">4.1.1</span> <span class="t-dim">(transitive)</span>
-~/code/dashboard       4.0.4 <span class="t-dim">(transitive)</span>
-~/code/storefront-feat <span class="t-mal">4.1.1</span> <span class="t-dim">(transitive)</span>
-
-<span class="t-dim">$</span> selfguard status --json | jq '.repos[0].worstSeverity'
-<span class="t-high">"critical"</span></code></pre>
-        </div>
+        <p class="privacy-line"><b>Local-first.</b> Only package names and versions go to OSV.dev. Machine checks make no network request, secrets are never read, and nothing from your projects is executed. <a href="https://github.com/josseed/selfguard/blob/main/docs/security-model.md">Security model →</a></p>
       </div>
     </section>
 

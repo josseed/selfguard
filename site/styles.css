@@ -386,3 +386,9 @@ th { white-space: nowrap; }
 @media (max-width: 960px) {
   .castle-toast { position: relative; right: auto; top: auto; width: min(100%, 380px); margin-top: 14px; }
 }
+
+/* Compact page: catches line on layer cards, privacy line */
+.layer-card .caught { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.07); font-size: 14px; color: var(--text-2); }
+.layer-card .caught span { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--mal-text); margin-right: 6px; }
+.privacy-line { max-width: 52em; margin: 40px auto 0; text-align: center; font-size: 15px; color: var(--text-2); }
+.privacy-line b { color: var(--text); }
