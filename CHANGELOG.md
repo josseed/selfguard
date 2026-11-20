@@ -12,6 +12,15 @@ All notable changes to this project are documented here. The format is based on
   the app's version (⌘U). Before, the panel only offered an update once a scheduled check had
   found it.
 
+### Fixed
+
+- **The menu bar panel opens centered under the icon**, instead of starting at the icon's left
+  edge.
+- **The panel follows the system's light or dark appearance**, on the same see-through glass as
+  macOS's own popovers (Liquid Glass on macOS 26). It was always dark.
+- **The icon comes back as soon as it is allowed again** in System Settings → Menu Bar, without
+  relaunching selfguard.
+
 ## [0.17.0] - 2026-11-18
 
 ### Changed
