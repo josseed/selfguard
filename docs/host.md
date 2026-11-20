@@ -33,7 +33,7 @@ read".
 
 | Rule | Severity | When |
 | --- | --- | --- |
-| `launch-item` | low, N | Every item, keyed by its label: a new item is announced once after the baseline. |
+| `launch-item` | low, N | Every item, keyed by its label: a new item is announced once after the baseline. selfguard's own agents (`dev.selfguard.sync`, `.watch`, `.remote`, `.discover`, `.share`) are left out unless they look suspicious. |
 | `suspicious-launch-item` | high, N | The program (or the script an interpreter runs) lives in `/tmp`, `/private/tmp`, `/var/tmp`, `/Users/Shared`, a hidden folder or `Downloads`; an interpreter runs inline code (`sh`/`bash`/`zsh -c`, `python -c`, `osascript -e`, `node -e`); `curl`, `wget` or `base64` appear in its arguments; a `com.apple.*` label outside `/System`; its program is missing. |
 
 Messages name the label and the program's basename only: arguments may hold tokens and are

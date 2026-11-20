@@ -108,3 +108,17 @@ test("repo scope: launch items are machine-wide only", () => {
   put(home, "Library/LaunchAgents/x.plist", plist("x", ["/usr/bin/true"]));
   assert.deepEqual(sources.filesFor("host", sources.repoTarget(home)).size, 0);
 });
+
+test("selfguard's own launch agents are not reported, unless they look suspicious", () => {
+  const { home } = freshHome();
+  const agents = "Library/LaunchAgents";
+  put(home, `${agents}/dev.selfguard.sync.plist`, plist("dev.selfguard.sync", ["/usr/bin/true", "sync"]));
+  put(home, `${agents}/dev.selfguard.watch.plist`, plist("dev.selfguard.watch", ["/usr/bin/true", "check"]));
+  put(home, `${agents}/dev.selfguard.share.plist`, plist("dev.selfguard.share", ["/private/tmp/x/run"]));
+  put(home, `${agents}/dev.selfguard.fake.plist`, plist("dev.selfguard.fake", ["/usr/bin/true"]));
+  const rec = scanHost(sources, sources.machineTarget());
+  assert.deepEqual(summary(rec), [
+    "low launch-item dev.selfguard.fake @dev.selfguard.fake.plist:0 N",
+    "high suspicious-launch-item dev.selfguard.share @dev.selfguard.share.plist:0 N",
+  ]);
+});

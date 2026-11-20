@@ -120,6 +120,9 @@ function readItem(file: string, text: string): LaunchItem | null {
   return value === null ? null : fromPlist(file, value);
 }
 
+/** selfguard's own agents (schedule/launchd.ts, schedule/share.ts): not news, unless they look suspicious. */
+const OWN_LABELS = new Set(["dev.selfguard.sync", "dev.selfguard.watch", "dev.selfguard.remote", "dev.selfguard.discover", "dev.selfguard.share"]);
+
 export function extractLaunchItem(file: string, text: string): ExtractResult {
   const folder = FOLDERS.find((f) => dirname(file) === f.dir()) ?? FOLDERS[0]!;
   const item = readItem(file, text);
@@ -133,6 +136,7 @@ export function extractLaunchItem(file: string, text: string): ExtractResult {
   }
   const runs = item.program ? `runs ${basename(item.program)}` : "(no program set)";
   const reasons = launchReasons(item, file);
+  if (!reasons.length && OWN_LABELS.has(item.label)) return NONE;
   const warning = reasons.length
     ? { rule: "suspicious-launch-item", severity: "high" as const, message: `Suspicious launch item "${item.label}" ${runs}: ${reasons.join("; ")}` }
     : { rule: "launch-item", severity: "low" as const, message: `Starts ${folder.when}: "${item.label}" ${runs}` };
