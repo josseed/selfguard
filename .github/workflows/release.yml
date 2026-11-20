@@ -40,8 +40,9 @@ jobs:
   # The Mac app: Developer ID-signed, notarized and stapled DMGs attached to the release.
   # Runs in the `macos-release` environment (required reviewer), the only place the Apple
   # secrets exist. Setup: docs/releasing-mac-app.md.
+  # The macOS 26 SDK is needed (NSGlassEffectView); keep it the same image as ci.yml's macos-app.
   macos-app:
-    runs-on: macos-15
+    runs-on: macos-26
     environment: macos-release
     permissions:
       contents: write

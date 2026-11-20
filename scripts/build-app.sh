@@ -53,7 +53,11 @@ tar -xzf "$TARBALL" -C "$EXTRACT" "$NODE_DIR/bin/node" "$NODE_DIR/LICENSE"
 echo "Building the engine…"
 (cd "$ROOT" && npm run build --silent)
 echo "Building the app ($SWIFT_ARCH)…"
-(cd "$MAC" && swift build -c release --arch "$SWIFT_ARCH" >/dev/null)
+# Quiet when it works; the compiler's output when it doesn't (swift build prints errors on stdout).
+if ! SWIFT_LOG="$(cd "$MAC" && swift build -c release --arch "$SWIFT_ARCH" 2>&1)"; then
+  printf '%s\n' "$SWIFT_LOG" | tail -60 >&2
+  exit 1
+fi
 BIN_DIR="$(cd "$MAC" && swift build -c release --arch "$SWIFT_ARCH" --show-bin-path)"
 BIN="$BIN_DIR/Selfguard"
 
