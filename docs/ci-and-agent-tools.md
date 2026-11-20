@@ -6,6 +6,9 @@ tokens, source code) without being in any project lockfile:
 - **GitHub Actions** referenced by each repo's workflows.
 - **MCP servers** configured for AI agents, on this machine and in each repo.
 
+This machine's own persistence and credential posture (launch items, shell startup files,
+plaintext tokens, Python startup hooks) is covered in [This machine](host.md).
+
 Files are read as data: nothing is executed, GitHub is never called, and only MCP server
 package names (and exact versions) are sent to OSV. Action names never leave the machine: they
 are matched against a local index of OSV's GitHub Actions advisories. Results appear in

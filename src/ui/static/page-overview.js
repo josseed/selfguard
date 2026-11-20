@@ -5,7 +5,7 @@ import { card, empty, fixText, more, representative, seriousPackages, setHead, s
 import { busy, call } from "./api.js";
 import { refresh } from "./app.js";
 import { helmet, notice, noticeAction } from "./controls.js";
-import { agentToolsCard } from "./sources.js";
+import { agentToolsCard, hostCard } from "./sources.js";
 import { mascot } from "./mascot.js";
 
 const TILES = ["malicious", "critical", "high", "moderate"];
@@ -32,7 +32,8 @@ export function pageOverview() {
     tiles,
     h("div", { class: "grid two" }, attentionCard(o), activityCard(o)),
     h("div", { class: "grid two" }, fixFirstCard(), statusCard(o)),
-    agentToolsCard()));
+    agentToolsCard(),
+    hostCard()));
 }
 
 /** The one thing worth a decision right now, if any (dismissible for this window). */

@@ -8,6 +8,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **This machine: persistence and exposed credentials** (source kind `host`, warnings only, no
+  network). selfguard now reviews launch items (macOS LaunchAgents/LaunchDaemons, XML and
+  binary plists; systemd user units and autostart entries), flagging ones that run from `/tmp`,
+  hidden folders or Downloads, run inline code or `curl`, or use an Apple label; shell startup
+  files (downloads run at startup, `LD_PRELOAD`/`DYLD_INSERT_LIBRARIES`/`NODE_OPTIONS` hooks,
+  agents aliased with `--dangerously-skip-permissions`, `--yolo` or `--trust-all-tools`);
+  npm/pip registries and extra indexes, global git hooks and command settings; plaintext tokens
+  in `~/.npmrc`, `~/.aws/credentials`, `gh`, Docker, `.netrc`, `.git-credentials`, `.pypirc`,
+  kubeconfig and gcloud files (presence only, never the values); and Python startup hooks
+  (`.pth` import lines, `sitecustomize.py`) in repo virtualenvs, uv tools, pipx and the user
+  site, as used by the LiteLLM compromises. In `selfguard tools` ("This machine"), `--json`,
+  `selfguard_sources` and a new **This machine** dashboard card. See [docs/host.md](docs/host.md).
+- Source warnings may carry a stable `key` and `notify: true` (announced when they appear after
+  the baseline).
+
 - **Check for Updates… is back in the Mac app's menu bar panel**, under Settings and Quit, with
   the app's version (⌘U). Before, the panel only offered an update once a scheduled check had
   found it.

@@ -19,6 +19,11 @@ project code, package managers or language toolchains.
   machine's agent configs and per-repo ones like .mcp.json). Their findings carry \`certainty\`: confirmed,
   may-be-affected (mutable tag like @v4) or version-unknown (branch, bare SHA, unpinned package), plus file
   and line; \`warnings\` are risky practices (unpinned actions/servers, script injection), not vulnerabilities.
+- host (sources of kind "host", warnings only): this machine's launch items, shell startup files, npm/pip/git
+  config, plaintext credential files (presence only, never values) and Python startup hooks (.pth,
+  sitecustomize.py, also in each repo's .venv). High ones (suspicious launch item, shell-fetch-exec,
+  shell-code-injection, malicious-looking-startup-hook) look like malware persistence: tell the user to
+  inspect and remove the item, then rotate credentials. Never print or ask for credential values.
 - roots: folders where projects are discovered (recursive, depth-limited, skips node_modules-like dirs).
 - exclude: paths never tracked (fixtures, examples, archived repos).
 - severity order: malicious > critical > high > moderate > low > unknown.
@@ -58,7 +63,7 @@ project code, package managers or language toolchains.
 | Alert settings | (CLI only) | selfguard settings [--remind daily|weekly|off] [--active-days N] --json |
 | Is package X used anywhere? | selfguard_where | selfguard where <pkg> --json |
 | Explain an advisory | selfguard_vulnerability | selfguard vuln <id> --json |
-| Agent tools (MCP servers), CI workflows | selfguard_sources | selfguard tools [dir] --json |
+| Agent tools (MCP servers), CI workflows, this machine (host checks) | selfguard_sources | selfguard tools [dir] --json |
 | Watched folders | selfguard_roots_list / _add / _remove | selfguard roots [add|remove] --json |
 | Find new projects | selfguard_discover | selfguard discover [--dry-run] --json |
 | Find projects anywhere in the home folder | selfguard_discover (everywhere: true) | selfguard discover --everywhere --json |

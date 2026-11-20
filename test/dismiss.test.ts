@@ -72,6 +72,7 @@ before(async () => {
   home = mkdtempSync(join(tmpdir(), "sg-dismiss-"));
   process.env.SELFGUARD_HOME = home;
   process.env.HOME = mkdtempSync(join(tmpdir(), "sg-dismiss-user-")); // agent configs: never the real home
+  process.env.SELFGUARD_SYSTEM_ROOT = process.env.HOME; // host checks: never the real /Library
   process.env.SELFGUARD_NO_NOTIFY = "1";
   process.env.SELFGUARD_NO_LAUNCHD = "1";
   api = await import("../src/api.ts");

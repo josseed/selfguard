@@ -146,11 +146,13 @@ code).
 
 Last results for what runs beside your lockfiles: this machine's **agent tools** (MCP servers
 from Claude Code, Claude Desktop, Cursor, VS Code, Windsurf, Codex and Gemini CLI configs) and
-each repo's **GitHub Actions** workflows and project agent configs. With `dir`, only the git
-repo around it. Shows findings with their certainty (confirmed, may be affected, version
-unknown), file and line, and warnings such as unpinned actions or MCP servers. Reads local
-state only; `scan`, `sync` and `check` refresh it. See
-[CI workflows and agent tools](ci-and-agent-tools.md).
+each repo's **GitHub Actions** workflows and project agent configs, plus **This machine**:
+launch items, shell startup files, package manager and git config, plaintext credential files
+and Python startup hooks (also in each repo's virtualenvs), high warnings first. With `dir`,
+only the git repo around it. Shows findings with their certainty (confirmed, may be affected,
+version unknown), file and line, and warnings such as unpinned actions or MCP servers. Reads
+local state only; `scan`, `sync` and `check` refresh it. See
+[CI workflows and agent tools](ci-and-agent-tools.md) and [This machine](host.md).
 
 ### `selfguard report [dir] [-v|--verbose] [-m|--markdown]`
 
@@ -400,6 +402,7 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 | `SELFGUARD_NO_NOTIFY=1` | Disable notifications and dialogs (useful in tests and CI). |
 | `SELFGUARD_OSV_API` | OSV API base URL. Default `https://api.osv.dev/v1`. For mirrors and tests. |
 | `SELFGUARD_NO_LAUNCHD=1` | Never install or change launchd agents (tests). |
+| `SELFGUARD_SYSTEM_ROOT` | Folder that stands for `/` when reading `/Library/LaunchAgents` and `/Library/LaunchDaemons` (tests). |
 | `SELFGUARD_SSH` | ssh client to use for other machines. Default `ssh` from `PATH`. |
 | `SELFGUARD_TAILSCALE` | Path of the `tailscale` CLI (default: the usual install locations). |
 | `SELFGUARD_NO_UPDATE_CHECK=1` | Never ask npm for a newer selfguard. |

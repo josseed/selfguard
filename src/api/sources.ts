@@ -1,4 +1,7 @@
-/** CI workflows and agent configs: last results, no network (see docs/ci-and-agent-tools.md). */
+/**
+ * CI workflows, agent configs and this machine's host checks: last results, no network (see
+ * docs/ci-and-agent-tools.md and docs/host.md). Warnings never carry file contents.
+ */
 import { resolve } from "node:path";
 import { ApiError } from "../errors.ts";
 import type { Ecosystem } from "../lockfile/types.ts";
@@ -36,7 +39,7 @@ export interface SourceFindingReport {
 export interface SourceReport {
   kind: SourceKind;
   scope: SourceScope;
-  /** Git root, or the home folder for this machine's agent configs. */
+  /** Git root, or the home folder for this machine's sources (scope "machine"). */
   path: string;
   label: string;
   /** Repo group key (as in selfguard status) for repo sources; null for machine-wide ones. */
@@ -57,9 +60,9 @@ export interface SourceReport {
 export interface SourcesResult {
   /** Kinds with an extractor in this version ([]: nothing is read yet). */
   kinds: SourceKind[];
-  /** This machine's agent configs. */
+  /** This machine: its agent configs ("agents") and its host checks ("host", warnings only). */
   machine: SourceReport[];
-  /** Per git root: CI workflows and project agent configs. */
+  /** Per git root: CI workflows, project agent configs and virtualenv startup hooks ("host"). */
   repos: SourceReport[];
 }
 
