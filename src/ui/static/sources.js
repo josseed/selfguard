@@ -106,7 +106,7 @@ export function agentToolsCard() {
 export function hostCard() {
   const s = state.sources;
   if (!s) return null;
-  return sourcesCard("This machine", "Launch items, shell startup files, package manager config, plaintext credentials and Python startup hooks", s.machine.filter((m) => m.kind === "host"), s.kinds.filter((k) => k === "host"));
+  return sourcesCard("This machine", "Launch items, shell startup files, package manager and git config, plaintext credentials, Python startup hooks, editor and browser extensions, exposed local services", s.machine.filter((m) => m.kind === "host"), s.kinds.filter((k) => k === "host"));
 }
 
 /** Repo page: the repo's CI workflows and agent configs. */

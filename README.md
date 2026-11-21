@@ -67,8 +67,11 @@ HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
   [CI workflows and agent tools](docs/ci-and-agent-tools.md).
 - **Persistence and exposed credentials on this machine.** New or suspicious launch items,
   remote code in shell startup files, Python `.pth` startup hooks like the LiteLLM stealer's,
-  changed package registries and git hooks, AI agents aliased to skip their permission prompts,
-  and tokens stored in plain text (presence only, never the values). See
+  changed package registries, git config and hooks that run code (also planted in a repo's
+  `.git`), malicious or sideloaded editor and browser extensions (GlassWorm, hijacked Chrome
+  extensions), dev services such as Chrome DevTools, the Node inspector or Ollama listening
+  beyond localhost, AI agents aliased to skip their permission prompts, and tokens stored in
+  plain text (presence only, never the values). See
   [This machine](docs/host.md).
 - **Repo-aware.** Git worktrees and clones of the same repo are grouped, each with its branch.
 - **Incident response.** `selfguard where <package>` answers "do I use this anywhere?" in one
@@ -133,7 +136,7 @@ $ selfguard scan
 | [CLI reference](docs/cli.md) | Every command and flag, exit codes, environment variables |
 | [Supported ecosystems](docs/multi-ecosystem.md) | JavaScript, Python, Rust and Go: files read, what is checked, limitations |
 | [CI workflows and agent tools](docs/ci-and-agent-tools.md) | GitHub Actions in workflows and MCP servers of AI agents: what is read, checks, privacy |
-| [This machine](docs/host.md) | Launch items, shell startup files, package manager config, plaintext credentials, Python startup hooks: rules and privacy |
+| [This machine](docs/host.md) | Launch items, shell startup files, git and package manager config, plaintext credentials, Python startup hooks, editor and browser extensions, exposed local services: rules and privacy |
 | [How it works](docs/how-it-works.md) | Discovery, lockfile parsing, repo grouping, OSV, caching, alerts |
 | [AI and automation](docs/ai-and-automation.md) | MCP server setup, tools, JSON output, scripting and CI |
 | [Security model](docs/security-model.md) | What selfguard trusts, what it sends, how it is released |

@@ -31,10 +31,13 @@ project code, package managers or language toolchains.
   they alert even on a fresh clone and can't be dismissed over MCP (only in the CLI or the app); tell the user
   not to open that repo with an agent or editor until reviewed.
 - host (sources of kind "host", warnings only): this machine's launch items, shell startup files, npm/pip/git
-  config, plaintext credential files (presence only, never values) and Python startup hooks (.pth,
-  sitecustomize.py, also in each repo's .venv). High ones (suspicious launch item, shell-fetch-exec,
-  shell-code-injection, malicious-looking-startup-hook) look like malware persistence: tell the user to
-  inspect and remove the item, then rotate credentials. Never print or ask for credential values.
+  config, plaintext credential files (presence only, never values), Python startup hooks (.pth,
+  sitecustomize.py, also in each repo's .venv), editor and browser extensions, dev services listening
+  beyond localhost, and each repo's .git/config, hooks and .gitmodules. High ones (suspicious launch item,
+  shell-fetch-exec, shell-code-injection, malicious-looking-startup-hook, malicious-extension,
+  malicious-browser-extension, suspicious-git-hook, git-config-command) look like malware persistence:
+  tell the user to inspect and remove the item, then rotate credentials. exposed-dev-service: tell them
+  to bind that service to 127.0.0.1. Never print or ask for credential values.
 - roots: folders where projects are discovered (recursive, depth-limited, skips node_modules-like dirs).
 - exclude: paths never tracked (fixtures, examples, archived repos).
 - severity order: malicious > critical > high > moderate > low > unknown.

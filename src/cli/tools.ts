@@ -79,7 +79,7 @@ export function cmdTools(args: string[]): number {
     blocks.push("");
     if (result.kinds.includes("host")) {
       const host = result.machine.filter((s) => s.kind === "host");
-      blocks.push(c.bold("This machine"), c.dim("  launch items, shell startup files, package manager config, plaintext credentials, Python startup hooks"));
+      blocks.push(c.bold("This machine"), c.dim("  launch items, shell startup files, package manager and git config, plaintext credentials, Python startup hooks, editor and browser extensions, exposed local services"));
       blocks.push(...(host.length ? host.flatMap((s) => renderSource(s, c, verbose)) : [c.dim("  not checked yet (selfguard sync)")]));
       blocks.push("");
     }

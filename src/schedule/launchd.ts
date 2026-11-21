@@ -3,6 +3,17 @@ import { execFileSync } from "node:child_process";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { atomicWrite } from "../fsutil.ts";
+import { customStateRoot } from "../paths.ts";
+
+/**
+ * Whether this process may install, update or remove the background agents automatically.
+ * Not with SELFGUARD_NO_LAUNCHD=1, and not on a custom SELFGUARD_HOME: the agents run on the
+ * default state, so a dev build or a test on scratch state would point them at its own engine
+ * and its own (scratch) watch paths.
+ */
+export function agentsManaged(): boolean {
+  return process.env.SELFGUARD_NO_LAUNCHD !== "1" && !customStateRoot();
+}
 
 export const SYNC_LABEL = "dev.selfguard.sync";
 export const WATCH_LABEL = "dev.selfguard.watch";

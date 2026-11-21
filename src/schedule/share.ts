@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { atomicWrite } from "../fsutil.ts";
 import { cliEntry, engineCommand, NODE_FLAGS } from "../hook.ts";
 import { logFile } from "../paths.ts";
-import { agentPlist, install, isLoaded, plistPath, unload } from "./launchd.ts";
+import { agentPlist, agentsManaged, install, isLoaded, plistPath, unload } from "./launchd.ts";
 
 const SHARE_LABEL = "dev.selfguard.share";
 const SYSTEMD_UNIT = "selfguard-share.service";
@@ -35,7 +35,7 @@ WantedBy=default.target
  * Returns where it lives, or null when the platform has no supported service manager.
  */
 export function updateShareAgent(enabled: boolean): { manager: "launchd" | "systemd" | null; changed: boolean } {
-  if (process.env.SELFGUARD_NO_LAUNCHD === "1") return { manager: null, changed: false };
+  if (!agentsManaged()) return { manager: null, changed: false };
   if (process.platform === "darwin") {
     const exists = existsSync(plistPath(SHARE_LABEL));
     if (!enabled) {

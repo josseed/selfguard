@@ -8,6 +8,15 @@ export function stateRoot(): string {
   return join(homedir(), ".selfguard");
 }
 
+/**
+ * True when SELFGUARD_HOME points somewhere else (tests, a dev build tried on scratch state).
+ * The background agents always run on the default state, so such a process must not touch them.
+ */
+export function customStateRoot(): boolean {
+  const override = process.env.SELFGUARD_HOME;
+  return Boolean(override && override.trim() !== "");
+}
+
 export const reposDir = (): string => join(stateRoot(), "repos");
 /** Records of a remote machine (name validated by config.MACHINE_NAME_RE). */
 export const machineDir = (machine: string): string => join(stateRoot(), "machines", machine);

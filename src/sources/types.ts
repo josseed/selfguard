@@ -136,7 +136,18 @@ export interface SourceRecord {
    * that didn't change are the new rules' baseline, not news (sources/warnings.ts).
    */
   warningsBy?: string;
+  /** When a snapshot() extractor last succeeded: how long its warnings are kept if it fails. */
+  snapshotAt?: string;
 }
+
+/**
+ * The `file` of warnings an extractor's snapshot() returns: live state (listening sockets), not
+ * a file. Not a path; `check` keeps the last snapshot's warnings instead of taking a new one.
+ */
+export const SNAPSHOT_FILE = "(listening sockets)";
+
+/** The `file` of the `truncated` warning: a scan limit was hit (too many files or warnings). */
+export const TRUNCATED_FILE = "(scan limits)";
 
 /** What an extractor returns for one file. `file` is filled in by the core. */
 export interface ExtractResult {
@@ -176,6 +187,20 @@ export interface SourceExtractor {
    * when one of them is an existing file; otherwise discovery waits for sync or scan.
    */
   probe?(target: SourceTarget): string[];
+  /**
+   * Machine scope only: warnings about live state that isn't a file (listening sockets). Taken
+   * by `sync` and `scan` (sourceInputs), never by `check` or the watcher, which keep the last
+   * snapshot's warnings. Same rules as extract(): read-only, sanitized by the core, never
+   * throws, fast (it runs inside the sync). Warnings get `file` = SNAPSHOT_FILE.
+   */
+  snapshot?(target: SourceTarget): ExtractResult;
+  /**
+   * True when this file is a link (or sits behind one) that leaves the area the extractor
+   * trusts: the core then records the link itself (never opening or hashing its target) and
+   * extract() gets an empty text. Cheap (a few stats); extractors that follow links (a dotfile
+   * symlinked into a dotfiles repo) leave it out.
+   */
+  linkOut?(file: string, target: SourceTarget): boolean;
   /** Extract references from one file's text. Must not throw on malformed input. */
   extract(file: string, text: string, target: SourceTarget): ExtractResult;
 }

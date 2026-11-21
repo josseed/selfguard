@@ -6,6 +6,52 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Editor extensions are checked** (`selfguard tools`, "This machine"): the extensions of
+  VS Code, Insiders, VSCodium, Cursor, Windsurf and a few forks, read from their
+  `extensions.json` without running anything. Urgent: an extension on a bundled list of publicly
+  reported malicious or compromised ones (GlassWorm, fake Solidity extensions, Nx Console
+  18.95.0), and hidden Unicode in an extension's entry point (the GlassWorm technique).
+  Also reported: extensions sideloaded from a `.vsix`, and every new extension once.
+- **Browser extensions are checked** (this machine, source kind `host`): Chrome, Brave, Edge,
+  Arc, Chromium, Vivaldi and Firefox profiles are read as data. A bundled denylist of publicly
+  reported malicious or hijacked extensions raises an urgent high warning; unpacked or unsigned
+  extensions and ones with full-control permissions (`debugger`, `nativeMessaging`, `proxy`,
+  `cookies` or `webRequestBlocking` on all sites) are moderate; every extension is announced
+  once when it appears. Only ids, names, versions and permissions are read. See
+  [docs/host.md](docs/host.md#browser-extensions).
+- **Git config and hooks check** (kind `host`). In each repo, selfguard now reads `.git/config`,
+  the hooks and `.gitmodules` as data (linked worktrees included, never running git) and warns
+  about settings that run a program on normal git use (`core.fsmonitor`, `core.sshCommand`,
+  pagers, filters, credential helpers, aliases...), includes pointing outside the repo, new hooks
+  (announced once after the baseline), hooks that download or decode code, and malicious
+  submodules (`ext::`/`fd::` transports, `..` or `.git` paths). The global gitconfig gets the same
+  command keys plus `include.path`, `url.<x>.insteadOf` redirects of github.com and registry
+  hosts, and `safe.directory = *`. Messages never carry the values. See
+  [docs/host.md](docs/host.md#git-config-and-hooks).
+- **Exposed local services** (kind `host`): selfguard warns when a developer service listens on
+  all interfaces or a LAN address instead of `127.0.0.1`: Chrome/Electron remote debugging
+  (9222), the Node.js inspector (9229), the MCP Inspector (6274/6277, CVE-2025-49596), Docker's
+  API (2375), Ollama, Jupyter, Redis, PostgreSQL and more (high; the takeover ones urgent), and
+  other dev servers such as `vite --host` (low). It reads the listening sockets (`lsof` on macOS,
+  `/proc/net/tcp` on Linux) during `sync` only, keeps just the port and process name, and tells
+  you how to bind to 127.0.0.1. To support live state, source extractors can now provide an
+  optional `snapshot()` (machine scope). `SELFGUARD_NO_SOCKETS=1` turns it off.
+- **Scan limits are visible.** When a source has more than 1000 warnings, the urgent and most
+  severe are kept and a low `truncated` warning says how many were dropped; when more than 200
+  files are found, each check gets a fair share and a `truncated` warning counts the rest.
+
+### Fixed
+
+- **A selfguard run on scratch state no longer rewrites your background agents.** `sync` with
+  `SELFGUARD_HOME` set (a dev build, the smoke test in CONTRIBUTING.md) replaced the lockfile
+  watcher with one running that build and watching the scratch state's paths. The agents always
+  run on the default state, so a custom `SELFGUARD_HOME` now leaves them alone.
+- **selfguard no longer flags its own agent when node comes from nvm.** A launch item running a
+  runtime from a version manager (`~/.nvm/versions`, volta, fnm, mise, asdf, pyenv…) was
+  "suspicious: lives in a hidden folder". Hidden names below those folders still are.
+
 ## [0.19.1] - 2026-11-20
 
 ### Fixed
