@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Browser extensions are checked** (this machine, source kind `host`): Chrome, Brave, Edge,
+  Arc, Chromium, Vivaldi and Firefox profiles are read as data. A bundled denylist of publicly
+  reported malicious or hijacked extensions raises an urgent high warning; unpacked or unsigned
+  extensions and ones with full-control permissions (`debugger`, `nativeMessaging`, `proxy`,
+  `cookies` or `webRequestBlocking` on all sites) are moderate; every extension is announced
+  once when it appears. Only ids, names, versions and permissions are read. See
+  [docs/host.md](docs/host.md#browser-extensions).
+
 ## [0.19.1] - 2026-11-20
 
 ### Fixed

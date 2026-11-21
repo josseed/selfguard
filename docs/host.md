@@ -109,6 +109,52 @@ Repo virtualenv results are a per-repo record, shown with the repo (`selfguard t
 repo page). At most 40 hooks per site-packages folder and 100 environments per tool folder are
 read.
 
+## Browser extensions
+
+Extensions run inside every page you visit, and a hijacked one reads sessions and wallets. This
+module lists what is installed and flags the dangerous ones. Real cases: the **Cyberhaven**
+extension and ~30 more hijacked by phishing the developers' Web Store accounts (December 2024),
+**Trust Wallet 2.68** (December 2025), and fake VPN, AI and crypto extensions stealing wallets.
+
+| Browser | Profiles read (at most 12 each) | File read |
+| --- | --- | --- |
+| Chrome, Brave, Edge, Arc, Chromium, Vivaldi (macOS: `~/Library/Application Support/Google/Chrome`, `BraveSoftware/Brave-Browser`, `Microsoft Edge`, `Arc/User Data`, `Chromium`, `Vivaldi`; Linux: `~/.config/google-chrome`, `chromium`, `BraveSoftware/Brave-Browser`, `microsoft-edge`) | `Default`, `Profile N` | `Secure Preferences` (where Chromium keeps `extensions.settings`), or `Preferences` if it doesn't exist |
+| Firefox (`~/Library/Application Support/Firefox/Profiles/*`, `~/.mozilla/firefox/*`, snap and Flatpak) | each profile folder | `extensions.json` |
+
+Read-only, as data. Only each extension's id, name, version, install kind and granted
+permissions are taken; nothing else in those files (they hold browsing-related settings) is kept,
+shown or sent. Names come from the profile (`__MSG_x__` names from the extension's own locale
+file) and are sanitized and truncated. Built-in components (Chromium location 5 and 10, Firefox
+`app-builtin`/`app-system-*`), themes and leftovers of removed extensions are skipped.
+
+| Rule | Severity | When |
+| --- | --- | --- |
+| `malicious-browser-extension` | high, N, urgent | The id is in the bundled denylist (`src/sources/host/extensions-browser-data.ts`, one public source per entry). Hijacked-then-repaired extensions match only the malicious versions. Alerts even on the first check. |
+| `unpacked-browser-extension` | moderate, N | Chromium: loaded unpacked (location 4, developer mode) or from the command line (8), or `from_webstore: false` (not Edge, whose store doesn't set it). Firefox: loaded temporarily, or `signedState` 0 or lower. |
+| `powerful-browser-extension` | moderate | An enabled extension with `debugger` (controls any tab), `nativeMessaging` (talks to a program on this machine), `proxy` (reroutes traffic), `webRequestBlocking` plus all sites, or `cookies` plus all sites (`<all_urls>`, `*://*/*`, `http(s)://*/*`). |
+| `browser-extension` | low, N | Every extension, so a new one is announced once after the baseline. |
+
+Warnings are keyed by browser, profile and extension id, so they stay stable across updates.
+
+**False positives.** Password managers (Bitwarden, 1Password) use `nativeMessaging` for their
+desktop apps and often `cookies`, and developer tools use `debugger`: they are flagged
+`powerful-browser-extension` by design, at moderate and without notification, so you review
+them once and dismiss. The set leaves out `tabs`, `history`, `storage`, `webRequest` alone and
+ordinary content-script hosts, which almost every extension has. Disabled extensions are not
+checked for powers (their permissions aren't in use).
+
+**Cost.** Preferences files are rewritten by the browser in every session, so they are not
+markers and not watched: `check` re-lists profiles only when a browser folder, a profile's
+`Extensions` folder (install, update, removal) or a profile without a data file changes, and the
+watcher wakes only for `Extensions` folders and Firefox's `extensions.json`. When the data file
+itself changed, `check` reads it once (bounded by the 16 MB source cap) and rescans the host
+record. An unpacked extension, which leaves nothing in `Extensions`, is therefore noticed by the
+next `check` that sees the changed file or by `sync`, not instantly.
+
+Not covered: extension *updates* are not diffed (a hijacked update is caught only if its id and
+version are in the denylist), Safari, Windows, extensions installed by policy are listed but not
+judged, and the denylist is only as current as the release.
+
 ## What is never read or sent
 
 - Credential values, command lines and shell lines are never stored, printed, logged, returned
@@ -118,7 +164,7 @@ read.
   to notice changes, as for every source.
 - No network request: no OSV query is made for host checks.
 - Not read: Login Items added through System Settings (`SMAppService`/BTM database), cron jobs,
-  `/etc` files, Windows, browser extensions, keychains.
+  `/etc` files, Windows, keychains.
 
 ## When they are checked
 
