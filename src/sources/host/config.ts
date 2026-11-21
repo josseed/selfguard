@@ -1,11 +1,12 @@
 /**
- * Package manager and git config of this machine: where packages come from (a changed registry
- * or an extra index is how dependency confusion starts) and git settings that run a command in
- * every repo. Messages name the registry's host only (URLs may embed credentials).
+ * Package manager and global git config of this machine: where packages come from (a changed
+ * registry or an extra index is how dependency confusion starts); the git rules are in
+ * git-machine.ts. Messages name the registry's host only (URLs may embed credentials).
  */
 import { join } from "node:path";
 import type { ExtractResult, SourceExtractor, SourceTarget, SourceWarning } from "../types.ts";
 import { home, NONE } from "./fs.ts";
+import { machineGitWarnings } from "./git-machine.ts";
 
 type Warn = Omit<SourceWarning, "file">;
 
@@ -85,51 +86,14 @@ function pipConf(text: string): Warn[] {
   return out;
 }
 
-function gitconfig(text: string): Warn[] {
-  const out: Warn[] = [];
-  for (const e of iniEntries(text)) {
-    if (e.section !== "core" || !e.value) continue;
-    const key = e.key.toLowerCase();
-    if (key === "hookspath") {
-      out.push({
-        rule: "git-global-hooks",
-        severity: "moderate",
-        notify: true,
-        key: "core.hooksPath",
-        line: e.line,
-        message: "core.hooksPath is set globally: its hooks run in every repo on every commit, checkout or push. Make sure you know what is in that folder.",
-      });
-    } else if (key === "sshcommand" && !/^["']?(\S*\/)?ssh(["']|\s|$)/.test(e.value)) {
-      out.push({
-        rule: "git-command-config",
-        severity: "moderate",
-        notify: true,
-        key: "core.sshCommand",
-        line: e.line,
-        message: "core.sshCommand runs a program other than ssh on every fetch and push. Remove it unless you put it there.",
-      });
-    } else if (key === "fsmonitor" && !/^(true|false|yes|no|on|off|0|1)$/i.test(e.value)) {
-      out.push({
-        rule: "git-command-config",
-        severity: "moderate",
-        notify: true,
-        key: "core.fsmonitor",
-        line: e.line,
-        message: "core.fsmonitor is set to a command: git runs it on almost every command in every repo. Remove it unless you put it there.",
-      });
-    }
-  }
-  return out;
-}
-
 /** The files and what reads each one (paths relative to the home folder). */
 const FILES: Array<{ path: string; read: (text: string) => Warn[] }> = [
   { path: ".npmrc", read: npmrc },
   { path: ".config/pip/pip.conf", read: pipConf },
   { path: ".pip/pip.conf", read: pipConf },
   { path: "Library/Application Support/pip/pip.conf", read: pipConf },
-  { path: ".gitconfig", read: gitconfig },
-  { path: ".config/git/config", read: gitconfig },
+  { path: ".gitconfig", read: machineGitWarnings },
+  { path: ".config/git/config", read: machineGitWarnings },
 ];
 
 const pathOf = (rel: string): string => join(home(), ...rel.split("/"));
