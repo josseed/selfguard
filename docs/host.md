@@ -34,7 +34,7 @@ read".
 | Rule | Severity | When |
 | --- | --- | --- |
 | `launch-item` | low, N | Every item, keyed by its label: a new item is announced once after the baseline. selfguard's own agents (`dev.selfguard.sync`, `.watch`, `.remote`, `.discover`, `.share`) are left out unless they look suspicious. |
-| `suspicious-launch-item` | high, N | The program (or the script an interpreter runs) lives in `/tmp`, `/private/tmp`, `/var/tmp`, `/Users/Shared`, a hidden folder or `Downloads`; an interpreter runs inline code (`sh`/`bash`/`zsh -c`, `python -c`, `osascript -e`, `node -e`); `curl`, `wget` or `base64` appear in its arguments; a `com.apple.*` label outside `/System`; its program is missing. |
+| `suspicious-launch-item` | high, N | The program (or the script an interpreter runs) lives in `/tmp`, `/private/tmp`, `/var/tmp`, `/Users/Shared`, a hidden folder or `Downloads`; an interpreter runs inline code (`sh`/`bash`/`zsh -c`, `python -c`, `osascript -e`, `node -e`); `curl`, `wget` or `base64` appear in its arguments; a `com.apple.*` label outside `/System`; its program is missing. Runtimes in a version manager's versions folder (`~/.nvm/versions`, volta, fnm, mise, asdf, pyenv, rbenv, `~/.bun/bin`, `~/.deno/bin`, `~/.cargo/bin`) don't count as hidden. |
 
 Messages name the label and the program's basename only: arguments may hold tokens and are
 never shown or stored.
@@ -74,7 +74,7 @@ machine (a postinstall, a stealer) can plant them, and they run on normal git us
 that survives deleting `node_modules`. `.gitmodules` *is* part of a repo, so a malicious one
 arrives with the clone (the CVE-2024-32002 family). selfguard reads, as data and never through
 git, per repo: `.git/config` (and a worktree's `config.worktree`), the hooks, and `.gitmodules`.
-Linked worktrees and submodules (`.git` is a file `gitdir: ...`) are followed only into
+Files are never opened through a link that leaves the repo: a `.git/config`, `.gitmodules` or hook that is such a link is recorded as the link itself (its target text is hashed, the target is not read) and reported (`git-config-command` key `config:link`, `suspicious-submodule` key `.gitmodules:link`, `git-hook`). Machine-scope files such as `~/.zshrc` are still followed into a dotfiles repo. Linked worktrees and submodules (`.git` is a file `gitdir: ...`) are followed only into
 `.git/worktrees/...` or `.git/modules/...`, and `commondir` only to a `.git` folder; a pointer
 anywhere else is ignored. Messages name the key and at most a sanitized program name, never the
 value (it may hold a token) and never a URL.
@@ -85,9 +85,9 @@ Repo scope:
 | --- | --- | --- |
 | `git-config-command` | high, N (urgent: see below) | `.git/config` sets a key that runs a program other than the usual tools for it. Key = the config key (`core.pager`, `filter.x.clean`...). |
 | `git-config-include` | moderate N (low inside the repo) | `include.path` / `includeIf.*.path` pointing outside `.git`: outside the repo or in a temporary or shared folder is moderate; a file inside the work tree (`../.gitconfig`) is low and silent. |
-| `git-hooks-path` | moderate, N | `core.hooksPath` in `.git/config` points outside the repo. Inside the repo (husky's `.husky/_`) is fine: those hooks are read like `.git/hooks`. |
+| `git-hooks-path` | moderate, N | `core.hooksPath` in `.git/config` points outside the repo, by its spelling or by where it really leads: a tracked `.githooks` that is a link to `/tmp/payload` counts. Inside the repo (husky's `.husky/_`) is fine: those hooks are read like `.git/hooks`. |
 | `git-hook` | low, N | An executable, non-`.sample` hook with a known git hook name in `.git/hooks` (or the in-repo `core.hooksPath` folder), or a hook that is a link out of the repo. Key = hook name. |
-| `suspicious-git-hook` | high, urgent | A hook line that pipes a download to a shell, evals or sources one, decodes base64 into a shell or interpreter, opens `/dev/tcp`, runs a file from `/tmp`, or is longer than 4000 characters; or a compiled hook in a folder whose other hooks are scripts. Comment lines are ignored. |
+| `suspicious-git-hook` | high, urgent | `.git/hooks` itself replaced by a link to a folder outside the repo (key `hooks`); or a hook line that pipes a download to a shell, evals or sources one, decodes base64 into a shell or interpreter, opens `/dev/tcp`, runs a file from `/tmp`, or is longer than 4000 characters; or a compiled hook in a folder whose other hooks are scripts. Comment lines are ignored. |
 | `suspicious-submodule` | high, N (urgent for `ext::`, `fd::` and a leading `-` in the URL) | `.gitmodules` URL using `ext::`, `fd::` or another `name::` transport, or starting with `-`; a path or a submodule name containing `..`, starting with `-`, absolute, or pointing into `.git` (case and NTFS spellings included). |
 
 What `git-config-command` looks at: `core.fsmonitor` (when not a boolean), `core.sshCommand`,
@@ -107,6 +107,8 @@ friends for `diff.external`, common converters (exiftool, pdftotext, jq, plutil.
 shell, so only their shape is judged: they are flagged only for the fetch-and-run shapes below or
 a program in a temporary folder. A hidden folder alone (`~/.cargo/bin/delta`) doesn't make a
 known tool unusual.
+
+**Arguments that run code.** An allowed program is also flagged (high in a repo, moderate globally) when its arguments make it run something else: `ssh -o ProxyCommand=…`, `LocalCommand=…` or `KnownHostsCommand=…` (also `-oProxyCommand=`, any case), sed's `e` command or `s///e` flag, `vim`/`nvim` with `-S`, `-c`, `--cmd`, `-u`, `-s` or `+cmd` (not `+10`), `emacs --eval`/`--load`. Legitimate `ProxyCommand` setups (a cloudflared or bastion hop) are flagged too: review and dismiss. The temporary-folder and hidden-folder checks look at every token of the value, not only the program, so `vim -S ~/.cache/x.vim` or `ssh -o LocalCommand=/tmp/x` is urgent in a repo; `ssh -i ~/.ssh/key` is fine.
 
 **Urgent** (alerts on the first check and in inactive repos, like a malicious package): the value
 downloads or decodes code (`curl`/`wget`, `base64 -d`, `sh -c`, inline `python -c`, `osascript`,
@@ -200,8 +202,7 @@ All are keyed by the extension id, so an update of an extension (new version, ne
 not news. Messages show the id (checked against a strict pattern), the version and the editor's
 name, never a path.
 
-Limits: 400 entries per `extensions.json`; entry points up to 5 MB each and 64 MB in total per
-check are scanned; a `main` that is absolute, uses `..`, is a symlink leading out of the
+Limits: every entry of `extensions.json` is checked against the denylist, the other rules apply to the first 400; of an entry point the first 5 MB are scanned, and the last 1 MB too when it is bigger (padding can't hide a payload at either end; the middle of a file over 6 MB is not read); about 64 MB in total per check, shared fairly (each extension gets its turn's share of what is left, at least 128 KB, so early ones can't use it all up); a `main` that is absolute, uses `..`, is a symlink leading out of the
 extension's folder, or is not a regular file is ignored. The code is scanned when
 `extensions.json` changes (an install, update or removal), not on every check.
 
@@ -230,7 +231,7 @@ file) and are sanitized and truncated. Built-in components (Chromium location 5 
 | `powerful-browser-extension` | moderate | An enabled extension with `debugger` (controls any tab), `nativeMessaging` (talks to a program on this machine), `proxy` (reroutes traffic), `webRequestBlocking` plus all sites, or `cookies` plus all sites (`<all_urls>`, `*://*/*`, `http(s)://*/*`). |
 | `browser-extension` | low, N | Every extension, so a new one is announced once after the baseline. |
 
-Warnings are keyed by browser, profile and extension id, so they stay stable across updates.
+Warnings are keyed by browser, profile and extension id, so they stay stable across updates. Every extension of a profile is checked against the denylist; the other rules apply to the first 150.
 
 **False positives.** Password managers (Bitwarden, 1Password) use `nativeMessaging` for their
 desktop apps and often `cookies`, and developer tools use `debugger`: they are flagged
@@ -279,16 +280,16 @@ check off.
 The message names the process and port, what it is, and how to bind it to 127.0.0.1 (for example
 `OLLAMA_HOST=127.0.0.1`, `--inspect=127.0.0.1:9229`, `bind 127.0.0.1 -::1` in redis.conf).
 
-Left alone: loopback listeners, and system or desktop daemons (`launchd`, `rapportd`,
+Loopback listeners don't count toward the 2000-listener cap, so a crowd of them can't hide an exposed one. Left alone: loopback listeners, and system or desktop daemons (`launchd`, `rapportd`,
 `ControlCenter`, `sharingd`, `identityservicesd`, `AirPlay*`, `mDNSResponder`, `netbiosd`, `cupsd`,
 `sshd`, `smbd`, `systemd*`, `avahi-daemon`, `tailscaled`, and a few more; `SYSTEM_PROCESSES` in
-`src/sources/host/exposed.ts`), except on the four urgent ports, so a process can't hide there
-under a system name. Unknown processes on ordinary ports are not reported.
+`src/sources/host/exposed.ts`), except on any port in the risky list above, so a process can't hide there
+under a system name (a binary called `sharingd` on `0.0.0.0:6379` is reported). Unknown processes on ordinary ports are not reported.
 
 Unlike files, this is a live snapshot, taken **only by `selfguard sync` (and the scheduled
 sync)**, at most once per sync (about 50 ms; 3 s at worst). `check` and the watcher never run it:
 they keep the last snapshot's warnings, so a service stopped between syncs is noticed at the next
-sync, and a failed `lsof` keeps the last result instead of reporting everything as fixed. The
+sync, and a failed `lsof` keeps the last result instead of reporting everything as fixed, for 7 days since the last good snapshot at most. `lsof` exiting with status 1 (it does when some process can't be inspected) is read normally if it printed anything. With `SELFGUARD_NO_SOCKETS=1` or on a system with no reader the result is empty, so old exposure warnings resolve. The
 first sync is the baseline: only urgent exposures are news then. After an upgrade, new rules
 start from a baseline too.
 
@@ -302,6 +303,10 @@ start from a baseline too.
 - No network request: no OSV query is made for host checks.
 - Not read: Login Items added through System Settings (`SMAppService`/BTM database), cron jobs,
   `/etc` files, Windows, JetBrains plugins, keychains.
+
+## Limits
+
+A source record keeps at most 1000 warnings: the urgent ones first, then high, moderate, low; one low `truncated` warning says how many were left out. At most 200 files are read per source and kind, shared fairly between the checks (a folder with 100 launch items can't push the extension lists out); if some were left out, a `truncated` warning says how many.
 
 ## When they are checked
 

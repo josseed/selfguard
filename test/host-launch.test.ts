@@ -122,3 +122,16 @@ test("selfguard's own launch agents are not reported, unless they look suspiciou
     "high suspicious-launch-item dev.selfguard.share @dev.selfguard.share.plist:0 N",
   ]);
 });
+
+test("runtimes from version managers aren't 'hidden', anything hidden below them still is", async () => {
+  const { homedir } = await import("node:os");
+  const { suspiciousPlace } = await import("../src/sources/host/launch.ts");
+  const h = homedir();
+  assert.equal(suspiciousPlace(`${h}/.nvm/versions/node/v24.12.0/bin/node`), null);
+  assert.equal(suspiciousPlace(`${h}/.nvm/versions/node/v24.12.0/lib/node_modules/selfguard/dist/cli.js`), null);
+  assert.equal(suspiciousPlace(`${h}/.local/share/fnm/node-versions/v22/installation/bin/node`), null);
+  assert.equal(suspiciousPlace(`${h}/.nvm/versions/node/.x/agent`), "lives in a hidden folder");
+  assert.equal(suspiciousPlace(`${h}/.nvm/agent`), "lives in a hidden folder", "only the versions folder counts");
+  assert.equal(suspiciousPlace(`${h}/.cache/x/node`), "lives in a hidden folder");
+  assert.equal(suspiciousPlace(`/tmp/.nvm/versions/node/bin/node`), "lives in a temporary or shared folder");
+});

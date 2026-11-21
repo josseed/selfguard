@@ -10,8 +10,9 @@ import { isObject, readRegularFile } from "../../fsutil.ts";
 import { hiddenUnicode } from "../agentguard/unicode.ts";
 
 export const MAX_PACKAGE_JSON = 1024 * 1024;
-/** One entry point larger than this is skipped (bundles are 100 KB to a few MB). */
+/** Bytes read from the start of an entry point (bundles are 100 KB to a few MB), and from its end if larger. */
 export const MAX_ENTRY_BYTES = 5 * 1024 * 1024;
+export const TAIL_BYTES = 1024 * 1024;
 /** Characters the detector looks for; a file without any skips the (memory-hungry) detector. */
 const SUSPECT = /[​-‍⁠﻿‪-‮⁦-⁩︀-️\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/u;
 
@@ -55,7 +56,27 @@ const WHAT: Record<string, string> = {
   invisible: "invisible characters (zero-width or variation selectors) in long runs or encoding hidden text",
 };
 
-/** Scan the entry points of the extension in `dir`. Never throws. */
+/**
+ * What to read of a file of `size` bytes with `allow` bytes to spend: all of it when it fits,
+ * else its start and its end (padding a file past the limit can't hide a payload at either).
+ */
+export function readPlan(size: number, allow: number): { head: number; tail: number } {
+  if (size <= Math.min(MAX_ENTRY_BYTES, allow)) return { head: size, tail: 0 };
+  const tail = Math.min(TAIL_BYTES, Math.floor(allow / 4), size);
+  const head = Math.min(MAX_ENTRY_BYTES, allow - tail, size - tail);
+  return { head, tail };
+}
+
+function problemsIn(text: string, out: CodeScan): void {
+  if (!SUSPECT.test(text)) return;
+  for (const w of hiddenUnicode(text)) {
+    // Only what looks deliberate (the detector's "high"): tags, bidi, long or decoding runs.
+    const what = w.severity === "high" ? WHAT[w.key ?? ""] : undefined;
+    if (what && !out.problems.includes(what)) out.problems.push(what);
+  }
+}
+
+/** Scan the entry points of the extension in `dir`, spending at most about `budget` bytes. Never throws. */
 export function scanExtensionCode(dir: string, budget: number): CodeScan {
   const out: CodeScan = { problems: [], bytes: 0 };
   try {
@@ -67,16 +88,17 @@ export function scanExtensionCode(dir: string, budget: number): CodeScan {
     if (!isObject(json)) return out;
     const files = new Set([entryFile(base, json.main), entryFile(base, json.browser)]);
     for (const file of files) {
-      if (!file || out.bytes >= budget) continue;
-      const raw = readRegularFile(file, MAX_ENTRY_BYTES, { nofollow: true });
-      if (!raw) continue;
-      out.bytes += raw.data.length;
-      const text = raw.data.toString("utf8");
-      if (!SUSPECT.test(text)) continue;
-      for (const w of hiddenUnicode(text)) {
-        // Only what looks deliberate (the detector's "high"): tags, bidi, long or decoding runs.
-        const what = w.severity === "high" ? WHAT[w.key ?? ""] : undefined;
-        if (what && !out.problems.includes(what)) out.problems.push(what);
+      const allow = budget - out.bytes;
+      if (!file || allow <= 0) continue;
+      const size = lstatSync(file).size;
+      const plan = readPlan(size, allow);
+      const head = readRegularFile(file, plan.head, { nofollow: true, truncate: true });
+      if (!head) continue;
+      out.bytes += head.data.length;
+      problemsIn(head.data.toString("utf8"), out);
+      if (plan.tail > 0) {
+        const tail = readRegularFile(file, plan.tail, { nofollow: true, truncate: true, fromEnd: true });
+        if (tail) (out.bytes += tail.data.length, problemsIn(tail.data.toString("utf8"), out));
       }
     }
   } catch {

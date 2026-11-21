@@ -15,6 +15,7 @@ import { engineCommand } from "./hook.ts";
 import { logFile } from "./paths.ts";
 import {
   agentPlist,
+  agentsManaged,
   assertMac,
   DISCOVER_INTERVAL,
   DISCOVER_LABEL,
@@ -43,7 +44,7 @@ export function scheduleOn(seconds: number, watchPaths: string[], opts: { machin
 
 /** Install or remove the weekly whole-home discovery agent (only while the schedule is on). */
 export function updateDiscoverAgent(enabled: boolean): { changed: boolean } {
-  if (process.platform !== "darwin" || process.env.SELFGUARD_NO_LAUNCHD === "1") return { changed: false };
+  if (process.platform !== "darwin" || !agentsManaged()) return { changed: false };
   const exists = existsSync(plistPath(DISCOVER_LABEL));
   if (!enabled || !existsSync(plistPath(SYNC_LABEL))) {
     if (!exists) return { changed: false };
@@ -65,7 +66,7 @@ export function updateDiscoverAgent(enabled: boolean): { changed: boolean } {
 
 /** Install or remove the remote-machines agent (only while the schedule is on). */
 export function updateRemoteAgent(enabled: boolean): { changed: boolean } {
-  if (process.platform !== "darwin" || process.env.SELFGUARD_NO_LAUNCHD === "1") return { changed: false };
+  if (process.platform !== "darwin" || !agentsManaged()) return { changed: false };
   const exists = existsSync(plistPath(REMOTE_LABEL));
   if (!enabled || !existsSync(plistPath(SYNC_LABEL))) {
     if (!exists) return { changed: false };
@@ -90,7 +91,7 @@ export function updateRemoteAgent(enabled: boolean): { changed: boolean } {
  * path set changed. Never call it from the watcher's own run: unloading would kill it.
  */
 export function updateWatcher(paths: string[], opts: { force?: boolean } = {}): { watching: number; changed: boolean } {
-  if (process.platform !== "darwin" || process.env.SELFGUARD_NO_LAUNCHD === "1") return { watching: 0, changed: false };
+  if (process.platform !== "darwin" || !agentsManaged()) return { watching: 0, changed: false };
   if (!opts.force && !existsSync(plistPath(SYNC_LABEL))) return { watching: 0, changed: false };
   const list = [...new Set(paths)].slice(0, MAX_WATCH_PATHS);
   if (list.length === 0) {

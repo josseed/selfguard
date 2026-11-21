@@ -41,18 +41,19 @@ export function readJsonFile<T>(file: string): T | null {
  * Read a file from a project (untrusted) only if it is a regular file of at most `max` bytes;
  * null otherwise. Opened non-blocking and checked after opening, so a FIFO can't hang the read
  * and a device (/dev/zero) can't stream forever. `nofollow`: refuse a symlink (as discovery and
- * the remote readers do). `truncate`: read the first `max` bytes of a larger file instead.
+ * the remote readers do). `truncate`: read the first `max` bytes of a larger file instead (`fromEnd`: the last `max`).
  */
-export function readRegularFile(file: string, max: number, opts: { nofollow?: boolean; truncate?: boolean } = {}): { data: Buffer; stat: Stats } | null {
+export function readRegularFile(file: string, max: number, opts: { nofollow?: boolean; truncate?: boolean; fromEnd?: boolean } = {}): { data: Buffer; stat: Stats } | null {
   let fd: number | undefined;
   try {
     fd = openSync(file, constants.O_RDONLY | constants.O_NONBLOCK | (opts.nofollow ? constants.O_NOFOLLOW : 0));
     const stat = fstatSync(fd);
     if (!stat.isFile() || (stat.size > max && !opts.truncate)) return null;
     const data = Buffer.alloc(Math.min(stat.size, max));
+    const start = opts.fromEnd ? stat.size - data.length : 0;
     let n = 0;
     while (n < data.length) {
-      const got = readSync(fd, data, n, data.length - n, n);
+      const got = readSync(fd, data, n, data.length - n, start + n);
       if (got === 0) break; // shrank meanwhile
       n += got;
     }

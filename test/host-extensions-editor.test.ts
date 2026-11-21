@@ -126,7 +126,8 @@ test("entry points are read only inside the extension folder, as regular files",
   put(home, ".vscode/extensions/t.big-1.0.0/package.json", JSON.stringify({ main: "./b.js" }));
   put(home, ".vscode/extensions/t.big-1.0.0/b.js", evil + " ".repeat(5 * 1024 * 1024));
   const rec = scanHost(sources, sources.machineTarget());
-  assert.deepEqual(rec.warnings.filter((w) => w.rule === "hidden-unicode"), []);
+  // t.big is padded past 5 MB after the payload: the first 5 MB are still read (see host-hardening).
+  assert.deepEqual(rec.warnings.filter((w) => w.rule === "hidden-unicode").map((w) => w.key), ["t.big"]);
   assert.equal(rec.warnings.filter((w) => w.rule === "editor-extension").length, 5);
 });
 

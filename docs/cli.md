@@ -147,8 +147,9 @@ code).
 Last results for what runs beside your lockfiles: this machine's **agent tools** (MCP servers
 from Claude Code, Claude Desktop, Cursor, VS Code, Windsurf, Codex and Gemini CLI configs) and
 each repo's **GitHub Actions** workflows and project agent configs, plus **This machine**:
-launch items, shell startup files, package manager and git config, plaintext credential files
-and Python startup hooks (also in each repo's virtualenvs), high warnings first. With `dir`,
+launch items, shell startup files, package manager and git config, plaintext credential files,
+Python startup hooks (also in each repo's virtualenvs), editor and browser extensions, dev services
+listening beyond localhost, and each repo's git config and hooks, high warnings first. With `dir`,
 only the git repo around it. Shows findings with their certainty (confirmed, may be affected,
 version unknown), file and line, and warnings such as unpinned actions or MCP servers. Warnings
 that alert when they appear (high severity, or their rule asks) are shown as `risk` with an `id`

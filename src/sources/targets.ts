@@ -1,5 +1,5 @@
 /** Which files each source reads, and whether they changed since the last scan. */
-import { statSync } from "node:fs";
+import { lstatSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { readRegularFile, sha256 } from "../fsutil.ts";
@@ -63,16 +63,55 @@ export function safeList(fn: () => string[]): string[] {
   }
 }
 
-/** Existing files of a kind for a target, and which extractors read each one. */
-export function filesFor(kind: SourceKind, target: SourceTarget): Map<string, SourceExtractor[]> {
-  const out = new Map<string, SourceExtractor[]>();
-  for (const ex of sourceExtractors(kind)) {
+/** The files of a scan, and how many existing ones were left out by MAX_SOURCE_FILES. */
+export class FileSet extends Map<string, SourceExtractor[]> {
+  dropped = 0;
+}
+
+/** Does an extractor want this file recorded as a link (it leaves the area it trusts)? */
+export function linksOut(file: string, target: SourceTarget, extractors: SourceExtractor[]): boolean {
+  return extractors.some((ex) => {
+    try {
+      return ex.linkOut?.(file, target) === true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * Existing files of a kind for a target, and which extractors read each one. The cap is fair:
+ * extractors take turns (a first one with many files, such as launch items, can't push the
+ * others' out), and what didn't fit is counted in `dropped`.
+ */
+export function filesFor(kind: SourceKind, target: SourceTarget): FileSet {
+  const out = new FileSet();
+  const lists = sourceExtractors(kind).map((ex) => {
+    const found: string[] = [];
     for (const f of safeList(() => ex.files(target))) {
-      if (out.size >= MAX_SOURCE_FILES && !out.has(f)) break;
-      if (!out.has(f) && !isFile(f)) continue;
-      out.set(f, [...(out.get(f) ?? []), ex]);
+      if (found.length >= MAX_SOURCE_FILES * 5) break; // beyond the cap only to count what is left out
+      if (isFile(f) || linksOut(f, target, [ex])) found.push(f);
+    }
+    return { ex, found };
+  });
+  // Who gets in: extractors take turns. The result keeps registration order, as before the cap.
+  const chosen = new Set<string>();
+  for (let i = 0; chosen.size < MAX_SOURCE_FILES; i++) {
+    const turn = lists.filter((l) => i < l.found.length);
+    if (turn.length === 0) break;
+    for (const { found } of turn) if (chosen.size < MAX_SOURCE_FILES) chosen.add(found[i]!);
+  }
+  const wanted = new Set<string>();
+  for (const { ex, found } of lists) {
+    for (const f of found) {
+      wanted.add(f);
+      if (!chosen.has(f)) continue;
+      const have = out.get(f);
+      if (!have) out.set(f, [ex]);
+      else if (!have.includes(ex)) have.push(ex);
     }
   }
+  out.dropped = wanted.size - out.size;
   return out;
 }
 
@@ -112,7 +151,25 @@ export function markerStates(kind: SourceKind, target: SourceTarget, files: stri
   return [...paths].slice(0, MAX_MARKERS).map((path) => ({ path, mtimeMs: mtimeOf(path) }));
 }
 
-export function fileState(path: string): { state: SourceFileState; text: string } | null {
+/** A file recorded as itself, never opened: the link's target text is what changes it. */
+function linkState(path: string): { state: SourceFileState; text: string } | null {
+  try {
+    const st = lstatSync(path);
+    let to: string;
+    try {
+      to = readlinkSync(path);
+    } catch {
+      to = realpathSync(path); // not a link itself but behind one
+    }
+    return { state: { path, size: 0, mtimeMs: st.mtimeMs, hash: sha256(`link:${to}`) }, text: "" };
+  } catch {
+    return null;
+  }
+}
+
+/** `asLink`: record the link, not what it leads to (see SourceExtractor.linkOut). */
+export function fileState(path: string, asLink = false): { state: SourceFileState; text: string } | null {
+  if (asLink) return linkState(path);
   const r = readRegularFile(path, MAX_SOURCE_BYTES);
   if (!r) return null;
   return { state: { path, size: r.stat.size, mtimeMs: r.stat.mtimeMs, hash: sha256(r.data) }, text: r.data.toString("utf8") };
@@ -123,9 +180,16 @@ export function sourceChanged(rec: SourceRecord | null, files: string[]): boolea
   if (!rec) return files.length > 0;
   if (rec.files.length !== files.length) return true;
   const known = new Map(rec.files.map((f) => [f.path, f]));
+  const all = sourceExtractors(rec.kind);
+  const target = { scope: rec.scope, root: rec.path };
   for (const path of files) {
     const prev = known.get(path);
     if (!prev) return true;
+    const by = Array.isArray(prev.by) ? all.filter((ex) => prev.by!.includes(ex.id)) : all;
+    if (linksOut(path, target, by)) {
+      if (fileState(path, true)?.state.hash !== prev.hash) return true;
+      continue;
+    }
     try {
       const st = statSync(path);
       if (st.mtimeMs === prev.mtimeMs && st.size === prev.size) continue;

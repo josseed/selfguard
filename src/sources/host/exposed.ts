@@ -6,7 +6,7 @@
 import { clean } from "../../sanitize.ts";
 import type { ExtractResult, SourceExtractor, SourceTarget } from "../types.ts";
 import { NONE } from "./fs.ts";
-import { listening } from "./listening.ts";
+import { listening, socketsDisabled } from "./listening.ts";
 import type { Listener } from "./sockets.ts";
 
 interface Risky {
@@ -37,7 +37,7 @@ export const RISKY_PORTS: ReadonlyMap<number, Risky> = new Map<number, Risky>([
 
 /**
  * Processes that are system or desktop daemons: they listen on all interfaces on purpose (or by
- * design) and aren't developer services. Skipped, except on an urgent port.
+ * design) and aren't developer services. Skipped, except on a risky port (RISKY_PORTS).
  */
 export const SYSTEM_PROCESSES: ReadonlySet<string> = new Set(
   [
@@ -63,7 +63,8 @@ export function exposureWarnings(listeners: Listener[]): Warning[] {
     if (!exposed(l)) continue;
     const proc = l.command ?? "";
     const risky = RISKY_PORTS.get(l.port);
-    if (isSystem(proc) && !risky?.urgent) continue;
+    // A risky port is never hidden behind a system-looking name (any binary can be called sharingd).
+    if (isSystem(proc) && !risky) continue;
     const who = proc ? clean(proc, 40) : "a process";
     const key = `${l.port}/${proc || "?"}`;
     if (out.has(key)) continue;
@@ -94,8 +95,11 @@ export function exposureWarnings(listeners: Listener[]): Warning[] {
 /** Listening sockets as warnings; none when they can't be read. Machine scope only. */
 function snapshot(target: SourceTarget): ExtractResult {
   if (target.scope !== "machine") return NONE;
+  // Off (SELFGUARD_NO_SOCKETS=1) or unsupported system: nothing to report, so old warnings resolve.
+  if (socketsDisabled()) return NONE;
   const sockets = listening();
-  // Unreadable (lsof missing or timed out): throw, so the core keeps the last snapshot's warnings.
+  // Unreadable (lsof missing or timed out): throw, so the core keeps the last snapshot's warnings
+  // (for a week at most).
   if (!sockets) throw new Error("listening sockets unavailable");
   return { refs: [], warnings: exposureWarnings(sockets), skipped: 0 };
 }

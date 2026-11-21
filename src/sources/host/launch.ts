@@ -70,11 +70,27 @@ function fromIni(file: string, text: string, key: RegExp, ext: string): LaunchIt
   return { label: basename(file, ext), program: argv[0] ?? null, args: argv.slice(1), line: i + 1 };
 }
 
+/**
+ * Version managers install runtimes (and global npm packages) under a hidden folder of the home:
+ * a LaunchAgent running nvm's node, selfguard's own included, isn't hiding. Only their versions
+ * folders count, and a hidden name below them still does.
+ */
+const TOOLCHAINS = [".nvm/versions", ".volta/tools/image", ".local/share/fnm/node-versions", ".local/share/mise/installs", ".asdf/installs", ".pyenv/versions", ".rbenv/versions", ".bun/bin", ".deno/bin", ".cargo/bin"];
+
+/** How many leading segments of `path` are a toolchain folder of the home (0: none). */
+function toolchainDepth(path: string): number {
+  for (const t of TOOLCHAINS) {
+    const prefix = join(home(), t) + "/";
+    if (path.startsWith(prefix)) return prefix.split("/").filter(Boolean).length;
+  }
+  return 0;
+}
+
 /** Why a path is a suspicious place for a program; null when it isn't. */
 export function suspiciousPlace(path: string): string | null {
   if (!path.startsWith("/")) return null;
   if (TEMP_DIRS.some((re) => re.test(path))) return "lives in a temporary or shared folder";
-  const parts = path.split("/").filter(Boolean);
+  const parts = path.split("/").filter(Boolean).slice(toolchainDepth(path));
   if (parts.slice(0, -1).some((p) => p.startsWith(".") && p !== "." && p !== "..")) return "lives in a hidden folder";
   if (parts.at(-1)?.startsWith(".")) return "is a hidden file";
   if (parts.includes("Downloads")) return "lives in Downloads";

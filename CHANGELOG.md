@@ -38,6 +38,19 @@ All notable changes to this project are documented here. The format is based on
   `/proc/net/tcp` on Linux) during `sync` only, keeps just the port and process name, and tells
   you how to bind to 127.0.0.1. To support live state, source extractors can now provide an
   optional `snapshot()` (machine scope). `SELFGUARD_NO_SOCKETS=1` turns it off.
+- **Scan limits are visible.** When a source has more than 1000 warnings, the urgent and most
+  severe are kept and a low `truncated` warning says how many were dropped; when more than 200
+  files are found, each check gets a fair share and a `truncated` warning counts the rest.
+
+### Fixed
+
+- **A selfguard run on scratch state no longer rewrites your background agents.** `sync` with
+  `SELFGUARD_HOME` set (a dev build, the smoke test in CONTRIBUTING.md) replaced the lockfile
+  watcher with one running that build and watching the scratch state's paths. The agents always
+  run on the default state, so a custom `SELFGUARD_HOME` now leaves them alone.
+- **selfguard no longer flags its own agent when node comes from nvm.** A launch item running a
+  runtime from a version manager (`~/.nvm/versions`, volta, fnm, mise, asdf, pyenv…) was
+  "suspicious: lives in a hidden folder". Hidden names below those folders still are.
 
 ## [0.19.1] - 2026-11-20
 

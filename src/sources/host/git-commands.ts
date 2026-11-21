@@ -68,6 +68,39 @@ const STRONG: RegExp[] = [...FETCH_EXEC, /\bbase64\s+(?:-d|-D|--decode)\b/, /\/d
 /** In a program setting, also: any use of a downloader, inline code or a raw socket tool. */
 const LOOSE = /\b(?:curl|wget|base64|nc|ncat|socat|telnet|osascript)\b|(?:^|[\s;|&])(?:ba|z|da|k)?sh\s+-[a-z]*c\b|\b(?:python[\d.]*|perl|ruby|node)\s+-[a-zA-Z]*[ceE]\b/;
 
+const SSH_PROGRAMS = new Set(["ssh", "ssh.exe", "autossh", "plink", "plink.exe", "mosh", "tsh"]);
+const VIM_PROGRAMS = new Set(["vi", "vim", "nvim", "view", "gvim", "mvim", "vimr", "rvim"]);
+const EMACS_PROGRAMS = new Set(["emacs", "emacsclient"]);
+/** ssh options whose value is a command ssh runs. */
+const SSH_COMMAND_OPTION = /^\s*(?:proxycommand|localcommand|knownhostscommand)(?:\s*=|\s)/i;
+/** sed: the `e` flag of s/// runs the result as a command; the `e` command runs a command. */
+const SED_EXEC_FLAG = /s(.)(?:\\.|(?!\1)[^\\])*\1(?:\\.|(?!\1)[^\\])*\1[a-zA-Z]*e/s;
+const SED_ADDRESS = /^(?:(?:\d+|\$|\/(?:\\.|[^/\\])*\/)(?:,(?:\d+|\$|\/(?:\\.|[^/\\])*\/|\+\d+))?!?\s*)?/;
+
+/** Does a sed script contain the `e` command or the `e` flag? */
+function sedExecutes(script: string): boolean {
+  return SED_EXEC_FLAG.test(script) || script.split(/[;{}\n]/).some((part) => /^e(?:\s|$)/.test(part.trim().replace(SED_ADDRESS, "")));
+}
+
+/**
+ * Arguments that make an otherwise usual program run something else: ssh `-o ProxyCommand=…`
+ * (also LocalCommand, any case, `-oX=` or `-o X=`), sed's `e`, vim/nvim `-S`, `-c`, `+cmd`,
+ * `--cmd`, `-u` (a script or ex command at start), emacs `--eval`/`--load`.
+ */
+function runsViaArguments(segs: string[][]): boolean {
+  return segs.some((argv) => {
+    const name = basename(argv[0]!);
+    const args = argv.slice(1);
+    if (SSH_PROGRAMS.has(name)) {
+      return args.some((a, i) => SSH_COMMAND_OPTION.test(a === "-o" ? (args[i + 1] ?? "") : /^-o./.test(a) ? a.slice(2) : ""));
+    }
+    if (name === "sed") return args.some((a) => !a.startsWith("-") && sedExecutes(a)) || args.some((a) => /^--expression=/.test(a) && sedExecutes(a.slice(13)));
+    if (VIM_PROGRAMS.has(name)) return args.some((a) => /^(?:-[ScuUs]|--cmd(?:=|$))/.test(a) || /^\+(?!\d*$)/.test(a));
+    if (EMACS_PROGRAMS.has(name)) return args.some((a) => /^(?:--eval|--load|--funcall|--script|-l$|-f$|-x$)/.test(a));
+    return false;
+  });
+}
+
 /** A sanitized label for messages: a plain basename or a fixed phrase. */
 export function shownProgram(token: string | undefined): string {
   const name = token ? basename(token.replace(/^["'(]+|["')]+$/g, "")) : "";
@@ -127,6 +160,8 @@ export interface Assessment {
   fetches: boolean;
   /** Not one of the tools usual for the key. */
   unusual: boolean;
+  /** An allowed program whose arguments make it run something else (ssh ProxyCommand, sed e, vim -c…). */
+  viaArguments: boolean;
   /** Where the program lives is a temporary or shared folder (or a hidden one, for an unknown tool). */
   oddPlace: boolean;
   program: string;
@@ -141,13 +176,16 @@ export function assess(spec: Spec, entry: GitEntry): Assessment | null {
   const program = shownProgram(first);
   const fetches = STRONG.some((re) => re.test(value)) || (spec.mode === "tools" && LOOSE.test(value));
   const tempPlace = TEMP.test(value);
-  if (spec.mode === "shape") return fetches || tempPlace ? { fetches, unusual: true, oddPlace: tempPlace, program } : null;
+  if (spec.mode === "shape") return fetches || tempPlace ? { fetches, unusual: true, viaArguments: false, oddPlace: tempPlace, program } : null;
   const names = segs.map((s) => basename(s[0]!));
   const known = names.length > 0 && names.every((n) => spec.allowed.has(n)) && !/\$\(|\x60|[<>]\(|(?:^|\s)>/.test(value);
-  const hidden = segs.some((s) => s[0]!.includes("/") && HIDDEN_DIR.test(s[0]!));
-  const oddPlace = segs.some((s) => TEMP.test(s[0]!)) || (hidden && !known);
-  if (known && !fetches && !oddPlace) return null;
-  return { fetches, unusual: true, oddPlace, program };
+  const viaArguments = known && runsViaArguments(segs);
+  // Every token counts, not just the program: `vim -S ~/.cache/x.vim`, `ssh -o LocalCommand=/tmp/x`.
+  const tokens = segs.flat();
+  const hidden = tokens.some((t) => t.includes("/") && HIDDEN_DIR.test(t));
+  const oddPlace = tokens.some((t) => TEMP.test(t)) || (hidden && (!known || viaArguments));
+  if (known && !fetches && !oddPlace && !viaArguments) return null;
+  return { fetches, unusual: true, viaArguments, oddPlace, program };
 }
 
 /** The warning for a command-running key, or null when it is usual. */
@@ -165,7 +203,9 @@ export function commandWarning(e: GitEntry, scope: Scope, where: string): Warn |
       severity: a.fetches ? "high" : "moderate",
       message: a.fetches
         ? `${spec.key} (${where}) downloads or decodes code and runs it, in every repo. Remove it and check what put it there.`
-        : `${spec.key} (${where}) runs ${prog}, which is not a usual tool for it, in every repo. Remove it unless you put it there.`,
+        : a.viaArguments
+          ? `${spec.key} (${where}) runs ${prog} with arguments that make it run another program (ProxyCommand, -c, an e command…), in every repo. Remove it unless you put it there.`
+          : `${spec.key} (${where}) runs ${prog}, which is not a usual tool for it, in every repo. Remove it unless you put it there.`,
     };
   }
   return {
@@ -174,6 +214,8 @@ export function commandWarning(e: GitEntry, scope: Scope, where: string): Warn |
     severity: "high",
     message: a.fetches
       ? `${spec.key} in ${where} downloads or decodes code and runs it on normal git use. A clone can't ship this: something running on your machine planted it. Remove it and check what ran here.`
-      : `${spec.key} in ${where} runs ${prog}${a.oddPlace ? " from a temporary or hidden folder" : ""} on normal git use. A clone can't ship this: remove it unless you put it there.`,
+      : a.viaArguments
+        ? `${spec.key} in ${where} runs ${prog} with arguments that make it run another program (ProxyCommand, -c, an e command…)${a.oddPlace ? " from a temporary or hidden folder" : ""} on normal git use. A clone can't ship this: remove it unless you put it there.`
+        : `${spec.key} in ${where} runs ${prog}${a.oddPlace ? " from a temporary or hidden folder" : ""} on normal git use. A clone can't ship this: remove it unless you put it there.`,
   };
 }

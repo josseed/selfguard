@@ -11,7 +11,7 @@ import { NONE } from "./fs.ts";
 import { files, locate, markers, watch, type Profile } from "./extensions-browser-paths.ts";
 import { type BrowserExtension, extensionWarnings, type Warning } from "./extensions-browser-rules.ts";
 
-/** Extensions read per profile. */
+/** Extensions fully handled per profile (all of them are checked against the denylist first). */
 const MAX_EXTENSIONS = 150;
 const MAX_SMALL = 512 * 1024;
 
@@ -63,7 +63,6 @@ export function chromiumExtensions(profile: Profile, prefs: Obj): BrowserExtensi
   const out: BrowserExtension[] = [];
   let resolved = 0;
   for (const [id, raw] of Object.entries(settings)) {
-    if (out.length >= MAX_EXTENSIONS) break;
     if (!CHROMIUM_ID.test(id) || !isObj(raw)) continue;
     const location = typeof raw.location === "number" ? raw.location : null;
     // No location: a leftover record of a removed extension. Components ship with the browser.
@@ -97,7 +96,6 @@ const FIREFOX_BUILTIN = /^app-(builtin|system)/;
 export function firefoxExtensions(doc: Obj): BrowserExtension[] {
   const out: BrowserExtension[] = [];
   for (const raw of Array.isArray(doc.addons) ? doc.addons : []) {
-    if (out.length >= MAX_EXTENSIONS) break;
     if (!isObj(raw) || raw.type !== "extension" || typeof raw.id !== "string" || !FIREFOX_ID.test(raw.id)) continue;
     const location = str(raw.location, 40);
     if (FIREFOX_BUILTIN.test(location) || raw.hidden === true || raw.builtin === true) continue;
@@ -126,7 +124,11 @@ export function extractBrowserExtensions(file: string, text: string): ExtractRes
   const list = profile.family === "firefox" ? firefoxExtensions(doc) : chromiumExtensions(profile, doc);
   const warnings: Warning[] = [];
   const label = profile.family === "firefox" ? profile.dir.replace(/^[^.]+\./, "") : profile.dir;
-  for (const ext of list) warnings.push(...extensionWarnings(profile.browser, clean(label, 60), ext));
+  for (const [n, ext] of list.entries()) {
+    const found = extensionWarnings(profile.browser, clean(label, 60), ext);
+    // Past the limit only the denylist applies: a long list can't push a malicious one out.
+    warnings.push(...(n < MAX_EXTENSIONS ? found : found.filter((w) => w.rule === "malicious-browser-extension")));
+  }
   return { refs: [], warnings, skipped: 0 };
 }
 

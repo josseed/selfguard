@@ -67,17 +67,57 @@ export function insideRepo(path: string, root: string, d: GitDirs): string | nul
 }
 
 /**
- * The folders hooks run from: `<commondir>/hooks`, and `core.hooksPath` when it points inside
- * the work tree (husky's `.husky/_`, a tracked `.githooks`). Outside the repo is reported by the
- * config rules, not listed here.
+ * Does `path` lead outside the repo (the work tree and its git folders)? By its real location
+ * when it exists (a link counts), by its spelling when it doesn't.
  */
-export function hookDirs(root: string, d: GitDirs): string[] {
-  const out = [join(d.commondir, "hooks")];
+export function leavesRepo(path: string, root: string, d: GitDirs): boolean {
+  try {
+    realpathSync(path);
+  } catch {
+    return ![root, d.gitdir, d.commondir].some((r) => within(path, r));
+  }
+  return insideRepo(path, root, d) === null;
+}
+
+/** `core.hooksPath` values (resolved against the work tree) of the config files, last one wins per file. */
+function hooksPaths(root: string, d: GitDirs): string[] {
+  const out: string[] = [];
   for (const file of configFiles(d)) {
     const r = readRegularFile(file, 1024 * 1024, { nofollow: true, truncate: true });
     if (!r) continue;
     const e = parseGitConfig(r.data.toString("utf8")).filter((x) => x.section === "core" && x.key === "hookspath" && x.value).at(-1);
     if (e) out.push(resolveConfigPath(e.value, root));
   }
-  return [...new Set(out)].filter((p) => basename(p) !== "" && dirname(p) !== p && insideRepo(p, root, d) !== null);
+  return out;
 }
+
+const plain = (p: string): boolean => basename(p) !== "" && dirname(p) !== p;
+
+/**
+ * The folders hooks run from: `<commondir>/hooks`, and `core.hooksPath` when it points inside
+ * the work tree (husky's `.husky/_`, a tracked `.githooks`). A folder that exists but leads
+ * outside (a link to ~/.cache/x) is not listed: see hookLinks.
+ */
+export function hookDirs(root: string, d: GitDirs): string[] {
+  const out = [join(d.commondir, "hooks"), ...hooksPaths(root, d)];
+  return [...new Set(out)].filter((p) => plain(p) && insideRepo(p, root, d) !== null);
+}
+
+/** Hook folders that exist but resolve outside the repo: `.git/hooks` itself, and `core.hooksPath` ones. */
+export function hookLinks(root: string, d: GitDirs): Array<{ dir: string; via: "hooks" | "hooksPath" }> {
+  const main = join(d.commondir, "hooks");
+  const out: Array<{ dir: string; via: "hooks" | "hooksPath" }> = [];
+  const found = (p: string): boolean => plain(p) && isRealPath(p) && insideRepo(p, root, d) === null;
+  if (found(main)) out.push({ dir: main, via: "hooks" });
+  for (const p of new Set(hooksPaths(root, d))) if (p !== main && found(p)) out.push({ dir: p, via: "hooksPath" });
+  return out;
+}
+
+const isRealPath = (p: string): boolean => {
+  try {
+    realpathSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+};

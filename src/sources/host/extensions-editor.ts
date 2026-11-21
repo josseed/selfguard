@@ -29,9 +29,14 @@ const EDITORS: Array<{ dir: string; name: string }> = [
   { dir: ".antigravity", name: "Antigravity" },
 ];
 
-/** Entries read per extensions.json, and total code scanned per extractor call. */
+/**
+ * Entries fully handled per extensions.json (every entry is checked against the denylist first),
+ * and the code scanned per extractor call, shared fairly: each extension gets its turn's share
+ * of what is left, never less than MIN_SHARE.
+ */
 export const MAX_EXTENSIONS = 400;
 export const MAX_SCAN_BYTES = 64 * 1024 * 1024;
+const MIN_SHARE = 128 * 1024;
 const ID = /^[a-z0-9][a-z0-9-]{0,99}\.[a-z0-9][a-z0-9._-]{0,99}$/i;
 const VERSION = /^[0-9a-z][0-9a-z.+_-]{0,63}$/i;
 
@@ -55,7 +60,7 @@ function entries(text: string): Entry[] {
   }
   if (!Array.isArray(list)) return [];
   const out: Entry[] = [];
-  for (const raw of list.slice(0, MAX_EXTENSIONS)) {
+  for (const raw of list) {
     if (!isObject(raw) || !isObject(raw.identifier)) continue;
     const id = raw.identifier.id;
     if (typeof id !== "string" || !ID.test(id)) continue;
@@ -81,15 +86,19 @@ export function extractEditorExtensions(file: string, text: string): ExtractResu
     const k = `${w.rule}|${w.key}`;
     if (!seen.has(k)) (seen.add(k), warnings.push({ ...w, line: 0, notify: true }));
   };
-  for (const e of entries(text)) {
+  const all = entries(text);
+  let left = Math.min(all.length, MAX_EXTENSIONS);
+  for (const [n, e] of all.entries()) {
     const key = e.id.toLowerCase();
     const who = `"${clean(e.id, 200)}" ${clean(e.version, 64)} in ${editor}`;
     if (deniedExtension(e.id, e.version)) {
       add({ rule: "malicious-extension", severity: "high", key, urgent: true, message: `Extension ${who} was publicly reported as malicious or compromised. Uninstall it and rotate the secrets on this machine.` });
     }
+    if (n >= MAX_EXTENSIONS) continue; // past the limit only the denylist applies
     const dir = extensionFolder(root, e.folder);
-    if (dir && budget > 0) {
-      const scan = scanExtensionCode(dir, budget);
+    const share = Math.max(MIN_SHARE, Math.floor(budget / left--));
+    if (dir) {
+      const scan = scanExtensionCode(dir, share);
       budget -= scan.bytes;
       if (scan.problems.length) {
         add({ rule: "hidden-unicode", severity: "high", key, urgent: true, message: `Extension ${who} hides ${scan.problems.join(" and ")} in its code (the GlassWorm technique). Uninstall it and rotate the secrets on this machine.` });

@@ -17,14 +17,23 @@ const MAX_PROC_BYTES = 4 * 1024 * 1024;
 
 export type ListeningReader = () => Listener[] | null;
 
+/**
+ * What a failed lsof run still tells: it exits 1 when some file or process couldn't be
+ * inspected (or when it finds nothing), and its output, if any, is still an answer.
+ */
+export function lsofFailure(err: unknown): Listener[] | null {
+  const e = err as { status?: number; stdout?: unknown };
+  if (e?.status !== 1) return null;
+  const out = typeof e.stdout === "string" ? e.stdout : Buffer.isBuffer(e.stdout) ? e.stdout.toString("utf8") : "";
+  return parseLsof(out);
+}
+
 function lsofListeners(): Listener[] | null {
   try {
     const out = execFileSync(LSOF, LSOF_ARGS, { encoding: "utf8", timeout: 3000, maxBuffer: 4 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
     return parseLsof(out);
   } catch (err) {
-    // lsof exits 1 when it finds nothing: its (empty) output is still an answer.
-    const e = err as { status?: number; stdout?: unknown };
-    return e.status === 1 && !e.stdout ? [] : null;
+    return lsofFailure(err);
   }
 }
 
@@ -84,6 +93,10 @@ const system: ListeningReader = () => {
 };
 
 let reader: ListeningReader = system;
+
+/** Turned off (SELFGUARD_NO_SOCKETS=1) or no reader for this system: not a failure, just nothing to see. */
+export const socketsDisabled = (): boolean =>
+  reader === system && (process.env.SELFGUARD_NO_SOCKETS === "1" || (process.platform !== "darwin" && process.platform !== "linux"));
 
 /** Listening sockets now; null when they can't be read (unsupported system, lsof missing). */
 export const listening = (): Listener[] | null => reader();

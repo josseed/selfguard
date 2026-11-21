@@ -16,6 +16,7 @@ export interface Listener {
   command?: string;
 }
 
+/** Cap on listeners that can be reached from the network: loopback ones never count (they are never reported). */
 const MAX_LISTENERS = 2000;
 
 function reach4(o: number[]): Reach {
@@ -91,15 +92,19 @@ export function commandName(raw: string): string | undefined {
 export function parseLsof(out: string): Listener[] {
   const list: Listener[] = [];
   let command: string | undefined;
+  let reachable = 0;
   for (const line of out.split("\n")) {
-    if (list.length >= MAX_LISTENERS) break;
+    if (reachable >= MAX_LISTENERS) break;
     const tag = line[0];
     const value = line.slice(1);
     if (tag === "p") command = undefined;
     else if (tag === "c") command = commandName(value);
     else if (tag === "n") {
       const s = parseLsofName(value);
-      if (s) list.push({ ...s, ...(command ? { command } : {}) });
+      if (s) {
+        list.push({ ...s, ...(command ? { command } : {}) });
+        if (s.reach !== "loopback") reachable++;
+      }
     }
   }
   return list;
@@ -118,13 +123,16 @@ function procReach(hex: string): Reach | null {
 /** Listening sockets of a /proc/net/tcp or tcp6 file (state 0A), with their socket inode. */
 export function parseProcNet(text: string): Array<{ port: number; reach: Reach; inode: string }> {
   const out: Array<{ port: number; reach: Reach; inode: string }> = [];
+  let reachable = 0;
   for (const line of text.split("\n").slice(1)) {
     const f = line.trim().split(/\s+/);
     if (f.length < 10 || f[3] !== "0A") continue;
     const [addr, hexPort] = (f[1] ?? "").split(":");
     const port = parseInt(hexPort ?? "", 16);
     const reach = procReach(addr ?? "");
-    if (reach && port > 0 && port < 65536 && out.length < MAX_LISTENERS) out.push({ port, reach, inode: f[9]! });
+    if (!reach || port <= 0 || port >= 65536 || reachable >= MAX_LISTENERS) continue;
+    out.push({ port, reach, inode: f[9]! });
+    if (reach !== "loopback") reachable++;
   }
   return out;
 }

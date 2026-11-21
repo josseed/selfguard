@@ -10,8 +10,8 @@
 import { basename } from "node:path";
 import type { ExtractResult, SourceWarning } from "../types.ts";
 import { commandWarning, safeName } from "./git-commands.ts";
-import { parseGitConfig, resolveConfigPath, within } from "./git-config.ts";
-import { gitDirs } from "./git-dirs.ts";
+import { parseGitConfig, resolveConfigPath } from "./git-config.ts";
+import { gitDirs, leavesRepo } from "./git-dirs.ts";
 import { includeWarning, isIncludeEntry } from "./git-include.ts";
 import { NONE } from "./fs.ts";
 
@@ -28,15 +28,16 @@ export function extractRepoConfig(file: string, text: string, root: string): Ext
       const w = includeWarning(e, { base: d.commondir, label, repo: { gitDirs: [d.gitdir, d.commondir], root } });
       if (w) out.push(w);
     } else if (e.section === "core" && e.key === "hookspath" && e.value) {
-      // Inside the repo it is what husky and friends set: the hooks themselves are checked.
-      if (!within(resolveConfigPath(e.value, root), root)) {
+      // Inside the repo it is what husky and friends set: the hooks themselves are checked. A
+      // tracked link that leads outside (.githooks -> /tmp/payload) is outside.
+      if (leavesRepo(resolveConfigPath(e.value, root), root, d)) {
         out.push({
           rule: "git-hooks-path",
           severity: "moderate",
           notify: true,
           key: "core.hooksPath",
           line: e.line,
-          message: `core.hooksPath in ${label} points outside the repo: whatever is in that folder runs on every commit, checkout or push here. Remove it unless you put it there.`,
+          message: `core.hooksPath in ${label} points outside the repo (or to a link that leaves it): whatever is in that folder runs on every commit, checkout or push here. Remove it unless you put it there.`,
         });
       }
     } else {
