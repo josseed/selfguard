@@ -251,6 +251,47 @@ Not covered: extension *updates* are not diffed (a hijacked update is caught onl
 version are in the denylist), Safari, Windows, extensions installed by policy are listed but not
 judged, and the denylist is only as current as the release.
 
+## Exposed local services
+
+A developer service that listens on all interfaces (`0.0.0.0`, `::`) or on a LAN address, not on
+`127.0.0.1`/`::1`, can be reached by anyone on the same Wi-Fi (and, for some, by a web page through
+DNS rebinding). Real cases: the MCP Inspector RCE (CVE-2025-49596, ports 6274/6277), Ollama
+(11434) left open, Chrome/Electron remote debugging (9222, full browser takeover), the Node.js
+inspector (9229, code execution), Jupyter, Docker's API without TLS (2375).
+
+| | |
+| --- | --- |
+| macOS | `/usr/sbin/lsof -nP -iTCP -sTCP:LISTEN +c 0 -F pcn` (machine-readable: pid, command, address; chosen over `netstat -anv`, which doesn't give the command reliably). It only sees your own user's processes, which is what you run. |
+| Linux | `/proc/net/tcp` and `/proc/net/tcp6` (state `0A`); process names from `/proc/<pid>/fd` and `comm` for the processes you may read (at most 600 processes, 512 descriptors each). |
+
+`lsof` is run with an absolute path, fixed arguments, a 3 s timeout and a 4 MB output cap; nothing
+from a project is executed. Only the port, the process's basename and the *kind* of address
+(loopback, all interfaces, LAN, tailnet) are kept: never an address, and never a peer. Tailscale
+addresses (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) count as private: that network is
+authenticated (selfguard's own share server listens there). `SELFGUARD_NO_SOCKETS=1` turns the
+check off.
+
+| Rule | Severity | When |
+| --- | --- | --- |
+| `exposed-dev-service` | high, N (urgent for 9222, 9229, 6277, 2375) | A known risky port on a non-loopback address: 9222 Chrome/Electron debugging, 9229 Node inspector, 6277 MCP Inspector proxy, 6274 MCP Inspector, 2375 Docker API, 11434 Ollama, 8888 Jupyter, 8265 Ray dashboard, 6379 Redis, 5432 PostgreSQL, 3306 MySQL, 27017 MongoDB, 9200 Elasticsearch, 11211 memcached. Any process name. Keyed by `port/process`. |
+| `exposed-local-service` | low | Another developer process on all interfaces or a LAN address: `node`, `bun`, `deno`, `python*`, `uvicorn`, `gunicorn`, `ruby`, `puma`, `java`, `php`, `ollama`, `jupyter*`, `ray*`, `vite`, `webpack`, `docker-proxy`… A vite or webpack dev server started with `--host` shows up here. |
+
+The message names the process and port, what it is, and how to bind it to 127.0.0.1 (for example
+`OLLAMA_HOST=127.0.0.1`, `--inspect=127.0.0.1:9229`, `bind 127.0.0.1 -::1` in redis.conf).
+
+Left alone: loopback listeners, and system or desktop daemons (`launchd`, `rapportd`,
+`ControlCenter`, `sharingd`, `identityservicesd`, `AirPlay*`, `mDNSResponder`, `netbiosd`, `cupsd`,
+`sshd`, `smbd`, `systemd*`, `avahi-daemon`, `tailscaled`, and a few more; `SYSTEM_PROCESSES` in
+`src/sources/host/exposed.ts`), except on the four urgent ports, so a process can't hide there
+under a system name. Unknown processes on ordinary ports are not reported.
+
+Unlike files, this is a live snapshot, taken **only by `selfguard sync` (and the scheduled
+sync)**, at most once per sync (about 50 ms; 3 s at worst). `check` and the watcher never run it:
+they keep the last snapshot's warnings, so a service stopped between syncs is noticed at the next
+sync, and a failed `lsof` keeps the last result instead of reporting everything as fixed. The
+first sync is the baseline: only urgent exposures are news then. After an upgrade, new rules
+start from a baseline too.
+
 ## What is never read or sent
 
 - Credential values, command lines and shell lines are never stored, printed, logged, returned
