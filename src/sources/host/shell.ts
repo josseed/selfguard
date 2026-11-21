@@ -15,7 +15,7 @@ const INTERP = String.raw`(?:sudo\s+)?(?:\S*/)?(?:python[\d.]*|perl|ruby|node)\b
 const FETCH = String.raw`\b(?:curl|wget)\b`;
 
 /** Remote code run at startup: download piped to a shell, eval/source of a download, decoded payloads. */
-const FETCH_EXEC: RegExp[] = [
+export const FETCH_EXEC: RegExp[] = [
   new RegExp(String.raw`${FETCH}[^|]*\|\s*(?:${SH}|${INTERP}|source\b)`),
   new RegExp(String.raw`\b(?:eval|source|\.)\s+["']?(?:\$\(|\(|\x60)\s*${FETCH}`),
   new RegExp(String.raw`\b(?:source|\.)\s+<\(\s*${FETCH}`),

@@ -21,6 +21,15 @@ All notable changes to this project are documented here. The format is based on
   `cookies` or `webRequestBlocking` on all sites) are moderate; every extension is announced
   once when it appears. Only ids, names, versions and permissions are read. See
   [docs/host.md](docs/host.md#browser-extensions).
+- **Git config and hooks check** (kind `host`). In each repo, selfguard now reads `.git/config`,
+  the hooks and `.gitmodules` as data (linked worktrees included, never running git) and warns
+  about settings that run a program on normal git use (`core.fsmonitor`, `core.sshCommand`,
+  pagers, filters, credential helpers, aliases...), includes pointing outside the repo, new hooks
+  (announced once after the baseline), hooks that download or decode code, and malicious
+  submodules (`ext::`/`fd::` transports, `..` or `.git` paths). The global gitconfig gets the same
+  command keys plus `include.path`, `url.<x>.insteadOf` redirects of github.com and registry
+  hosts, and `safe.directory = *`. Messages never carry the values. See
+  [docs/host.md](docs/host.md#git-config-and-hooks).
 
 ## [0.19.1] - 2026-11-20
 

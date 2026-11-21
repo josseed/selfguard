@@ -62,9 +62,73 @@ zoxide, fnm, mise, completions) don't fetch anything and aren't flagged.
 | `~/.config/pip/pip.conf`, `~/.pip/pip.conf`, `~/Library/Application Support/pip/pip.conf` | `pip-extra-index` | moderate, N | `extra-index-url` is set: a public package named like a private one can win (dependency confusion). |
 | same | `custom-registry` | moderate, N | `index-url` isn't pypi.org. |
 | `~/.gitconfig`, `~/.config/git/config` | `git-global-hooks` | moderate, N | `core.hooksPath`: those hooks run in every repo. |
-| same | `git-command-config` | moderate, N | `core.sshCommand` runs something other than `ssh`, or `core.fsmonitor` is a command (not true/false). |
+| same | `git-command-config` | moderate, N (high and urgent when it downloads or decodes code) | A global setting that runs a program other than the usual tools, see [Git config and hooks](#git-config-and-hooks). |
+| same | `git-config-include`, `git-url-rewrite`, `git-safe-directory` | moderate N, moderate N, low | See below. |
 
 Messages name a registry's host only (URLs can embed credentials).
+
+## Git config and hooks
+
+A cloned repo can't ship `.git/config` or `.git/hooks`, but malware already running on the
+machine (a postinstall, a stealer) can plant them, and they run on normal git use: persistence
+that survives deleting `node_modules`. `.gitmodules` *is* part of a repo, so a malicious one
+arrives with the clone (the CVE-2024-32002 family). selfguard reads, as data and never through
+git, per repo: `.git/config` (and a worktree's `config.worktree`), the hooks, and `.gitmodules`.
+Linked worktrees and submodules (`.git` is a file `gitdir: ...`) are followed only into
+`.git/worktrees/...` or `.git/modules/...`, and `commondir` only to a `.git` folder; a pointer
+anywhere else is ignored. Messages name the key and at most a sanitized program name, never the
+value (it may hold a token) and never a URL.
+
+Repo scope:
+
+| Rule | Severity | When |
+| --- | --- | --- |
+| `git-config-command` | high, N (urgent: see below) | `.git/config` sets a key that runs a program other than the usual tools for it. Key = the config key (`core.pager`, `filter.x.clean`...). |
+| `git-config-include` | moderate N (low inside the repo) | `include.path` / `includeIf.*.path` pointing outside `.git`: outside the repo or in a temporary or shared folder is moderate; a file inside the work tree (`../.gitconfig`) is low and silent. |
+| `git-hooks-path` | moderate, N | `core.hooksPath` in `.git/config` points outside the repo. Inside the repo (husky's `.husky/_`) is fine: those hooks are read like `.git/hooks`. |
+| `git-hook` | low, N | An executable, non-`.sample` hook with a known git hook name in `.git/hooks` (or the in-repo `core.hooksPath` folder), or a hook that is a link out of the repo. Key = hook name. |
+| `suspicious-git-hook` | high, urgent | A hook line that pipes a download to a shell, evals or sources one, decodes base64 into a shell or interpreter, opens `/dev/tcp`, runs a file from `/tmp`, or is longer than 4000 characters; or a compiled hook in a folder whose other hooks are scripts. Comment lines are ignored. |
+| `suspicious-submodule` | high, N (urgent for `ext::`, `fd::` and a leading `-` in the URL) | `.gitmodules` URL using `ext::`, `fd::` or another `name::` transport, or starting with `-`; a path or a submodule name containing `..`, starting with `-`, absolute, or pointing into `.git` (case and NTFS spellings included). |
+
+What `git-config-command` looks at: `core.fsmonitor` (when not a boolean), `core.sshCommand`,
+`core.pager`, `core.editor`, `core.askPass`, `sequence.editor`, `diff.external`,
+`diff.<x>.textconv`/`command`, `merge.<x>.driver`, `filter.<x>.clean`/`smudge`/`process`,
+`credential.helper` (starting with `!`, or an absolute path), `gpg.program` and
+`gpg.<x>.program`, `uploadpack.packObjectsHook`, and aliases starting with `!`.
+
+**Allowlist** (the program's basename, every command of a pipeline): editors (vim, nvim, emacs,
+nano, code, cursor, subl, zed, JetBrains launchers...), pagers (less, bat, delta, diff-so-fancy,
+cat...), `ssh`/`autossh`/`plink` for `core.sshCommand`, `*askpass*` programs, `gpg`/`gpg2`/
+`gpgsm`/`smimesign`/`ssh-keygen`/`op-ssh-sign` for the gpg keys, `git-lfs`/`git-crypt`/
+`git-annex`/`cat`/`sed`/`tr`/`iconv` for filters (a normal lfs setup is silent), difftastic and
+friends for `diff.external`, common converters (exiftool, pdftotext, jq, plutil...) for
+`textconv`, `mergiraf`/`npm-merge-driver` for merge drivers, `watchman`-style hooks for
+`core.fsmonitor`, and `git-credential-*` helpers. Aliases and `!` credential helpers are free-form
+shell, so only their shape is judged: they are flagged only for the fetch-and-run shapes below or
+a program in a temporary folder. A hidden folder alone (`~/.cargo/bin/delta`) doesn't make a
+known tool unusual.
+
+**Urgent** (alerts on the first check and in inactive repos, like a malicious package): the value
+downloads or decodes code (`curl`/`wget`, `base64 -d`, `sh -c`, inline `python -c`, `osascript`,
+`/dev/tcp`; a download piped to a shell anywhere, aliases included), runs a program from `/tmp`,
+`/var/tmp`, `/Users/Shared` or Downloads, or runs an unknown program from a hidden folder.
+
+**Hooks and noise.** husky, lefthook and pre-commit install hooks into `.git/hooks` (or
+`.husky/_`) on setup: with the baseline, the first check of a repo announces nothing, and each
+new hook after that is announced once (low). Expect one notice after you add one of those tools
+to a repo you already track, or when `pre-commit install` runs. A hook file that isn't
+executable is ignored (git skips it); a `chmod +x` alone isn't noticed until the file changes.
+Only the known hook names are read, one level, regular files or links, 100 per folder, 256 KB of
+text each; hooks named like husky's `h` helper are never listed.
+
+Machine scope (`~/.gitconfig`, `~/.config/git/config`), in addition to `git-global-hooks`:
+
+| Rule | Severity | When |
+| --- | --- | --- |
+| `git-command-config` | moderate, N; high and urgent when it fetches or decodes code | The same command keys as above, same allowlists (`core.sshCommand` and `core.fsmonitor` were already covered). |
+| `git-config-include` | moderate, N | `include.path` / `includeIf.*.path` outside your home folder or in a temporary or shared folder (a profile under `~` is normal). |
+| `git-url-rewrite` | moderate, N | `url.<base>.insteadOf` / `pushInsteadOf` sends github.com, gitlab.com, bitbucket.org, ghcr.io or a package registry host to another host (same-host rewrites such as `https://` to `git@github.com:` are fine). The message names the two hosts only. |
+| `git-safe-directory` | low | `safe.directory = *`. |
 
 ## Plaintext credentials
 
@@ -206,9 +270,11 @@ judged, and the denylist is only as current as the release.
   scan and the folders new ones appear in (the launch item folders, the editors' `extensions` folders, site-packages folders and
   their parents); the watcher also wakes up when a launch item folder, a shell startup file,
   a package manager config or a site-packages folder (up to 20) changes. A rewrite of an already known, allowlisted `.pth` in place
-  is caught by check as a changed file.
+  is caught by check as a changed file. For git, check stats `.git/config`, `.gitmodules` and the
+  hooks folders (not `.git` itself, which changes on every git command).
 - The first check is the baseline: N warnings are news only when they appear afterwards, except
-  `malicious-looking-startup-hook`, `malicious-extension` and the extension `hidden-unicode`, which are
-  urgent and alert even on the first check.
+  `malicious-looking-startup-hook`, `malicious-extension`, `malicious-browser-extension`, the
+  extension `hidden-unicode`, `suspicious-git-hook`, `suspicious-submodule` (`ext::`, `fd::`,
+  leading `-`) and urgent `git-config-command` warnings, which alert even on the first check.
 
 `SELFGUARD_SYSTEM_ROOT` moves `/Library/…` under another folder (tests only).
