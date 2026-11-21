@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Editor extensions are checked** (`selfguard tools`, "This machine"): the extensions of
+  VS Code, Insiders, VSCodium, Cursor, Windsurf and a few forks, read from their
+  `extensions.json` without running anything. Urgent: an extension on a bundled list of publicly
+  reported malicious or compromised ones (GlassWorm, fake Solidity extensions, Nx Console
+  18.95.0), and hidden Unicode in an extension's entry point (the GlassWorm technique).
+  Also reported: extensions sideloaded from a `.vsix`, and every new extension once.
+
 ## [0.19.1] - 2026-11-20
 
 ### Fixed

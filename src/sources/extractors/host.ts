@@ -7,9 +7,10 @@
  */
 import { PACKAGE_CONFIG } from "../host/config.ts";
 import { PLAINTEXT_CREDENTIALS } from "../host/credentials.ts";
+import { EDITOR_EXTENSIONS } from "../host/extensions-editor.ts";
 import { LAUNCH_ITEMS } from "../host/launch.ts";
 import { PYTHON_STARTUP_HOOKS } from "../host/python.ts";
 import { SHELL_STARTUP } from "../host/shell.ts";
 import type { SourceExtractor } from "../types.ts";
 
-export const HOST_EXTRACTORS: SourceExtractor[] = [SHELL_STARTUP, PACKAGE_CONFIG, PLAINTEXT_CREDENTIALS, LAUNCH_ITEMS, PYTHON_STARTUP_HOOKS];
+export const HOST_EXTRACTORS: SourceExtractor[] = [SHELL_STARTUP, PACKAGE_CONFIG, PLAINTEXT_CREDENTIALS, LAUNCH_ITEMS, PYTHON_STARTUP_HOOKS, EDITOR_EXTENSIONS];

@@ -109,6 +109,38 @@ Repo virtualenv results are a per-repo record, shown with the repo (`selfguard t
 repo page). At most 40 hooks per site-packages folder and 100 environments per tool folder are
 read.
 
+## Editor extensions
+
+VS Code extensions run with your user's full rights, and attackers know it: **GlassWorm**
+(Open VSX and the VS Code Marketplace, October 2025 onwards) hid its loader in invisible Unicode
+inside extension code and spread through hijacked publishers; fake Solidity and crypto
+extensions dropped ScreenConnect and stealers; the **Nx Console 18.95.0** release (May 2026)
+stole GitHub tokens within minutes of being published.
+
+| Files read | |
+| --- | --- |
+| Lists | `extensions/extensions.json` in `~/.vscode`, `~/.vscode-insiders`, `~/.vscode-oss` (VSCodium), `~/.vscode-server`, `~/.cursor`, `~/.windsurf`, `~/.kiro`, `~/.antigravity` (macOS and Linux) |
+| Code | for each listed extension, the `main` and `browser` files named by its `package.json` |
+
+Everything is read as data: nothing is loaded, executed or fetched. Extensions installed behind
+the editor's back (not in `extensions.json`) are not listed.
+
+| Rule | Severity | When |
+| --- | --- | --- |
+| `malicious-extension` | high, urgent | The id (any case) is on the bundled list of publicly reported malicious or compromised extensions (`src/sources/host/extensions-editor-denylist.ts`, each group with its source URL). Some entries name only the compromised releases (Nx Console 18.95.0, the hijacked `oorzc.*` versions). The list has 50 ids: Datadog (MUT-9332), Checkmarx, Socket (GlassWorm clusters, hijacked publisher, activated April 2026 extensions), The Hacker News (first GlassWorm wave, Solidity Pro), the Nx postmortem and GHSA-c9j4-9m59-847w. Socket's unactivated "sleeper" extensions are left out. |
+| `hidden-unicode` | high, urgent | The entry point has Unicode tag characters, bidirectional controls, or invisible characters (zero-width, variation selectors) in long runs or encoding text, as `agentguard` judges them: emoji and scripts that need these characters are fine. |
+| `sideloaded-extension` | moderate, N | `extensions.json` says it was installed from a `.vsix` file or a URL, not a marketplace. |
+| `editor-extension` | low, N | Every extension except built-in ones, so a new one is announced once after the baseline. |
+
+All are keyed by the extension id, so an update of an extension (new version, new folder) is
+not news. Messages show the id (checked against a strict pattern), the version and the editor's
+name, never a path.
+
+Limits: 400 entries per `extensions.json`; entry points up to 5 MB each and 64 MB in total per
+check are scanned; a `main` that is absolute, uses `..`, is a symlink leading out of the
+extension's folder, or is not a regular file is ignored. The code is scanned when
+`extensions.json` changes (an install, update or removal), not on every check.
+
 ## What is never read or sent
 
 - Credential values, command lines and shell lines are never stored, printed, logged, returned
@@ -118,18 +150,19 @@ read.
   to notice changes, as for every source.
 - No network request: no OSV query is made for host checks.
 - Not read: Login Items added through System Settings (`SMAppService`/BTM database), cron jobs,
-  `/etc` files, Windows, browser extensions, keychains.
+  `/etc` files, Windows, browser extensions, JetBrains plugins, keychains.
 
 ## When they are checked
 
 - `selfguard sync` (and the scheduled sync): this machine's host record and every tracked
   repo's virtualenvs.
 - `selfguard check` and the watcher: only what changed. Check compares the files of the last
-  scan and the folders new ones appear in (the launch item folders, site-packages folders and
+  scan and the folders new ones appear in (the launch item folders, the editors' `extensions` folders, site-packages folders and
   their parents); the watcher also wakes up when a launch item folder, a shell startup file,
   a package manager config or a site-packages folder (up to 20) changes. A rewrite of an already known, allowlisted `.pth` in place
   is caught by check as a changed file.
 - The first check is the baseline: N warnings are news only when they appear afterwards, except
-  `malicious-looking-startup-hook`, which is urgent and alerts even on the first check.
+  `malicious-looking-startup-hook`, `malicious-extension` and the extension `hidden-unicode`, which are
+  urgent and alert even on the first check.
 
 `SELFGUARD_SYSTEM_ROOT` moves `/Library/…` under another folder (tests only).
