@@ -89,8 +89,10 @@ function toolchainDepth(path: string): number {
 /** Why a path is a suspicious place for a program; null when it isn't. */
 export function suspiciousPlace(path: string): string | null {
   if (!path.startsWith("/")) return null;
-  if (TEMP_DIRS.some((re) => re.test(path))) return "lives in a temporary or shared folder";
-  const parts = path.split("/").filter(Boolean).slice(toolchainDepth(path));
+  const toolchain = toolchainDepth(path);
+  // A path in the home folder is judged by where it sits in it, even if the home itself is in /tmp (tests).
+  if (!path.startsWith(home() + "/") && TEMP_DIRS.some((re) => re.test(path))) return "lives in a temporary or shared folder";
+  const parts = path.split("/").filter(Boolean).slice(toolchain);
   if (parts.slice(0, -1).some((p) => p.startsWith(".") && p !== "." && p !== "..")) return "lives in a hidden folder";
   if (parts.at(-1)?.startsWith(".")) return "is a hidden file";
   if (parts.includes("Downloads")) return "lives in Downloads";

@@ -30,16 +30,19 @@ interface Where {
 export function includeWarning(e: GitEntry, w: Where): Warn | null {
   const path = resolveConfigPath(e.value, w.base);
   if (!path) return null;
-  const temp = TEMP_PATH.test(path);
+  // A path in the repo or the home folder is judged by where it sits there, even when that folder
+  // itself is in a temporary one (a clone in /tmp, a test home).
+  const inside = within(path, w.repo ? w.repo.root : homedir());
+  const temp = !inside && !within(path, homedir()) && TEMP_PATH.test(path);
   const name = shownFile(basename(path));
   const setting = e.section === "include" ? "include.path" : "includeIf.path";
   const common = { rule: "git-config-include", key: `${setting} ${name}`, line: e.line };
   if (w.repo) {
     if (w.repo.gitDirs.some((d) => within(path, d))) return null;
-    if (!temp && within(path, w.repo.root)) {
+    if (inside) {
       return { ...common, severity: "low", message: `${setting} in ${w.label} loads settings from a file inside the repo (${name}). Its commands run on your git use: review that file.` };
     }
-  } else if (!temp && within(path, homedir())) return null;
+  } else if (inside) return null;
   const place = temp ? "a temporary or shared folder" : w.repo ? "outside the repo" : "outside your home folder";
   return {
     ...common,
