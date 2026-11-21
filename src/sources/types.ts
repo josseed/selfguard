@@ -138,6 +138,12 @@ export interface SourceRecord {
   warningsBy?: string;
 }
 
+/**
+ * The `file` of warnings an extractor's snapshot() returns: live state (listening sockets), not
+ * a file. Not a path; `check` keeps the last snapshot's warnings instead of taking a new one.
+ */
+export const SNAPSHOT_FILE = "(listening sockets)";
+
 /** What an extractor returns for one file. `file` is filled in by the core. */
 export interface ExtractResult {
   refs: Array<Omit<SourceRef, "file">>;
@@ -176,6 +182,13 @@ export interface SourceExtractor {
    * when one of them is an existing file; otherwise discovery waits for sync or scan.
    */
   probe?(target: SourceTarget): string[];
+  /**
+   * Machine scope only: warnings about live state that isn't a file (listening sockets). Taken
+   * by `sync` and `scan` (sourceInputs), never by `check` or the watcher, which keep the last
+   * snapshot's warnings. Same rules as extract(): read-only, sanitized by the core, never
+   * throws, fast (it runs inside the sync). Warnings get `file` = SNAPSHOT_FILE.
+   */
+  snapshot?(target: SourceTarget): ExtractResult;
   /** Extract references from one file's text. Must not throw on malformed input. */
   extract(file: string, text: string, target: SourceTarget): ExtractResult;
 }

@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Exposed local services** (kind `host`): selfguard warns when a developer service listens on
+  all interfaces or a LAN address instead of `127.0.0.1`: Chrome/Electron remote debugging
+  (9222), the Node.js inspector (9229), the MCP Inspector (6274/6277, CVE-2025-49596), Docker's
+  API (2375), Ollama, Jupyter, Redis, PostgreSQL and more (high; the takeover ones urgent), and
+  other dev servers such as `vite --host` (low). It reads the listening sockets (`lsof` on macOS,
+  `/proc/net/tcp` on Linux) during `sync` only, keeps just the port and process name, and tells
+  you how to bind to 127.0.0.1. To support live state, source extractors can now provide an
+  optional `snapshot()` (machine scope). `SELFGUARD_NO_SOCKETS=1` turns it off.
+
 ## [0.19.1] - 2026-11-20
 
 ### Fixed

@@ -13,7 +13,8 @@ import { loadSource } from "./store.ts";
 import { diffWarnings } from "./warnings.ts";
 import { VERSION } from "../version.ts";
 import { fileState, filesFor, markerStates, type SourceInput } from "./targets.ts";
-import type { ExtractResult, SourceFinding, SourceRecord, SourceRef, SourceWarning, UnknownKind } from "./types.ts";
+import { sourceExtractors } from "./registry.ts";
+import { SNAPSHOT_FILE, type ExtractResult, type SourceFinding, type SourceRecord, type SourceRef, type SourceWarning, type UnknownKind } from "./types.ts";
 
 export interface SourceOutcome {
   record: SourceRecord;
@@ -93,6 +94,30 @@ export function refsSignature(refs: SourceRef[]): string {
   return JSON.stringify([...new Set(keys)].sort());
 }
 
+/**
+ * Live state (SourceExtractor.snapshot): taken when the input asks for it (sync, scan). On
+ * `check`, or when a snapshot fails, the last snapshot's warnings are kept, so a partial
+ * re-read never "resolves" them.
+ */
+function addSnapshots(record: SourceRecord, previous: SourceRecord | null, input: SourceInput): void {
+  const room = (): boolean => record.warnings.length < MAX_WARNINGS;
+  const keep = (): void => {
+    for (const w of previous?.warnings ?? []) if (w.file === SNAPSHOT_FILE && room()) record.warnings.push(w);
+  };
+  if (!input.snapshot) return keep();
+  for (const ex of sourceExtractors(input.kind)) {
+    if (typeof ex.snapshot !== "function") continue;
+    try {
+      for (const w of ex.snapshot(input.target)?.warnings ?? []) {
+        const warning = cleanWarning(w, SNAPSHOT_FILE);
+        if (warning && room()) record.warnings.push(warning);
+      }
+    } catch {
+      keep();
+    }
+  }
+}
+
 function inventory(input: SourceInput, now: string): SourceInventory {
   const { kind, target } = input;
   const previous = loadSource(kind, target.scope, target.root);
@@ -132,6 +157,7 @@ function inventory(input: SourceInput, now: string): SourceInventory {
       if (typeof res?.skipped === "number" && Number.isSafeInteger(res.skipped) && res.skipped > 0) record.skipped += res.skipped;
     }
   }
+  addSnapshots(record, previous, input);
   const markers = markerStates(kind, target, record.files.map((f) => f.path));
   if (markers) record.markers = markers;
   return { record, previous };

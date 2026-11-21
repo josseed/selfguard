@@ -16,7 +16,13 @@ export interface SourceInput {
   target: SourceTarget;
   /** The files found by sourceInputs (and their extractors), so the scan doesn't walk again. */
   files?: Map<string, SourceExtractor[]>;
+  /** Take the extractors' snapshot() (live state): set by sync and scan, never by `check`. */
+  snapshot?: boolean;
 }
+
+/** Does this target have live state to read (a machine target and a snapshot() extractor)? */
+export const hasSnapshot = (kind: SourceKind, target: SourceTarget): boolean =>
+  target.scope === "machine" && sourceExtractors(kind).some((ex) => typeof ex.snapshot === "function");
 
 export const machineTarget = (): SourceTarget => ({ scope: "machine", root: homedir() });
 export const repoTarget = (root: string): SourceTarget => ({ scope: "repo", root });
@@ -145,9 +151,10 @@ export function sourceInputs(roots: string[], opts: { machine?: boolean; onlyCha
       const found = filesFor(kind, target);
       const files = [...found.keys()];
       const rec = loadSource(kind, target.scope, target.root);
-      if (files.length === 0 && !rec) continue;
+      const snapshot = !opts.onlyChanged && hasSnapshot(kind, target);
+      if (files.length === 0 && !rec && !snapshot) continue;
       if (opts.onlyChanged && !sourceChanged(rec, files)) continue;
-      out.push({ kind, target, files: found });
+      out.push({ kind, target, files: found, ...(snapshot ? { snapshot } : {}) });
     }
   }
   return out;
