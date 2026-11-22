@@ -10,46 +10,44 @@
 
 **A local-first guard for every repo on your machine, and for the machine itself.**
 
-selfguard keeps watching every JavaScript, Python, Rust and Go project you have checked out, and
-tells you when one of them is hit by a new vulnerability or a malicious package, even a repo you
-haven't opened in months. It also flags what supply-chain attacks leave behind on a developer
-machine: planted git hooks, malicious editor and browser extensions, launch agents, exposed dev
-services and tokens in plain text.
-
-<p align="center">
-  <img src="docs/images/summary.png" alt="selfguard dashboard: one malicious package and three critical ones across three repos that need attention" width="820">
-</p>
+- 📦 **Every repo's dependencies.** New vulnerabilities and malicious packages in npm, pnpm,
+  yarn, bun, uv, Poetry, Cargo and Go projects, even in repos you haven't opened in months.
+- 🤖 **CI and AI agents.** Compromised or unpinned GitHub Actions, MCP servers and repo settings
+  that make Claude, Cursor or Codex run code.
+- 💻 **This machine.** What supply-chain attacks leave behind: planted git hooks, malicious editor
+  and browser extensions, fake launch agents, exposed dev services, tokens in plain text.
+- 🔔 **It tells you on its own.** In the background, with one upgrade target per package, and
+  quiet about what isn't worth your time.
 
 ```sh
 npm install -g selfguard && selfguard setup
 ```
 
-Or get the **[Mac app](https://github.com/josseed/selfguard/releases/latest)**: menu bar, dashboard
-and notifications, with everything bundled. Nothing to configure in a terminal.
+Or get the **[Mac app](https://github.com/josseed/selfguard/releases/latest)**: menu bar,
+dashboard and notifications, everything bundled. Local-first: only package names and versions
+ever leave your machine.
 
-## What it watches
+## How it looks
 
-| | What | Examples |
-|---|---|---|
-| 📦 | **Dependencies** of every repo, worktree and clone | `npm`, `pnpm`, `yarn`, `bun`, `uv`, Poetry, Cargo, Go modules, checked against [OSV.dev](https://osv.dev) and its malicious-packages feed |
-| 🤖 | **CI and AI agents** | compromised or unpinned GitHub Actions, MCP servers in Claude, Cursor, VS Code, Codex and Gemini configs, repo settings that make an agent run code |
-| 💻 | **This machine** | suspicious launch agents, `curl \| sh` in shell startup files, `.pth` startup hooks, git hooks and config that run code, malicious or sideloaded extensions (GlassWorm, hijacked Chrome extensions), DevTools, Ollama or Jupyter listening on the network, tokens in plain text |
-| 🖥️ | **Your other machines** | other Macs over Tailscale, servers over SSH with a read-only reader |
+What needs attention across all your repos, at a glance:
+
+<p align="center">
+  <img src="docs/images/summary.png" alt="selfguard dashboard: one malicious package and three critical ones across three repos that need attention" width="820">
+</p>
+
+What to fix first: **one upgrade target** per package, not a wall of advisories, ranked by how
+serious it is and how many repos it affects:
 
 <p align="center">
   <img src="docs/images/fix-first.png" alt="Fix first: a malicious package to remove, then critical and high ones, each with the version to upgrade to" width="560">
 </p>
 
-Each vulnerable package gets **one upgrade target**, not a wall of advisories, ranked by how
-serious it is and how many repos it affects.
+Signs of an attack on this machine alert you right away, even on a fresh clone. Practices worth a
+look (a token in plain text, an unpinned MCP server) wait quietly in the dashboard:
 
 <p align="center">
   <img src="docs/images/this-machine.png" alt="This machine: a shell startup file that downloads code, a fake Apple launch agent and a known-malicious VS Code extension" width="780">
 </p>
-
-Signs of an attack (a hook that downloads code, a known-malicious extension, a package from the
-malicious feed) alert you right away, even on a fresh clone. Practices worth a look (a token in
-plain text, an unpinned MCP server) wait quietly in the dashboard.
 
 ### Meet Bastion
 
@@ -63,13 +61,15 @@ open, each alert arrives once, from him.
 
 ## Features
 
-- **It tells you on its own.** A watcher re-checks a repo seconds after its lockfile changes, a
+- **Always up to date.** A watcher re-checks a repo seconds after its lockfile changes, a
   scheduled sync catches new advisories, and a daily reminder lists what is still serious. You
   get a "✓ fixed" notification too.
 - **Signal over noise.** Only checkouts with recent git activity alert you. Old clones stay
   listed but quiet (except for malicious packages), and the first scan is a silent baseline.
 - **Hands-off.** `cd` into a project and it is registered and scanned. New clones in your code
   folders are picked up, and "Find my projects" searches your whole home folder.
+- **Your other machines too.** Other Macs over Tailscale, servers over SSH with a small
+  read-only reader. Worktrees and clones of a repo are grouped with their branches.
 - **Incident response.** `selfguard where <package>` answers "do I use this anywhere?".
 - **AI-ready.** A built-in MCP server, `--json` on every command, and a guide for agents.
 - **Safe by design.** It never runs code from your projects, has zero runtime dependencies, and
