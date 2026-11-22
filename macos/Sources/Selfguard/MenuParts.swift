@@ -107,7 +107,7 @@ struct Glass: NSViewRepresentable {
 }
 
 final class PanelBackground: NSView {
-    private var observer: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
 
     init() {
         super.init(frame: .zero)
@@ -136,8 +136,8 @@ final class PanelBackground: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let observer { NotificationCenter.default.removeObserver(observer) }
-        observer = nil
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
         guard let window else { return }
         if !window.styleMask.contains(.titled) {
             window.isOpaque = false
@@ -145,23 +145,31 @@ final class PanelBackground: NSView {
             wrapInGlass(window)
         }
         center(window)
-        DispatchQueue.main.async { [weak self] in
-            self?.fit()
-            if let window = self?.window { self?.center(window) }
-        }
-        observer = NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+        DispatchQueue.main.async { [weak self] in self?.fit() }
+        let center = NotificationCenter.default
+        // Opening: SwiftUI places the panel, then it goes under the icon.
+        observers.append(center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let window = self.window else { return }
                 self.center(window)
-                DispatchQueue.main.async { [weak self] in
-                    self?.fit()
-                    if let window = self?.window { self?.center(window) }
-                }
+                DispatchQueue.main.async { [weak self] in self?.fit() }
             }
-        }
+        })
+        // SwiftUI moves the open panel on its own (when its content changes, e.g. during a check):
+        // put it back.
+        observers.append(center.addObserver(forName: NSWindow.didMoveNotification, object: window, queue: .main) { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in self?.fit() }
+        })
+        // Closing (the panel closes when it stops being key): the next opening finds its place again.
+        observers.append(center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.top = nil
+                self?.iconX = nil
+            }
+        })
     }
 
-    deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
+    deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 
     /// This view is the panel content's background, so its size is the content's size.
     override func setFrameSize(_ newSize: NSSize) {
@@ -169,24 +177,34 @@ final class PanelBackground: NSView {
         DispatchQueue.main.async { [weak self] in self?.fit() }
     }
 
-    /// Keep the panel window as tall as its content, top edge fixed. Once the content sits inside
-    /// the glass view, SwiftUI grows the window when the content grows but never shrinks it back,
-    /// which left empty glass under the footer (e.g. after a notice was closed or the news went away).
+    /// Where the open panel goes: its top edge where it opened (just under the menu bar), and the
+    /// icon's middle as found when it opened (later the click that opened it is gone).
+    private var top: CGFloat?
+    private var iconX: CGFloat?
+
+    /// Keep the panel window as tall as its content, top edge fixed, and in place. Once the
+    /// content sits inside the glass view, SwiftUI grows the window when the content grows but
+    /// never shrinks it back (empty glass under the footer), and when it grows it, it also moves
+    /// it (e.g. when a check's result appears while the panel is open).
     private func fit() {
         guard let window, !window.styleMask.contains(.titled), bounds.width > 0, bounds.height > 0 else { return }
         let size = window.frameRect(forContentRect: NSRect(origin: .zero, size: bounds.size)).size
-        guard abs(window.frame.height - size.height) > 0.5 || abs(window.frame.width - size.width) > 0.5 else { return }
-        var frame = window.frame
-        frame.origin.y = frame.maxY - size.height
-        frame.size = size
-        window.setFrame(frame, display: true)
+        let top = self.top ?? window.frame.maxY
+        self.top = top
+        if abs(window.frame.height - size.height) > 0.5 || abs(window.frame.width - size.width) > 0.5 {
+            window.setContentSize(bounds.size)
+        }
+        // setFrameOrigin, not setFrame: SwiftUI's panel window puts setFrame's position straight back.
+        let origin = NSPoint(x: window.frame.minX, y: top - window.frame.height)
+        if abs(origin.y - window.frame.minY) > 0.5 { window.setFrameOrigin(origin) }
         center(window)
     }
 
     /// Under the icon's middle, kept on screen. Only for the menu bar panel (not the preview).
     private func center(_ window: NSWindow) {
         guard window.styleMask.contains(.titled) == false, let screen = window.screen ?? NSScreen.main,
-              let iconX = Self.iconMidX(near: window, on: screen) else { return }
+              let iconX = self.iconX ?? Self.iconMidX(near: window, on: screen) else { return }
+        self.iconX = iconX
         var frame = window.frame
         let visible = screen.visibleFrame
         frame.origin.x = min(max(iconX - frame.width / 2, visible.minX + 8), visible.maxX - frame.width - 8)
