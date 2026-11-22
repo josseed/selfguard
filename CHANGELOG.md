@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **The menu bar panel stays under its icon** on macOS 26. When a check finished while the panel
+  was open, the panel grew and jumped to the right. It now keeps its place until you close it.
+
 ## [0.20.0] - 2026-11-22
 
 ### Added
