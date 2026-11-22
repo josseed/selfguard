@@ -8,77 +8,73 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16958/badge)](https://www.bestpractices.dev/projects/16958)
 [![CodeQL](https://github.com/josseed/selfguard/actions/workflows/codeql.yml/badge.svg)](https://github.com/josseed/selfguard/actions/workflows/codeql.yml)
 
-**A local-first guard for the dependencies of every JavaScript, Python, Rust and Go repo on your machine.**
+**A local-first guard for every repo on your machine, and for the machine itself.**
 
-Most dependency scanners only check a project when you remember to run them, or only for repos
-hosted on a platform. selfguard tracks every project on your machine and checks their lockfiles
-against [OSV.dev](https://osv.dev). It tells you when one of them is affected by a new
-vulnerability or a malicious package, including repos you haven't opened in months.
+- 📦 **Every repo's dependencies.** New vulnerabilities and malicious packages in npm, pnpm,
+  yarn, bun, uv, Poetry, Cargo and Go projects, even in repos you haven't opened in months.
+- 🤖 **CI and AI agents.** Compromised or unpinned GitHub Actions, MCP servers and repo settings
+  that make Claude, Cursor or Codex run code.
+- 💻 **This machine.** What supply-chain attacks leave behind: planted git hooks, malicious editor
+  and browser extensions, fake launch agents, exposed dev services, tokens in plain text.
+- 🔔 **It tells you on its own.** In the background, with one upgrade target per package, and
+  quiet about what isn't worth your time.
 
-```text
-$ selfguard status
-CRITICAL acme/storefront  31 vulnerable pkg(s) on main · 82 on feat/checkout  3 checkouts
-   ├ main  31 vulnerable  ~/code/storefront
-   ├ fix/query-perf worktree  30 vulnerable  ~/code/storefront-query-perf
-   └ feat/checkout worktree  82 vulnerable  ~/code/storefront-feat-checkout
-HIGH     acme/payments-api  3 vulnerable pkg(s)  ~/code/payments-api
-✓        acme/docs-site  clean  ~/code/docs-site
+```sh
+npm install -g selfguard && selfguard setup
 ```
+
+Or get the **[Mac app](https://github.com/josseed/selfguard/releases/latest)**: menu bar,
+dashboard and notifications, everything bundled. Local-first: only package names and versions
+ever leave your machine.
+
+## How it looks
+
+What needs attention across all your repos, at a glance:
+
+<p align="center">
+  <img src="docs/images/summary.png" alt="selfguard dashboard: one malicious package and three critical ones across three repos that need attention" width="820">
+</p>
+
+What to fix first: **one upgrade target** per package, not a wall of advisories, ranked by how
+serious it is and how many repos it affects:
+
+<p align="center">
+  <img src="docs/images/fix-first.png" alt="Fix first: a malicious package to remove, then critical and high ones, each with the version to upgrade to" width="560">
+</p>
+
+Signs of an attack on this machine alert you right away, even on a fresh clone. Practices worth a
+look (a token in plain text, an unpinned MCP server) wait quietly in the dashboard:
+
+<p align="center">
+  <img src="docs/images/this-machine.png" alt="This machine: a shell startup file that downloads code, a fake Apple launch agent and a known-malicious VS Code extension" width="780">
+</p>
+
+### Meet Bastion
+
+<p align="center">
+  <img src="docs/images/bastion.png" alt="Bastion, a pixel-art castle guard: patrolling, sounding the horn, fighting a malicious package worm, and celebrating a fix" width="720">
+</p>
+
+A 16-bit castle guard acts out what changed: he patrols when all is clear, sounds the horn for
+a critical vulnerability, fights off a malicious package and celebrates your fixes. With the app
+open, each alert arrives once, from him.
 
 ## Features
 
-- **It tells you on its own.** A background watcher re-checks a repo seconds after its lockfile
-  changes (`git pull`, installs, merges), a scheduled sync catches newly published advisories,
-  and a daily reminder lists what is still open and serious. When you fix something, you get a
-  "✓ fixed" notification too.
-- **A dashboard, not just a terminal.** The Mac app shows every repo, what needs attention,
-  how to fix it, and a feed of what changed, in its own window (menu bar → Open Dashboard).
-  There is no web server and no browser involved. The npm CLI is terminal-only and complete on
-  its own: `selfguard status`, `report`, `--json`.
-- **Bastion, a guard who tells you.** A 16-bit castle guard, brought up to date, acts out what
-  changed on the dashboard and, in the Mac app, in a small panel: he sounds the horn for a
-  critical vulnerability, fights off a malicious package and celebrates your fixes. With the
-  app open, each alert arrives once, from him.
-- **Your other machines too.** Your other Macs connect over Tailscale with selfguard sharing.
-  You press Connect, check that both screens show the same code and approve it over there: no
-  SSH, no Remote Login, nothing listening outside your tailnet. Servers without selfguard use
-  SSH with a dedicated key that only runs a small read-only reader. The scan runs locally, and
-  alerts and the dashboard name the machine.
-- **Signal over noise.** Only checkouts with recent git activity alert you. Old clones and
-  abandoned worktrees stay listed but quiet (except for malicious packages), and a new worktree
-  of a known repo isn't reported as news.
-- **Hands-off.** `cd` into a project and it is registered and scanned in the background. New
-  clones in your code folders are picked up automatically.
-- **Finds your projects even if you don't keep them in one place.** "Find my projects" searches
-  your home folder and skips dependencies, caches, cloud drives and copies. It finds agent
-  worktrees through their repos and proposes a few folders to watch. A weekly pass picks up new
-  ones on its own.
-- **Malicious packages first.** OSV includes the OpenSSF malicious-packages feed (`MAL-*`).
-  Compromised releases, like the Shai-Hulud npm worm, outrank any CVE and open a dialog that
-  stays on screen until you dismiss it.
-- **Actionable output.** One upgrade target per vulnerable package ("upgrade lodash to 4.18.0"),
-  not a wall of advisories.
-- **JavaScript, Python, Rust and Go.** npm, pnpm, yarn (classic and berry) and bun lockfiles,
-  `uv.lock` and `poetry.lock`, `Cargo.lock`, and `go.mod`. See
-  [supported ecosystems](docs/multi-ecosystem.md) for what each one covers.
-- **CI workflows and AI agent tools.** GitHub Actions used by your workflows (compromised
-  actions, unpinned references, script injection) and the MCP servers configured for Claude,
-  Cursor, VS Code, Codex and other agents, without ever reading their secrets. See
-  [CI workflows and agent tools](docs/ci-and-agent-tools.md).
-- **Persistence and exposed credentials on this machine.** New or suspicious launch items,
-  remote code in shell startup files, Python `.pth` startup hooks like the LiteLLM stealer's,
-  changed package registries, git config and hooks that run code (also planted in a repo's
-  `.git`), malicious or sideloaded editor and browser extensions (GlassWorm, hijacked Chrome
-  extensions), dev services such as Chrome DevTools, the Node inspector or Ollama listening
-  beyond localhost, AI agents aliased to skip their permission prompts, and tokens stored in
-  plain text (presence only, never the values). See
-  [This machine](docs/host.md).
-- **Repo-aware.** Git worktrees and clones of the same repo are grouped, each with its branch.
-- **Incident response.** `selfguard where <package>` answers "do I use this anywhere?" in one
-  command.
-- **AI-ready.** A built-in MCP server, `--json` output on every command, and a guide for agents.
-- **Safe by design.** It never executes code from your projects, has zero runtime dependencies,
-  and only sends package names and versions over the network.
+- **Always up to date.** A watcher re-checks a repo seconds after its lockfile changes, a
+  scheduled sync catches new advisories, and a daily reminder lists what is still serious. You
+  get a "✓ fixed" notification too.
+- **Signal over noise.** Only checkouts with recent git activity alert you. Old clones stay
+  listed but quiet (except for malicious packages), and the first scan is a silent baseline.
+- **Hands-off.** `cd` into a project and it is registered and scanned. New clones in your code
+  folders are picked up, and "Find my projects" searches your whole home folder.
+- **Your other machines too.** Other Macs over Tailscale, servers over SSH with a small
+  read-only reader. Worktrees and clones of a repo are grouped with their branches.
+- **Incident response.** `selfguard where <package>` answers "do I use this anywhere?".
+- **AI-ready.** A built-in MCP server, `--json` on every command, and a guide for agents.
+- **Safe by design.** It never runs code from your projects, has zero runtime dependencies, and
+  only sends package names and versions over the network. Releases are signed and come with an
+  SBOM you can [verify](docs/verify.md).
 
 ## Quick start
 
@@ -92,7 +88,7 @@ selfguard setup
 
 `setup` is a small terminal UI. Pick the folders where you keep your code, and selfguard scans
 them. It then offers to install the shell hook and background watching with notifications.
-You don't need the command line on a Mac: the selfguard app (below) bundles everything, asks
+You don't need the command line on a Mac: the selfguard app bundles everything, asks
 whether to watch in the background, and can add a `selfguard` terminal command that runs its
 engine (dashboard → Settings → This Mac → Terminal command).
 The dashboard is only in the selfguard Mac app (from the
@@ -109,6 +105,18 @@ selfguard only looks inside the folders you pick, nothing else on your disk.
   + add another folder…
 
 ↑/↓ move · space select · ←/→ depth · a add folder · enter continue · q quit
+```
+
+Then, from any terminal:
+
+```text
+$ selfguard status
+ MALICIOUS  acme/payments-api  1 vulnerable pkg(s)  ~/code/payments-api
+CRITICAL acme/storefront  6 vulnerable pkg(s) on main · 7 on feat/checkout  2 checkouts
+   ├ main  6 vulnerable  ~/code/storefront
+   └ feat/checkout worktree  7 vulnerable  ~/code/storefront-feat-checkout
+CRITICAL acme/ml-service  2 vulnerable pkg(s)  ~/code/ml-service
+✓        acme/docs-site  clean  ~/code/docs-site
 ```
 
 Or scan a single project without setting anything up:
