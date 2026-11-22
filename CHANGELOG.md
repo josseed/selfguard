@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-22
+
 ### Added
 
 - **Editor extensions are checked** (`selfguard tools`, "This machine"): the extensions of
@@ -715,7 +717,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.19.1...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/josseed/selfguard/compare/v0.19.1...v0.20.0
 [0.19.1]: https://github.com/josseed/selfguard/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/josseed/selfguard/compare/v0.18.2...v0.19.0
 [0.18.2]: https://github.com/josseed/selfguard/compare/v0.18.1...v0.18.2
