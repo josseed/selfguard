@@ -17,7 +17,7 @@ machine: planted git hooks, malicious editor and browser extensions, launch agen
 services and tokens in plain text.
 
 <p align="center">
-  <img src="docs/images/dashboard-overview.png" alt="selfguard dashboard: 3 repos need attention, a malicious package, critical vulnerabilities and what to fix first" width="900">
+  <img src="docs/images/summary.png" alt="selfguard dashboard: one malicious package and three critical ones across three repos that need attention" width="820">
 </p>
 
 ```sh
@@ -37,14 +37,14 @@ and notifications, with everything bundled. Nothing to configure in a terminal.
 | 🖥️ | **Your other machines** | other Macs over Tailscale, servers over SSH with a read-only reader |
 
 <p align="center">
-  <img src="docs/images/dashboard-repo.png" alt="A repo in the dashboard: vulnerable packages with severity, one upgrade target each, and the branches they're on" width="820">
+  <img src="docs/images/fix-first.png" alt="Fix first: a malicious package to remove, then critical and high ones, each with the version to upgrade to" width="560">
 </p>
 
-Each vulnerable package gets **one upgrade target**, not a wall of advisories, and worktrees and
-clones of the same repo are grouped with their branches.
+Each vulnerable package gets **one upgrade target**, not a wall of advisories, ranked by how
+serious it is and how many repos it affects.
 
 <p align="center">
-  <img src="docs/images/dashboard-this-machine.png" alt="The This machine card: a shell file that downloads code, a fake Apple launch agent, a known-malicious VS Code extension and an npm token in plain text" width="820">
+  <img src="docs/images/this-machine.png" alt="This machine: a shell startup file that downloads code, a fake Apple launch agent and a known-malicious VS Code extension" width="780">
 </p>
 
 Signs of an attack (a hook that downloads code, a known-malicious extension, a package from the
