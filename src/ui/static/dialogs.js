@@ -9,9 +9,10 @@ import { refresh } from "./app.js";
 
 /**
  * Folder browser. Default: this machine. With `machine`, it browses that machine over SSH
- * (folder names only) and adds the folder to it.
+ * (folder names only) and adds the folder to it. With `onPick(path, depth)` (this machine only),
+ * the chosen folder goes to it instead of being added right away (the setup page).
  */
-export function openFolderPicker(machine) {
+export function openFolderPicker(machine, onPick) {
   const modal = $("modal");
   let current = null;
   let depth = 5;
@@ -50,6 +51,7 @@ export function openFolderPicker(machine) {
     const target = current;
     close();
     if (machine) await addMachineFolder(machine, target, depth);
+    else if (onPick) await onPick(target, depth);
     else await addFolder(target, depth);
   }));
 

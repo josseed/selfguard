@@ -11,7 +11,7 @@ const out = process.argv[2] || "/tmp/sg-proto/shots";
 const port = 4790 + Math.floor(Math.random() * 200);
 const PAGES = {
   overview: "#/", repos: "#/repos", repo: "#/repo/web", packages: "#/packages", activity: "#/activity",
-  folders: "#/folders", machines: "#/machines", settings: "#/settings",
+  folders: "#/folders", machines: "#/machines", settings: "#/settings", welcome: "#/welcome",
 };
 const only = process.argv.slice(3);
 

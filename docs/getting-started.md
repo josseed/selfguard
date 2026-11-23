@@ -81,6 +81,22 @@ Only **active** checkouts (git activity in the last 30 days) alert you; see
 The dashboard lives only in the selfguard Mac app ([download](https://github.com/josseed/selfguard/releases/latest)).
 It is the only visual part of selfguard: there is no web page and no server, and the npm CLI
 does not open it. In the terminal (and on Linux) use `selfguard status` and `selfguard report`.
+On first launch the app opens its **setup** in the dashboard window (you can open it again
+from the menu bar panel's **Set Up selfguard** while nothing is watched):
+
+1. **Where is your code?** Either **Find my projects** (searches your home folder and
+   pre-selects the places with recently active repos; unchecked places are excluded) or
+   **I'll choose the folders** (common code folders that exist on your Mac, plus any folder
+   you pick).
+2. **First check.** The projects found are registered and checked. This first check is a silent
+   baseline: from then on you hear about what changes.
+3. **Stay informed.** Background watching (on by default), the weekly search for new project
+   folders (on if you let selfguard find your projects), Bastion's alerts, open at login and
+   the terminal command.
+
+Until a folder is watched, the menu bar icon shows Bastion asleep and the panel says
+selfguard isn't watching any code yet, instead of zero counts.
+
 The dashboard shows:
 
 - **Overview**: whether anything needs attention, counts by severity, and **Fix first**: the

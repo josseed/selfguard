@@ -78,7 +78,7 @@ final class DashboardScheme: NSObject, WKURLSchemeHandler {
 
 /// Addresses inside the dashboard: `selfguard://dashboard/#/repo/<key>` or `#/<page>`.
 enum DashboardRoute {
-    static let pages = ["overview", "repos", "packages", "activity", "folders", "machines", "settings"]
+    static let pages = ["welcome", "overview", "repos", "packages", "activity", "folders", "machines", "settings"]
     private static let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 
     static func url(repo: String? = nil, page: String? = nil) -> URL {

@@ -33,6 +33,8 @@ test("GET /api/menubar returns the summary", async () => {
   assert.equal(m.moreRepos, 0);
   assert.deepEqual(Object.keys(m.update).sort(), ["available", "latest"]);
   assert.deepEqual(m.events, []);
+  assert.equal(m.roots, 0, "no watched folder yet: the app shows its setup");
+  assert.equal(m.trackedProjects, 0);
   const file = JSON.parse(readFileSync(join(process.env.SELFGUARD_HOME!, "menubar.json"), "utf8"));
   assert.equal(file.state, expected, "the endpoint also refreshes the file the app reads");
 });

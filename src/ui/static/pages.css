@@ -148,3 +148,21 @@ code { font-family: var(--mono); font-size: 11.5px; background: var(--fill); pad
 .kpi.bad .n { color: var(--critical-text); }
 .card-head .presets, .card-head .segmented { flex-wrap: nowrap; flex: none; }
 td.right + td:not(.right) { padding-left: 22px; }
+
+/* ---------- welcome (first-run setup) ---------- */
+.welcome { max-width: 760px; }
+.welcome-steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 22px; font-size: 12px; color: var(--text3); }
+.welcome-steps li { display: flex; align-items: center; gap: 7px; }
+.welcome-steps .n { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--fill); font: 600 11px/1 var(--rounded); }
+.welcome-steps li.current { color: var(--text); }
+.welcome-steps li.current .n { background: var(--accent); color: #fff; }
+.welcome-steps li.done { color: var(--text2); }
+.welcome-steps li.done .n { background: rgba(48, 209, 88, .2); color: var(--ok-text); }
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .choices { grid-template-columns: 1fr; } }
+.choice { text-align: left; font: inherit; color: inherit; background: var(--card); border: .5px solid var(--sep); border-radius: var(--radius); padding: 14px 16px; cursor: pointer; display: grid; gap: 6px; align-content: start; }
+.choice:hover, .choice:focus-visible { background: var(--card-hover); border-color: var(--accent); outline: none; }
+.choice p { margin: 0; color: var(--text2); line-height: 1.5; }
+.choice-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.welcome p.small svg { width: 13px; height: 13px; vertical-align: -2px; }
+.row-actions { display: flex; justify-content: flex-end; gap: 8px; }

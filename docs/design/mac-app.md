@@ -111,7 +111,9 @@ selfguard.app/Contents/
 - **Services follow the binary that installs them.** Because the plists are built from
   `process.execPath` + `cliEntry()`, running `setup` from the app points them to
   `/Applications/selfguard.app/Contents/Resources/engine/…`. Sparkle replaces the app in place,
-  so the paths stay valid across updates. On first launch the app offers to "adopt" the
+  so the paths stay valid across updates. On first launch with nothing watched, the app
+  opens the dashboard's setup page (`#/welcome`); background watching is turned on from its last
+  step, not from a dialog. With agents already set up by npm, it offers to "adopt" the
   existing services: same config and state in `~/.selfguard`, no migration.
 - **Terminal CLI**: "Install command line tool" links `/usr/local/bin/selfguard` (or
   `~/.local/bin`) to `engine/bin/selfguard`. If an npm global install also exists, the app and
