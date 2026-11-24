@@ -107,35 +107,56 @@ export async function discoverEverywhere(opts: EverywhereOptions = {}): Promise<
   let visited = 0;
   let lastProgress = 0;
 
-  /** One folder: record it if it's a project, then queue its subfolders. */
-  const visit = async (f: Frame): Promise<void> => {
-    if (seenDirs.has(f.dir)) return;
-    seenDirs.add(f.dir);
-    if (isExcluded(f.dir, exclude)) return;
-    if (f.zone && cutZones.has(f.zone)) return;
+  /** What reading one folder found: only I/O, nothing shared is touched while folders run in parallel. */
+  interface Read {
+    f: Frame;
+    entries: import("node:fs").Dirent[] | null;
+    /** Error code when the folder could not be read. */
+    code?: string;
+    /** Reachable worktrees of this folder's repo (a main clone lists its linked ones). */
+    worktrees: string[];
+  }
 
+  const read = async (f: Frame): Promise<Read> => {
+    const out: Read = { f, entries: null, worktrees: [] };
+    if (opts.isCancelled?.()) return out;
     // Don't wander onto other disks or network mounts that live inside the home.
     if (f.dir !== home) {
       try {
-        if ((await stat(f.dir)).dev !== homeDev) return;
+        if ((await stat(f.dir)).dev !== homeDev) return out;
       } catch {
-        return;
+        return out;
       }
     }
-    let entries: import("node:fs").Dirent[];
     try {
-      entries = await readdir(f.dir, { withFileTypes: true });
+      out.entries = await readdir(f.dir, { withFileTypes: true });
     } catch (e) {
-      const code = (e as NodeJS.ErrnoException).code;
+      out.code = (e as NodeJS.ErrnoException).code;
+      return out;
+    }
+    const dotgit = out.entries.find((e) => e.name === ".git");
+    if (dotgit?.isDirectory()) {
+      for (const wt of await worktreesOf(join(f.dir, ".git"))) {
+        if (!seenDirs.has(wt) && !isExcluded(wt, exclude) && (await reachable(wt))) out.worktrees.push(wt);
+      }
+    }
+    return out;
+  };
+
+  /**
+   * Record one folder read (if it's a project) and queue its subfolders. Runs one folder at a
+   * time, in frame order, so the result doesn't depend on which read finished first.
+   */
+  const apply = ({ f, entries, code, worktrees }: Read): void => {
+    if (!entries) {
       if ((code === "EPERM" || code === "EACCES") && denied.length < 200) denied.push(f.dir);
       return;
     }
+    if (f.zone && cutZones.has(f.zone)) return;
     visited++;
     if (f.zone) {
       const n = (zoneVisits.get(f.zone) ?? 0) + 1;
       zoneVisits.set(f.zone, n);
-      // Folders of the zone read in the same batch get here too: cut it (and report it) once.
-      if (cutZones.has(f.zone)) return;
       if (n > emptyBudget && !zoneFound.has(f.zone)) {
         cutZones.add(f.zone);
         heavy.push(join(home, f.zone));
@@ -156,14 +177,8 @@ export async function discoverEverywhere(opts: EverywhereOptions = {}): Promise<
       const rules = gitignoredNames(readSmall(join(f.dir, ".gitignore")) ?? "");
       ignore = new Set([...rules.anywhere]);
       for (const n of rules.atRoot) ignore.add(`/${n}`);
-      // A main clone lists its linked worktrees, wherever they are.
-      const dotgit = entries.find((e) => e.name === ".git");
-      if (dotgit?.isDirectory()) {
-        for (const wt of await worktreesOf(join(f.dir, ".git"))) {
-          if (!seenDirs.has(wt) && !isExcluded(wt, exclude) && (await reachable(wt))) {
-            stack.push({ dir: wt, zone: `worktree:${wt}`, repo: null, ignore: null, worktreeRoot: wt });
-          }
-        }
+      for (const wt of worktrees) {
+        if (!seenDirs.has(wt)) stack.push({ dir: wt, zone: `worktree:${wt}`, repo: null, ignore: null, worktreeRoot: wt });
       }
     }
 
@@ -204,19 +219,30 @@ export async function discoverEverywhere(opts: EverywhereOptions = {}): Promise<
   };
 
   // Depth-first keeps memory small and finishes one zone before the next. Folders are read a
-  // batch at a time from the top of the stack: one readdir after another left the disk idle
-  // (a home with 400k folders took a minute).
+  // batch at a time from the top of the stack (one readdir after another left the disk idle: a
+  // home with 400k folders took a minute) but applied in stack order, so a project reachable two
+  // ways (a worktree also under the home) is always decided by the same visit.
   const stack: Frame[] = [{ dir: home, zone: "", repo: null, ignore: null, worktreeRoot: null }];
   while (stack.length > 0) {
     if (opts.isCancelled?.() || visited >= maxDirs) break;
-    await Promise.all(stack.splice(Math.max(0, stack.length - CONCURRENCY)).map(visit));
+    // Never more folders than the budget left: the walk can't overshoot maxDirs.
+    const take = Math.min(CONCURRENCY, maxDirs - visited);
+    const batch = stack.splice(Math.max(0, stack.length - take)).reverse();
+    const todo: Frame[] = [];
+    for (const f of batch) {
+      if (seenDirs.has(f.dir)) continue;
+      seenDirs.add(f.dir);
+      if (isExcluded(f.dir, exclude) || (f.zone && cutZones.has(f.zone))) continue;
+      todo.push(f);
+    }
+    for (const r of await Promise.all(todo.map(read))) apply(r);
   }
 
   return {
     home,
     projects: [...projects.values()].sort((a, b) => a.root.localeCompare(b.root)),
-    heavy,
-    denied,
+    heavy: heavy.sort(),
+    denied: denied.sort(),
     skipped,
     visited,
     ms: Date.now() - started,

@@ -21,7 +21,10 @@ All notable changes to this project are documented here. The format is based on
   **Set Up selfguard** button, instead of zero counts that looked like "all clear". The
   summary file gains `roots` (watched folders).
 - **"Find my projects" is about 4x faster.** The home-folder search reads folders 32 at a time
-  instead of one after another (a home with 430k folders: 58 s → 14 s), with the same results.
+  instead of one after another (a home with 430k folders: 58 s → 14 s). The folders are still
+  processed in a fixed order, so the same home always gives the same list, and `maxDirs` is no
+  longer overshot. A project reachable two ways (a linked worktree also under the home) is
+  reported once, as before.
 - **No "Watch your projects in the background?" dialog on first launch.** It asked before any
   folder was chosen, and turning it on silently started a search of the home folder. Background
   watching is now the last step of the setup. Moving an npm install's agents to the app is

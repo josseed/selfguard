@@ -13,20 +13,36 @@ enum WindowSize: String {
 
     @MainActor
     func apply(to window: NSWindow) {
-        guard let screen = window.screen ?? NSScreen.main, !window.styleMask.contains(.fullScreen) else { return }
-        let visible = screen.visibleFrame
         switch self {
         case .setup:
-            guard Self.before == nil else { return } // already the setup size
+            guard Self.before == nil, !window.styleMask.contains(.fullScreen), let visible = Self.visible(window) else { return } // or already the setup size
             Self.before = window.frame
+            Self.closeObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { note in
+                // Closed mid-setup: give the size back (and so the saved one), or the window would reopen small.
+                MainActor.assumeIsolated { if let w = note.object as? NSWindow { Self.restore(w, animate: false) } }
+            }
             let size = window.frameRect(forContentRect: NSRect(origin: .zero, size: Self.setupSize)).size
             window.setFrame(Self.centered(size, in: visible), display: true, animate: true)
         case .dashboard:
-            guard let before = Self.before else { return } // not made small by the setup
-            Self.before = nil
-            let target = visible.intersection(before) == before && before.size != window.frame.size ? before : Self.centered(Self.dashboardSize, in: visible)
-            window.setFrame(target, display: true, animate: true)
+            Self.restore(window, animate: true)
         }
+    }
+
+    @MainActor private static var closeObserver: NSObjectProtocol?
+
+    private static func visible(_ window: NSWindow) -> NSRect? { (window.screen ?? NSScreen.main)?.visibleFrame }
+
+    /// Give the window its pre-setup frame (always forgetting it; full screen keeps its own size).
+    /// A frame smaller than the dashboard's own size (first launch) gives the dashboard size instead.
+    @MainActor
+    private static func restore(_ window: NSWindow, animate: Bool) {
+        guard let before else { return } // not made small by the setup
+        self.before = nil
+        if let o = closeObserver { NotificationCenter.default.removeObserver(o); closeObserver = nil }
+        guard !window.styleMask.contains(.fullScreen), let visible = visible(window) else { return }
+        let roomy = before.width >= dashboardSize.width && before.height >= dashboardSize.height
+        let target = roomy && visible.intersection(before) == before ? before : centered(dashboardSize, in: visible)
+        if target != window.frame { window.setFrame(target, display: true, animate: animate) }
     }
 
     private static func centered(_ size: NSSize, in visible: NSRect) -> NSRect {

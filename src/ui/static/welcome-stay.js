@@ -13,10 +13,10 @@ export function stayStep() {
     call("GET", "/api/app").then((a) => { wz.app = a; if (wz.step === "stay") pageWelcome(); }, () => { wz.app = {}; });
   }
   const app = wz.app && wz.app.loginItem !== undefined ? wz.app : null;
-  wz.stay ??= {
-    background: true,
-    autoDiscover: wz.path === "find",
-  };
+  // A fresh install starts from the recommended defaults; anyone already set up, from what is stored.
+  wz.stay ??= wz.fresh
+    ? { background: true, autoDiscover: wz.path === "find" }
+    : { background: o.schedule ? o.schedule.enabled : true, autoDiscover: !!(o.settings && o.settings.autoDiscover) };
   const s = wz.stay;
   if (app && s.loginItem === undefined) Object.assign(s, { loginItem: app.loginItem, mascotAlerts: app.mascotAlerts, commandLine: app.commandLine.installed });
   const flip = (key, label) => toggleSwitch(s[key], label, (next) => { s[key] = next; return true; });
@@ -42,8 +42,8 @@ export function stayStep() {
   }
   const done = h("button", { class: "btn primary", type: "button" }, "Finish setup");
   done.addEventListener("click", () => busy(done, "Saving…", async () => {
-    await call("POST", "/api/settings", { autoDiscover: !!s.autoDiscover });
-    // After the setting above: turning watching on installs the weekly search only if it's on.
+    // Only what was shown and changed. Before the schedule: turning watching on installs the weekly search only if it's on.
+    if (o.schedule && s.autoDiscover !== !!(o.settings && o.settings.autoDiscover)) await call("POST", "/api/settings", { autoDiscover: s.autoDiscover });
     if (o.schedule && s.background !== o.schedule.enabled) await call("POST", "/api/schedule", { enabled: s.background });
     if (app) {
       const changed = Object.fromEntries(["loginItem", "mascotAlerts", "commandLine"]

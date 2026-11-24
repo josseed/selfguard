@@ -74,8 +74,8 @@ final class AppModel: ObservableObject {
         })
     }
 
-    /// First run: open the setup in the dashboard (where your code is, a first check, background
-    /// watching), once. An npm install's agents are offered to the app instead.
+    /// First run: open the setup in the dashboard (two steps: where your code is, then staying informed:
+    /// the first check and background watching), once. An npm install's agents are offered to the app first.
     private func offerBackground(_ engine: Engine) {
         Task { [weak self] in
             // Let the menu bar icon settle.
@@ -85,16 +85,15 @@ final class AppModel: ObservableObject {
                 await engine.run(["menubar"], timeout: 120)
                 self.loadSummary()
             }
-            if self.summary?.needsSetup == true {
-                if !UserDefaults.standard.bool(forKey: Self.welcomeShownKey) {
-                    UserDefaults.standard.set(true, forKey: Self.welcomeShownKey)
-                    self.openWindow(page: "welcome")
-                }
-                return
+            // The adopt offer first (a modal), then the setup page: never both at once.
+            if await Background.offerIfNeeded(self.summary?.services, engine: engine) {
+                await engine.run(["menubar"], timeout: 120)
+                self.loadSummary()
             }
-            guard await Background.offerIfNeeded(self.summary?.services, engine: engine) else { return }
-            await engine.run(["menubar"], timeout: 120)
-            self.loadSummary()
+            if self.summary?.needsSetup == true, !UserDefaults.standard.bool(forKey: Self.welcomeShownKey) {
+                UserDefaults.standard.set(true, forKey: Self.welcomeShownKey)
+                self.openWindow(page: "welcome")
+            }
         }
     }
 

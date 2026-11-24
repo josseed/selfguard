@@ -18,8 +18,8 @@ export const needsSetup = (o) => !!o && o.roots === 0 && o.trackedProjects === 0
 export const setupSkipped = () => store.get(SKIP_KEY) === "1";
 
 /**
- * Where the setup is: "intro" (the choice), "find" or "pick" (where the code is, then a
- * first check), "stay" (what was found, background watching and alerts).
+ * Where the setup is: "intro" (the choice), "find" or "pick" (where the code is; the first
+ * check runs when the places are confirmed), "stay" (what was found, background watching, alerts).
  */
 export const wz = {
   step: "intro",
@@ -29,6 +29,8 @@ export const wz = {
   findChoice: null, // Set of places to watch, for "find"
   app: null, // GET /api/app (the Mac app's own settings)
   stay: null, // choices on the last step
+  fresh: true, // nothing was watched when the setup opened (else toggles start from the real settings)
+  pickErr: null, // GET /api/folders failed
 };
 let poll = null;
 
@@ -38,12 +40,22 @@ export function go(step) {
   wz.step = step;
   window.scrollTo(0, 0);
   pageWelcome();
+  const title = $("page").querySelector("h2");
+  if (title) { title.tabIndex = -1; title.focus(); }
+}
+
+/** Entering the setup from another route: start over, unless a search is genuinely running. */
+export function enterWelcome() {
+  clearInterval(poll);
+  Object.assign(wz, { step: "intro", path: null, folders: null, picked: [], findChoice: null, stay: null, app: null, pickErr: null, fresh: needsSetup(state.overview) });
+  if (!(state.find && state.find.running)) state.find = null;
+  else { Object.assign(wz, { step: "find", path: "find" }); watchFind(); }
 }
 
 export function pageWelcome() {
   const o = state.overview;
   // Bastion patrols next to the title, as on the overview.
-  setHead("Welcome to selfguard", [], [mascot(o)], { sub: "A one-minute setup: where your code is, a first check, and how to keep you posted." });
+  setHead("Welcome to selfguard", [], [mascot(o)], { sub: "A one-minute setup: where your code is, and how to keep you posted." });
   const body = wz.step === "find" ? findStep() : wz.step === "pick" ? pickStep() : wz.step === "stay" ? stayStep() : introStep();
   $("page").replaceChildren(h("div", { class: "stack welcome" }, progress(), body));
 }
@@ -81,7 +93,7 @@ function introStep() {
 export async function start(path) {
   wz.path = path;
   if (path === "find") {
-    if (!state.find || (!state.find.running && !state.find.result)) {
+    if (!state.find || !state.find.running) {
       try {
         state.find = await call("POST", "/api/everywhere/start", {});
       } catch (e) {
@@ -92,11 +104,14 @@ export async function start(path) {
     watchFind();
     go("find");
   } else {
+    wz.folders = wz.pickErr = null;
     go("pick");
     try {
       wz.folders = await call("GET", "/api/folders");
     } catch (e) {
-      return toast(e.message);
+      wz.pickErr = e.message;
+      if (wz.step === "pick") pageWelcome();
+      return;
     }
     const watched = new Set(wz.folders.roots.map((r) => r.path));
     wz.picked = [
@@ -109,10 +124,16 @@ export async function start(path) {
 
 function watchFind() {
   clearInterval(poll);
+  let fails = 0;
   poll = setInterval(async () => {
     try {
       state.find = await call("GET", "/api/everywhere/status");
-    } catch {
+      fails = 0;
+    } catch (e) {
+      if (++fails < 3) return;
+      clearInterval(poll);
+      state.find = { running: false, error: `Lost contact with selfguard (${e.message}).` };
+      if (state.route.name === "welcome" && wz.step === "find") pageWelcome();
       return;
     }
     if (!state.find.running) clearInterval(poll);
@@ -135,23 +156,35 @@ const backLink = () => h("button", { class: "btn small ghost", type: "button", o
 
 function findStep() {
   const job = state.find;
-  if (!job || job.running) {
-    const p = (job && job.progress) || { visited: 0, found: 0, current: "" };
+  if (!job) {
+    const again = h("button", { class: "btn primary", type: "button", onclick: () => start("find") }, "Search again");
+    return card("Find my projects", null, empty("No search is running", "Start a new search, or go back."), h("div", { class: "row-actions" }, again), backLink());
+  }
+  if (job.running) {
+    const p = job.progress || { visited: 0, found: 0, current: "" };
     const cancel = h("button", { class: "btn small", type: "button" }, "Cancel");
     cancel.addEventListener("click", () => busy(cancel, "…", async () => {
-      state.find = await call("POST", "/api/everywhere/cancel", {});
+      clearInterval(poll);
+      await call("POST", "/api/everywhere/cancel", {});
+      // The engine stops the search a moment later; a new one can only start after that.
+      for (let i = 0; i < 20; i++) {
+        if (!(await call("GET", "/api/everywhere/status")).running) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      state.find = wz.findChoice = null;
       go("intro");
     }));
     return card("Finding your projects…", "Only folder names are read, never your files. Dependencies, caches, hidden and system folders are skipped.",
       h("div", { class: "find-progress" }, h("span", { class: "spinner" }),
-        h("div", { class: "grow", id: "find-live" },
+        h("div", { class: "grow", id: "find-live", "aria-live": "polite" },
           h("div", {}, progressText(p)),
           h("div", { class: "small muted mono path" }, p.current || "…"))),
       null, cancel);
   }
   if (job.error) {
     return card("The search failed", null, empty("Couldn't search your home folder", job.error), h("div", { class: "row-actions" },
-      h("button", { class: "btn primary", type: "button", onclick: () => start("pick") }, "Choose the folders instead")), backLink());
+      h("button", { class: "btn primary", type: "button", onclick: () => start("find") }, "Try again"),
+      h("button", { class: "btn", type: "button", onclick: () => start("pick") }, "Choose the folders instead")), backLink());
   }
   const r = job.result;
   const places = r.places.filter((pl) => !pl.watched);
@@ -199,6 +232,10 @@ function findStep() {
 }
 
 function pickStep() {
+  if (wz.pickErr) {
+    return card("Choose your code folders", null, empty("Couldn't list your folders", wz.pickErr),
+      h("div", { class: "row-actions" }, h("button", { class: "btn primary", type: "button", onclick: () => start("pick") }, "Try again")), backLink());
+  }
   if (!wz.folders) return card("Choose your code folders", null, h("div", { class: "skeleton" }));
   const continueBtn = h("button", { class: "btn primary", type: "button" });
   const label = () => {
@@ -227,9 +264,17 @@ function pickStep() {
   continueBtn.addEventListener("click", async () => {
     const add = wz.picked.filter((p) => p.checked && !p.watched);
     await busy(continueBtn, "Checking your projects…", async () => {
-      for (const p of add) await call("POST", "/api/folders/add", { path: p.path, depth: p.depth });
-      await call("POST", "/api/discover", { dryRun: false });
-      await refresh();
+      try {
+        for (const p of add) {
+          await call("POST", "/api/folders/add", { path: p.path, depth: p.depth });
+          p.watched = true; // kept if a later one fails: a retry doesn't add it again
+        }
+        await call("POST", "/api/discover", { dryRun: false });
+        await refresh();
+      } catch (e) {
+        pageWelcome();
+        throw e;
+      }
       go("stay");
     });
   });
@@ -245,9 +290,9 @@ function pickStep() {
 function checkNow(watch, ignore, button) {
   return busy(button ?? null, "Checking your projects…", async () => {
     await call("POST", "/api/everywhere/apply", { watch, ignore });
+    await refresh(); // if this fails the search result stays, so the choice can be retried
     state.find = null;
     wz.findChoice = null;
-    await refresh();
     go("stay");
   });
 }

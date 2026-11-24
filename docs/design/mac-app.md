@@ -50,9 +50,13 @@ selfguard.app/Contents/
 
 - **Menu bar** (`MenuBarExtra`): status icon in four states, last check and sync times, the
   repos with findings, "Open dashboard", "Check now", "Sync now", service health, "Check for
-  updates", "Quit".
+  updates", "Quit". With no watched folder and no project it is a fifth state, "not set up":
+  Bastion asleep (`shield.slash` fallback), "Not set up yet" and a **Set Up selfguard** card
+  that opens the setup, instead of zero counts that read as "all clear".
 - **Window**: a `WKWebView` that loads `selfguard://dashboard/` (the route goes in the hash:
-  `#/repo/<key>`, `#/<page>`). A `WKURLSchemeHandler` (`DashboardScheme.swift`) serves only the
+  `#/repo/<key>`, `#/<page>`). The first-run setup (`#/welcome`) has no sidebar and asks the app
+  for a fixed 820x600 window (`WindowSize.swift`); finishing or skipping it restores the size the
+  window had before. A `WKURLSchemeHandler` (`DashboardScheme.swift`) serves only the
   files listed in `dist/ui/static/files.json`, by exact path lookup, with the listed type and
   the CSP; anything else is a 404. `files.json` is generated at build time from
   `src/ui/assets.ts`, which stays the single source of the allowlist and the CSP (`connect-src

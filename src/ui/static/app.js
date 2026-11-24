@@ -11,7 +11,7 @@ import { pageActivity, pagePackages } from "./pages-packages.js";
 import { pageFolders, pollFind } from "./page-folders.js";
 import { pageMachines } from "./page-machines.js";
 import { pageSettings } from "./page-settings.js";
-import { needsSetup, pageWelcome, setupSkipped } from "./page-welcome.js";
+import { enterWelcome, needsSetup, pageWelcome, setupSkipped } from "./page-welcome.js";
 import { loadMascot } from "./mascot.js";
 import { loadRepoSources, loadSources } from "./sources.js";
 
@@ -71,6 +71,7 @@ async function render() {
   // The setup has the window to itself: no sidebar, and the app makes the window small.
   const setup = r.name === "welcome";
   document.body.classList.toggle("setup", setup);
+  if (setup && !windowSetup) enterWelcome();
   // One size for the whole setup, set once on the way in: steps don't resize the window.
   if (setup !== windowSetup) call("POST", "/api/app", { window: setup ? "setup" : "dashboard" }).catch(() => {});
   windowSetup = setup;
