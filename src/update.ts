@@ -13,11 +13,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.ts";
 import { readCapped } from "./net.ts";
+import { urlOverride } from "./overrides.ts";
 import { compare, isValid } from "./semver.ts";
 import { loadState, updateState } from "./state.ts";
 import { VERSION } from "./version.ts";
 
-const REGISTRY = (): string => process.env.SELFGUARD_NPM_REGISTRY ?? "https://registry.npmjs.org";
+const REGISTRY = (): string => urlOverride("SELFGUARD_NPM_REGISTRY", "https://registry.npmjs.org");
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_BYTES = 1024 * 1024;
 

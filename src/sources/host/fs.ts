@@ -2,6 +2,7 @@
 import { readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { pathOverride } from "../../overrides.ts";
 
 /** Entries read per folder (the rest are ignored). */
 export const MAX_ENTRIES = 300;
@@ -13,8 +14,7 @@ export const home = (): string => homedir();
  * temp folder in tests, so they never depend on the machine they run on.
  */
 export function systemPath(...parts: string[]): string {
-  const root = process.env.SELFGUARD_SYSTEM_ROOT;
-  return join(root && root.trim() ? root : "/", ...parts);
+  return join(pathOverride("SELFGUARD_SYSTEM_ROOT") ?? "/", ...parts);
 }
 
 /** Names in a folder ([] when missing or unreadable), sorted, at most `max`. */

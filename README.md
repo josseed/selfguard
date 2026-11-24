@@ -25,7 +25,7 @@ npm install -g selfguard && selfguard setup
 
 Or get the **[Mac app](https://github.com/josseed/selfguard/releases/latest)**: menu bar,
 dashboard and notifications, everything bundled. Local-first: only package names and versions
-ever leave your machine.
+(including private ones) ever leave your machine.
 
 ## How it looks
 
@@ -171,7 +171,7 @@ automated fix PRs, and use selfguard to know what is vulnerable on your machine 
 ## Privacy
 
 selfguard sends only the ecosystem, `name` and `version` of your locked dependencies to the OSV.dev API.
-No file paths, repo names or source code ever leave your machine. All state lives in
+No file paths, repo names or source code ever leave your machine. Private or internal package names (for example `@corp/secret`) are sent too, as they are indistinguishable from public ones. All state lives in
 `~/.selfguard`, readable only by your user. See the [security model](docs/security-model.md).
 
 ## Contributing

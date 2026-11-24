@@ -13,7 +13,7 @@ This machine's own persistence and credential posture (launch items, shell start
 plaintext tokens, Python startup hooks) is covered in [This machine](host.md).
 
 Files are read as data: nothing is executed, GitHub is never called, and only MCP server
-package names (and exact versions) are sent to OSV. Action names never leave the machine: they
+package names (private or internal ones included) and exact versions are sent to OSV. Action names never leave the machine: they
 are matched against a local index of OSV's GitHub Actions advisories. Results appear in
 `selfguard tools`, `selfguard where`, the `selfguard_sources` MCP tool, the dashboard (an
 **Agent tools** card and a section on each repo's page) and the usual alerts: a malicious

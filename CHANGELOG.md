@@ -30,6 +30,23 @@ All notable changes to this project are documented here. The format is based on
   watching is now the last step of the setup. Moving an npm install's agents to the app is
   still offered once.
 
+### Security
+
+- **Sharing reads repo git files with a size cap**, without following symlinks or FIFOs. A huge
+  `.git/config` or `HEAD` in a scanned repo can no longer exhaust the share server's memory or
+  hang it. Credentials in remote URLs (`https://user:token@host`) are stripped before being sent
+  to a paired machine.
+- **MCP results are cleaned and labelled as untrusted.** Package names, versions, repo labels and
+  paths have control and bidi characters removed, and every tool result carries an
+  `untrustedData` caveat (array results now come under `items`). `roots_add` only accepts a real
+  folder inside your home (not a symlink, the home folder itself or `/`).
+- **The Mac app ignores network and system overrides.** Release builds pass only a short list of
+  `SELFGUARD_*` variables to the engine, and the engine ignores `SELFGUARD_OSV_API`,
+  `SELFGUARD_OSV_BUCKET`, `SELFGUARD_NPM_REGISTRY` and `SELFGUARD_SYSTEM_ROOT` when run by the
+  app. URL overrides elsewhere must be https (http only to this machine).
+- **Privacy wording:** the docs now say that private package names are sent to OSV.dev too
+  (names and versions only, as before).
+
 ## [0.20.1] - 2026-11-22
 
 ### Fixed

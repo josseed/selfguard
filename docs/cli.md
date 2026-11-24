@@ -420,9 +420,9 @@ Error codes in JSON mode: `usage`, `not_found`, `no_project`, `not_tracked`, `no
 |---|---|
 | `SELFGUARD_HOME` | State directory. Default `~/.selfguard`. |
 | `SELFGUARD_NO_NOTIFY=1` | Disable notifications and dialogs (useful in tests and CI). |
-| `SELFGUARD_OSV_API` | OSV API base URL. Default `https://api.osv.dev/v1`. For mirrors and tests. |
+| `SELFGUARD_OSV_API` | OSV API base URL. Default `https://api.osv.dev/v1`. https only (http for localhost). For mirrors and tests; ignored by the Mac app. |
 | `SELFGUARD_NO_LAUNCHD=1` | Never install or change launchd agents (tests). |
-| `SELFGUARD_SYSTEM_ROOT` | Folder that stands for `/` when reading `/Library/LaunchAgents` and `/Library/LaunchDaemons` (tests). |
+| `SELFGUARD_SYSTEM_ROOT` | Folder that stands for `/` when reading `/Library/LaunchAgents` and `/Library/LaunchDaemons` (tests). Ignored by the Mac app. |
 | `SELFGUARD_SSH` | ssh client to use for other machines. Default `ssh` from `PATH`. Ignored by the Mac app, which uses `/usr/bin/ssh`. |
 | `SELFGUARD_TAILSCALE` | Path of the `tailscale` CLI (default: the usual install locations). Ignored by the Mac app. |
 | `SELFGUARD_NO_UPDATE_CHECK=1` | Never ask npm for a newer selfguard. |

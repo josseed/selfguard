@@ -68,8 +68,10 @@ struct Engine {
 
     private static let passed: Set<String> = ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "TERM", "NO_COLOR", "SSH_AUTH_SOCK"]
 
-    /// `SELFGUARD_*` variables that choose a program to run (development and tests only).
-    private static let programOverrides: Set<String> = ["SELFGUARD_APP_NODE", "SELFGUARD_APP_CLI", "SELFGUARD_SSH", "SELFGUARD_SSH_KEYGEN", "SELFGUARD_TAILSCALE"]
+    /// The only `SELFGUARD_*` variables release builds pass on. Program choices (`SELFGUARD_SSH`…)
+    /// and network or system overrides (`SELFGUARD_OSV_API`, `SELFGUARD_NPM_REGISTRY`,
+    /// `SELFGUARD_SYSTEM_ROOT`…) are for development and tests only.
+    private static let selfguardPassed: Set<String> = ["SELFGUARD_HOME", "SELFGUARD_NO_NOTIFY", "SELFGUARD_NO_UPDATE_CHECK", "SELFGUARD_NO_LAUNCHD", "SELFGUARD_NO_SOCKETS"]
 
     private static func passes(_ key: String) -> Bool {
         if key.hasPrefix("NODE_") || key.hasPrefix("DYLD_") { return false } // never, even in debug builds
@@ -77,7 +79,7 @@ struct Engine {
         #if DEBUG
         return key == "PATH" || key == "SHELL" || key.hasPrefix("SELFGUARD_")
         #else
-        return key.hasPrefix("SELFGUARD_") && !programOverrides.contains(key)
+        return selfguardPassed.contains(key)
         #endif
     }
 

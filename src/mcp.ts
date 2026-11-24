@@ -9,6 +9,7 @@ import { createInterface } from "node:readline";
 import * as api from "./api.ts";
 import { GUIDE } from "./guide.ts";
 import { TOOLS } from "./mcp/tools.ts";
+import { presented } from "./mcp/untrusted.ts";
 import { VERSION } from "./version.ts";
 
 export { TOOLS } from "./mcp/tools.ts";
@@ -56,7 +57,7 @@ async function handle(msg: Json): Promise<void> {
       }
       const args = (params.arguments && typeof params.arguments === "object" ? params.arguments : {}) as Json;
       try {
-        const data = await tool.run(args);
+        const data = presented(await tool.run(args));
         reply(id, {
           content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
           structuredContent: data,
