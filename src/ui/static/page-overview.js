@@ -38,7 +38,7 @@ export function pageOverview() {
 
 /** The one thing worth a decision right now, if any (dismissible for this window). */
 function overviewNotice(o) {
-  if (o.roots === 0) return notice("no-roots", "selfguard isn't watching any folder yet: add the folders where you keep your code.", noticeAction("Add a folder", null, "#/folders"));
+  if (o.roots === 0) return notice("no-roots", "selfguard isn't watching any folder yet: tell it where your code is, or let it find your projects.", noticeAction("Set up selfguard", null, "#/welcome"));
   if (o.schedule && !o.schedule.enabled) {
     const on = noticeAction("Turn it on", (e) => busy(e.currentTarget, "Turning on…", async () => {
       await call("POST", "/api/schedule", { enabled: true });

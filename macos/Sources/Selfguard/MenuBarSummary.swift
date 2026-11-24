@@ -44,11 +44,17 @@ struct MenuBarSummary: Decodable, Equatable {
     let attentionRepos: Int
     let moreRepos: Int
     let trackedProjects: Int
+    /// Watched folders on this machine (nil from an engine older than 0.21).
+    var roots: Int?
     var services: Services?
     var lastSync: String?
     var lastCheck: String?
     let update: Update
     let events: [Event]
+
+    /// Nothing to watch yet: no folder and no tracked project (a fresh install). The app shows
+    /// its setup instead of counts that would read as "all clear".
+    var needsSetup: Bool { roots == 0 && trackedProjects == 0 }
 
     static func load(from url: URL) -> MenuBarSummary? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -59,7 +65,7 @@ struct MenuBarSummary: Decodable, Equatable {
 /// What the menu bar icon shows. A backlog alone doesn't alarm: the icon changes for what is
 /// new since you last opened the menu, a malicious package, or monitoring that is off.
 enum IconState: Equatable {
-    case starting, clean, backlog, news, malicious, degraded, unavailable
+    case starting, setup, clean, backlog, news, malicious, degraded, unavailable
 
     var symbol: String {
         switch self {
@@ -67,7 +73,7 @@ enum IconState: Equatable {
         case .clean: return "checkmark.shield"
         case .news: return "exclamationmark.shield.fill"
         case .malicious: return "xmark.shield.fill"
-        case .degraded, .unavailable: return "shield.slash"
+        case .setup, .degraded, .unavailable: return "shield.slash"
         }
     }
 }

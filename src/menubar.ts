@@ -47,6 +47,8 @@ export interface MenuBar {
   /** Open source warnings that alert (high, or their rule asks), not dismissed, in active repos and this machine. */
   risks: { open: number; high: number; sources: number };
   trackedProjects: number;
+  /** Watched folders on this machine. 0 with no tracked projects: selfguard isn't set up yet. */
+  roots: number;
   /** null: not macOS, or the schedule couldn't be read. */
   services: { sync: boolean; watcher: boolean; owner: "app" | "cli" | null } | null;
   lastSync: string | null;
@@ -131,6 +133,7 @@ export function getMenuBar(): MenuBar {
     moreRepos: Math.max(0, repos.length - MAX_REPOS),
     risks,
     trackedProjects: countRecords(),
+    roots: loadConfig().roots.length,
     services,
     lastSync: state.lastSync ?? null,
     lastCheck: state.lastCheck ?? null,

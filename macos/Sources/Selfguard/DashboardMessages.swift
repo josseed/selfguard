@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import WebKit
 
@@ -32,7 +33,7 @@ final class DashboardMessages: NSObject, WKScriptMessageHandlerWithReply {
         guard let (method, path, body) = Self.validate(message.body) else {
             return (Bridge.failure(400, "invalid", "Malformed request.").value, nil)
         }
-        if path == Self.appPath { return (appSettings(method: method, body: body), nil) }
+        if path == Self.appPath { return (appSettings(method: method, body: body, window: message.webView?.window), nil) }
         guard let bridge else {
             return (Bridge.failure(503, "engine_unavailable", "The selfguard engine is missing from the app.").value, nil)
         }
@@ -41,11 +42,15 @@ final class DashboardMessages: NSObject, WKScriptMessageHandlerWithReply {
 
     /// What only the app knows (open at login, Bastion's alerts, the terminal command): answered
     /// here, never sent to the engine. POST takes any of `loginItem`, `mascotAlerts` and
-    /// `commandLine` as booleans; both return the current values.
+    /// `commandLine` as booleans, and `window` ("setup" or "dashboard": the window's size);
+    /// both return the current values.
     static let appPath = "/api/app"
 
-    private func appSettings(method: String, body: [String: Any]) -> [String: Any] {
+    private func appSettings(method: String, body: [String: Any], window: NSWindow?) -> [String: Any] {
         if method == "POST" {
+            if let mode = body["window"] as? String, let window, let size = WindowSize(rawValue: mode) {
+                size.apply(to: window)
+            }
             if let on = body["loginItem"] as? Bool { LoginItem.set(on) }
             if let on = body["mascotAlerts"] as? Bool { setMascotAlerts(on) }
             if let on = body["commandLine"] as? Bool, CommandLineTool.available, on != CommandLineTool.installed {

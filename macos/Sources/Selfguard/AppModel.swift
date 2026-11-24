@@ -74,16 +74,30 @@ final class AppModel: ObservableObject {
         })
     }
 
-    /// First run (or first run after adopting): ask about the background agents once.
+    /// First run: open the setup in the dashboard (two steps: where your code is, then staying informed:
+    /// the first check and background watching), once. An npm install's agents are offered to the app first.
     private func offerBackground(_ engine: Engine) {
         Task { [weak self] in
-            // Let the menu bar icon settle, and don't pop a dialog over a launch at login.
+            // Let the menu bar icon settle.
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard let self, await Background.offerIfNeeded(self.summary?.services, engine: engine) else { return }
-            await engine.run(["menubar"], timeout: 120)
-            self.loadSummary()
+            guard let self else { return }
+            if self.summary == nil {
+                await engine.run(["menubar"], timeout: 120)
+                self.loadSummary()
+            }
+            // The adopt offer first (a modal), then the setup page: never both at once.
+            if await Background.offerIfNeeded(self.summary?.services, engine: engine) {
+                await engine.run(["menubar"], timeout: 120)
+                self.loadSummary()
+            }
+            if self.summary?.needsSetup == true, !UserDefaults.standard.bool(forKey: Self.welcomeShownKey) {
+                UserDefaults.standard.set(true, forKey: Self.welcomeShownKey)
+                self.openWindow(page: "welcome")
+            }
         }
     }
+
+    private static let welcomeShownKey = "welcomeShown"
 
     private func loadSummaryIfChanged() {
         let stamp = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path))?[.modificationDate] as? Date
@@ -157,6 +171,7 @@ final class AppModel: ObservableObject {
         guard engine != nil else { return .unavailable }
         guard let s = summary else { return problem == nil ? .starting : .unavailable }
         if s.state == "malicious" { return .malicious }
+        if s.needsSetup { return .setup }
         if !unseen.isEmpty { return .news }
         if let svc = s.services, !svc.sync || !svc.watcher { return .degraded }
         return s.attentionRepos > 0 ? .backlog : .clean
@@ -167,7 +182,7 @@ final class AppModel: ObservableObject {
     var mascotIcon: String {
         switch icon {
         case .starting, .clean, .backlog: return "watch"
-        case .degraded, .unavailable: return "sleep"
+        case .setup, .degraded, .unavailable: return "sleep"
         case .malicious: return "mal"
         case .news: return unseen.contains { $0.severity == "malicious" || $0.severity == "critical" } ? "crit" : "high"
         }

@@ -14,7 +14,9 @@ struct MenuView: View {
         VStack(alignment: .leading, spacing: 14) {
             header
             if let notice { NoticeView(notice: notice) { dismissed.insert(notice.id) } }
-            if let s = model.summary {
+            if let s = model.summary, s.needsSetup {
+                setupCard
+            } else if let s = model.summary {
                 let recent = model.recent
                 if recent.isEmpty { chips(s) } else { news(recent) }
                 primaryButton
@@ -63,6 +65,36 @@ struct MenuView: View {
             .disabled(model.busy != nil || model.engine == nil)
             .help(model.busy ?? "Check now (⌘R)")
         }
+    }
+
+    // MARK: - Not set up yet
+
+    /// A fresh install watches nothing: say so, and lead to the setup (instead of zero counts
+    /// that look like "all clear").
+    private var setupCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("selfguard isn't watching any code yet").font(.system(size: 13, weight: .semibold))
+                Text("Tell it where your projects are (or let it find them) and it checks every one, then keeps an eye on them. About a minute.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Button { open(page: "welcome") } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                    Text("Set Up selfguard").font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "arrow.right").font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Style.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: - What changed
@@ -202,6 +234,7 @@ struct MenuView: View {
         if let busy = model.busy { return busy }
         switch model.icon {
         case .starting: return "Starting…"
+        case .setup: return "Not set up yet"
         case .unavailable: return "selfguard isn't available"
         case .malicious: return "Malicious package found"
         case .news:
@@ -216,7 +249,8 @@ struct MenuView: View {
     private var notice: Notice? {
         var all: [Notice] = []
         if let problem = model.problem { all.append(Notice(id: "problem", text: problem) {}) }
-        if let svc = model.summary?.services, !svc.sync || !svc.watcher {
+        // Background watching is part of the setup: no notice about it before then.
+        if let s = model.summary, !s.needsSetup, let svc = s.services, !svc.sync || !svc.watcher {
             let text = !svc.sync && !svc.watcher ? "Scheduled sync and the lockfile watcher are off."
                 : svc.sync ? "The lockfile watcher is off. New installs won't be checked."
                 : "The scheduled sync is off. New advisories won't be checked."

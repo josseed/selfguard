@@ -32,6 +32,8 @@ export const STATIC: Record<string, { file: string; type: string }> = {
   "/sources.js": { file: "sources.js", type: JS },
   "/mascot.js": { file: "mascot.js", type: JS },
   "/controls.js": { file: "controls.js", type: JS },
+  "/page-welcome.js": { file: "page-welcome.js", type: JS },
+  "/welcome-stay.js": { file: "welcome-stay.js", type: JS },
   "/app.css": { file: "app.css", type: CSS },
   "/components.css": { file: "components.css", type: CSS },
   "/pages.css": { file: "pages.css", type: CSS },

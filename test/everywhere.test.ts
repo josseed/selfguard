@@ -126,3 +126,36 @@ test("automatic weekly pass: adds new active places once, respects removals", as
   api.updateSettings({ autoDiscover: false });
   assert.equal((await api.autoDiscover()).reason, "automatic discovery is off");
 });
+
+test("walk limits: maxDirs is never overshot, cancellation stops it, a cut zone is reported once", async () => {
+  const full = await discoverEverywhere({ home });
+  assert.ok(full.visited > 40);
+  for (const maxDirs of [1, 5, 37]) {
+    const r = await discoverEverywhere({ home, maxDirs });
+    assert.ok(r.visited <= maxDirs, `visited ${r.visited} > ${maxDirs}`);
+  }
+  let polls = 0;
+  const c = await discoverEverywhere({ home, isCancelled: () => ++polls > 3 });
+  assert.ok(c.visited < full.visited / 2, `cancelled walk visited ${c.visited} of ${full.visited}`);
+  assert.equal((await discoverEverywhere({ home, isCancelled: () => true })).visited, 0);
+  // 60 folders read in parallel batches must still cut the zone once.
+  const h = await discoverEverywhere({ home, emptyZoneBudget: 10 });
+  assert.deepEqual(h.heavy.filter((p) => p === H("bigzone")), [H("bigzone")]);
+  assert.equal(h.heavy.length, new Set(h.heavy).size);
+});
+
+test("walk is deterministic, also when a project is reachable two ways", async () => {
+  // A linked worktree that also sits (visible) under the home.
+  project(H("wt-visible", "feat"));
+  mkdirSync(H("repository", "acme", "api", ".git", "worktrees", "vis"), { recursive: true });
+  writeFileSync(H("repository", "acme", "api", ".git", "worktrees", "vis", "gitdir"), `${H("wt-visible", "feat", ".git")}\n`);
+  writeFileSync(H("wt-visible", "feat", ".git"), "gitdir: x\n");
+  const runs: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    const r = await discoverEverywhere({ home, emptyZoneBudget: 30 });
+    runs.push(JSON.stringify({ ...r, ms: 0 }));
+  }
+  assert.ok(runs.every((x) => x === runs[0]));
+  const r = JSON.parse(runs[0]!);
+  assert.equal(r.projects.filter((p: { root: string }) => p.root === H("wt-visible", "feat")).length, 1);
+});

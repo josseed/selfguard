@@ -11,6 +11,7 @@ import { pageActivity, pagePackages } from "./pages-packages.js";
 import { pageFolders, pollFind } from "./page-folders.js";
 import { pageMachines } from "./page-machines.js";
 import { pageSettings } from "./page-settings.js";
+import { enterWelcome, needsSetup, pageWelcome, setupSkipped } from "./page-welcome.js";
 import { loadMascot } from "./mascot.js";
 import { loadRepoSources, loadSources } from "./sources.js";
 
@@ -21,7 +22,7 @@ function parseRoute() {
   if (!m || !m[1]) return { name: "overview", arg: null };
   const name = m[1];
   const arg = m[2] ? decodeURIComponent(m[2]) : null;
-  return PAGES.some(([id]) => id === name) || name === "repo" ? { name, arg } : { name: "overview", arg: null };
+  return PAGES.some(([id]) => id === name) || name === "repo" || name === "welcome" ? { name, arg } : { name: "overview", arg: null };
 }
 
 /** "A new version is available", on every page. The Mac app installs it (Sparkle). */
@@ -59,12 +60,23 @@ document.addEventListener("keydown", (e) => {
   b.click();
 });
 
+/** Whether the last page shown was the setup (the window is then small). */
+let windowSetup = false;
+
 async function render() {
   if (!state.overview) return;
   renderNav();
   renderUpdate();
   const r = state.route;
-  if (r.name === "overview") pageOverview();
+  // The setup has the window to itself: no sidebar, and the app makes the window small.
+  const setup = r.name === "welcome";
+  document.body.classList.toggle("setup", setup);
+  if (setup && !windowSetup) enterWelcome();
+  // One size for the whole setup, set once on the way in: steps don't resize the window.
+  if (setup !== windowSetup) call("POST", "/api/app", { window: setup ? "setup" : "dashboard" }).catch(() => {});
+  windowSetup = setup;
+  if (r.name === "welcome") pageWelcome();
+  else if (r.name === "overview") pageOverview();
   else if (r.name === "repos") pageRepos();
   else if (r.name === "repo") pageRepo();
   else if (r.name === "packages") pagePackages();
@@ -78,7 +90,7 @@ async function loadForRoute() {
   const r = state.route;
   const jobs = [];
   if (r.name === "overview" || r.name === "packages") jobs.push(loadPackages());
-  if (r.name === "overview") jobs.push(loadMascot());
+  if (r.name === "overview" || r.name === "welcome") jobs.push(loadMascot());
   // CI workflows and agent tools: shown when this version reads any (never blocks the page).
   if (r.name === "overview" || r.name === "repo") jobs.push(loadSources().catch(() => {}));
   if (r.name === "repo" && r.arg) jobs.push(loadRepoSources(r.arg).catch(() => {}));
@@ -127,13 +139,16 @@ function boot() {
   window.addEventListener("hashchange", onRoute);
   renderNav();
   refresh().then(async () => {
+    // Nothing set up yet (no folder, no project): the setup comes first.
+    if (state.route.name === "overview" && needsSetup(state.overview) && !setupSkipped()) location.hash = "#/welcome";
     // a deep link may use the repo label instead of its key
     if (state.route.name === "repo" && !state.repo && state.overview) {
       const g = state.overview.repos.find((x) => x.label === state.route.arg);
       if (g) location.hash = `#/repo/${encodeURIComponent(g.key)}`;
     }
   });
-  setInterval(() => { if (!state.busy && $("modal").hidden) refresh(); }, 30_000);
+  // Not during the setup: it keeps its own state, and a re-render would only flicker.
+  setInterval(() => { if (!state.busy && $("modal").hidden && state.route.name !== "welcome") refresh(); }, 30_000);
 }
 
 boot();
