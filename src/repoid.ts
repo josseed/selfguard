@@ -6,6 +6,7 @@ import { realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { readRegularFile } from "./fsutil.ts";
+import { clean } from "./sanitize.ts";
 
 export interface RepoIdentity {
   /** Grouping key: same repo (remote or common git dir) + same subfolder. */
@@ -130,7 +131,7 @@ function isFile(p: string): boolean {
 function branchFrom(head: string | null): string | null {
   if (!head) return null;
   const ref = /^ref:\s*refs\/heads\/(.+)$/m.exec(head);
-  if (ref) return ref[1]!.trim();
+  if (ref) return clean(ref[1], 200);
   const sha = /^([0-9a-f]{7,64})\s*$/im.exec(head);
   return sha ? sha[1]!.slice(0, 8) : null;
 }
@@ -158,7 +159,7 @@ export function repoIdentity(projectRoot: string): RepoIdentity | null {
       const sub = relative(dir, resolve(projectRoot)).split(sep).join("/");
       return {
         key: `orphan:${dir}${sub ? `#${sub}` : ""}`,
-        label: `${basename(dir)}${sub ? `/${sub}` : ""} (orphaned worktree)`,
+        label: clean(`${basename(dir)}${sub ? `/${sub}` : ""} (orphaned worktree)`, 200),
         branch: null,
         worktree: true,
         orphaned: true,
@@ -181,7 +182,7 @@ export function repoIdentity(projectRoot: string): RepoIdentity | null {
       const repoName = normalized ? normalized.slice(normalized.indexOf("/") + 1) : basename(dirname(commonDir));
       return {
         key: sub ? `${base}#${sub}` : base,
-        label: sub ? `${repoName}/${sub}` : repoName,
+        label: clean(sub ? `${repoName}/${sub}` : repoName, 200),
         branch: branchFrom(readSmall(join(gitDir, "HEAD"))),
         defaultBranch: defaultBranchOf(commonDir),
         worktree,
@@ -223,7 +224,7 @@ export function identityFromFacts(f: GitFacts, machine: string): RepoIdentity {
   if (f.worktree && !f.gitDirExists) {
     return {
       key: `${machine}|orphan:${f.gitRoot}${subPart ? `#${subPart}` : ""}`,
-      label: `${posix.basename(f.gitRoot)}${subPart ? `/${subPart}` : ""} (orphaned worktree)`,
+      label: clean(`${posix.basename(f.gitRoot)}${subPart ? `/${subPart}` : ""} (orphaned worktree)`, 200),
       branch: null,
       worktree: true,
       orphaned: true,
@@ -237,7 +238,7 @@ export function identityFromFacts(f: GitFacts, machine: string): RepoIdentity {
   const repoName = normalized ? normalized.slice(normalized.indexOf("/") + 1) : posix.basename(posix.dirname(commonDir));
   return {
     key: `${machine}|${subPart ? `${base}#${subPart}` : base}`,
-    label: subPart ? `${repoName}/${subPart}` : repoName,
+    label: clean(subPart ? `${repoName}/${subPart}` : repoName, 200),
     branch: branchFrom(f.head),
     worktree: f.worktree,
     lastActivity: f.lastActivityMs > 0 ? new Date(f.lastActivityMs).toISOString() : null,

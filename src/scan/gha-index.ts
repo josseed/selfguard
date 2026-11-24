@@ -7,6 +7,7 @@
  */
 import { atomicWrite, isObject, readJsonFile } from "../fsutil.ts";
 import { readCapped } from "../net.ts";
+import { urlOverride } from "../overrides.ts";
 import { getCachedVuln, getVulns, ID_RE, type OsvVuln, type VulnRef } from "../osv.ts";
 import { ghaIndexFile } from "../paths.ts";
 import { clean } from "../sanitize.ts";
@@ -20,7 +21,7 @@ const MAX_CSV_BYTES = 1024 * 1024;
 const MAX_LINES = 10_000;
 const MODIFIED_RE = /^\d{4}-\d{2}-\d{2}T[0-9:.]{1,40}Z$/;
 
-const bucket = (): string => process.env.SELFGUARD_OSV_BUCKET ?? "https://osv-vulnerabilities.storage.googleapis.com";
+const bucket = (): string => urlOverride("SELFGUARD_OSV_BUCKET", "https://osv-vulnerabilities.storage.googleapis.com");
 
 export interface GhaIndexEntry {
   id: string;

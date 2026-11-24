@@ -37,7 +37,7 @@ The setup wizard walks you through these steps:
    projects in each as you browse. Use <kbd>space</kbd> to select, <kbd>←</kbd>/<kbd>→</kbd> to
    change how deep it looks (default 5 levels, max 10), and <kbd>a</kbd> to add any other
    folder.
-2. **Scan the projects it found.** This sends only package names and versions to OSV.dev and
+2. **Scan the projects it found.** This sends only package names (private ones too) and versions to OSV.dev and
    prints a summary of what is vulnerable.
 3. **Install the shell hook.** It adds one line to `~/.zshrc` so projects are tracked when you
    `cd` into them.

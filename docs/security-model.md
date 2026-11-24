@@ -215,7 +215,7 @@ selfguard on this Mac would have your full shell access there. Prefer the restri
   time-limited, then parsed strictly: absolute paths only, no `..`, expected file names only.
   Text is cleaned like any advisory text. A compromised machine can still hide its own
   vulnerabilities, and no design can prevent that.
-- Lockfiles are parsed and checked here, so OSV only sees package names and versions,
+- Lockfiles are parsed and checked here, so OSV only sees package names (including private or internal ones, such as `@corp/secret`) and versions,
   de-duplicated across machines. Git remotes are stored as `host/owner/repo`, so credentials
   embedded in a URL are dropped.
 - Results live in `~/.selfguard/machines/<name>/`.

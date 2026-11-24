@@ -6,11 +6,12 @@ import { join } from "node:path";
 import { atomicWrite, isObject, readJsonFile } from "./fsutil.ts";
 import type { Ecosystem } from "./lockfile/types.ts";
 import { readCapped } from "./net.ts";
+import { urlOverride } from "./overrides.ts";
 import { vulnCacheDir } from "./paths.ts";
 import { normalizeName } from "./versions.ts";
 import { VERSION } from "./version.ts";
 
-const API = process.env.SELFGUARD_OSV_API ?? "https://api.osv.dev/v1";
+const API = urlOverride("SELFGUARD_OSV_API", "https://api.osv.dev/v1");
 const BATCH_SIZE = 1000; // documented max queries per querybatch request
 const TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;

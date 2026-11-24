@@ -15,20 +15,18 @@
  * answer is streamed (`readerAnswer`), each file at most once and MAX_ANSWER_BYTES in all.
  */
 import { constants, type Dirent } from "node:fs";
-import { lstat, open, readdir, readFile, realpath, stat, type FileHandle } from "node:fs/promises";
+import { lstat, open, readdir, realpath, stat, type FileHandle } from "node:fs/promises";
 import { homedir, type as osType } from "node:os";
 import { pipeline, Readable } from "node:stream";
 import { createGzip } from "node:zlib";
+import { readRegularFile } from "./fsutil.ts";
 import { LOCKFILES } from "./lockfile/detect.ts";
 import { FETCHABLE, MAX_ANSWER_BYTES, MAX_FILE_BYTES, READER_PROTOCOL, READER_REVISION, SKIP } from "./remote.ts";
 
 const LOCK_NAMES = LOCKFILES.map(([n]) => n);
 const FIND_NAMES = new Set([...LOCK_NAMES, "package.json"]);
 const SKIP_SET = new Set(SKIP);
-const MAX_LIST_ROOTS = 64;
-const MAX_FETCH_FILES = 1000;
-const MAX_BROWSE = 2000;
-const MAX_CONFIG_LINES = 400;
+const MAX_LIST_ROOTS = 64, MAX_FETCH_FILES = 1000, MAX_BROWSE = 2000, MAX_CONFIG_LINES = 400;
 const CHUNK = 256 * 1024;
 /** Like the sh reader's `*[[:cntrl:]]*` (LC_ALL=C): such a name would break the answer's lines. */
 const CONTROL = /[\u0000-\u001f\u007f]/;
@@ -44,9 +42,14 @@ const real = (p: string): Promise<string | null> => realpath(p).catch(() => null
 const phys = (p: string): Promise<string | null> => real(p).then((r) => (r && !CONTROL.test(r) ? r : null));
 /** Of the path itself, not a symlink's target (`stat` without -L, as in `sg_mtimes`); 0 if missing. */
 const mtimeSec = async (p: string): Promise<number> => Math.floor(((await lstat(p).catch(() => null))?.mtimeMs ?? 0) / 1000);
+const MAX_GIT_LINE = 4096, MAX_CONFIG_BYTES = 1024 * 1024;
+/** Capped, non-blocking, no-symlink read of a git file ("" if not a regular one). */
+const gitText = (p: string, max: number): string => readRegularFile(p, max, { nofollow: true, truncate: true })?.data.toString("utf8") ?? "";
+/** `scheme://user:tok@host` -> `scheme://host`; scp-style `git@host:x` stays. */
+const stripCreds = (l: string): string => l.replace(/([a-z][a-z0-9+.-]*:\/\/)[^/\s]*@/gi, "$1");
 /** First line, like `IFS= read -r line < file`. */
-async function firstLine(p: string): Promise<string> {
-  const text = await readFile(p, "utf8").catch(() => "");
+function firstLine(p: string): string {
+  const text = gitText(p, MAX_GIT_LINE);
   const nl = text.indexOf("\n");
   return nl < 0 ? text : text.slice(0, nl);
 }
@@ -91,7 +94,7 @@ async function gitFacts(dir: string, home: string, scope: string): Promise<strin
     }
     if (await isLink(`${d}/.git`)) break;
     if (await isFile(`${d}/.git`)) {
-      let p = await firstLine(`${d}/.git`);
+      let p = firstLine(`${d}/.git`);
       if (p.startsWith("gitdir:")) p = p.slice("gitdir:".length);
       if (p.startsWith(" ")) p = p.slice(1);
       if (p === "") break;
@@ -108,25 +111,23 @@ async function gitFacts(dir: string, home: string, scope: string): Promise<strin
   const gReal = await phys(g);
   if (!gReal || !inside(gReal, scope)) return "";
   const ok = (await isDir(g)) ? 1 : 0;
-  const head = (await plainFile(`${g}/HEAD`)) ? await firstLine(`${g}/HEAD`) : "";
+  const head = firstLine(`${g}/HEAD`);
   let commonDir = g;
-  if (await plainFile(`${g}/commondir`)) {
-    const c = await firstLine(`${g}/commondir`);
-    if (c.startsWith("/")) commonDir = c;
-    else if (c !== "") commonDir = `${g}/${c}`;
-  }
+  const c = firstLine(`${g}/commondir`);
+  if (c.startsWith("/")) commonDir = c;
+  else if (c !== "") commonDir = `${g}/${c}`;
   const cdr = (await phys(commonDir)) ?? "";
   if (!cdr || !inside(cdr, scope)) return "";
   let a = 0;
   for (const f of ["HEAD", "index", "logs/HEAD"]) a = Math.max(a, await mtimeSec(`${g}/${f}`));
   let out = `G\t${d}\t${wt}\t${ok}\t${a}\t${cdr}\t${head}\n`;
   // Through the checked physical path, not the one the pointer named.
-  if (ok && (await plainFile(`${cdr}/config`))) {
-    const text = await readFile(`${cdr}/config`, "utf8").catch(() => "");
-    const lines = text.split("\n");
+  if (ok) {
+    const lines = gitText(`${cdr}/config`, MAX_CONFIG_BYTES).split("\n");
     lines.pop(); // like `while read`: a last line without newline isn't read
-    for (const l of lines.slice(0, MAX_CONFIG_LINES)) {
-      if (l.includes("[") || /url.*=/.test(l)) out += `U\t${l}\n`;
+    for (const raw of lines.slice(0, MAX_CONFIG_LINES)) {
+      const l = raw.slice(0, MAX_GIT_LINE);
+      if (l.includes("[") || /url.*=/.test(l)) out += `U\t${stripCreds(l)}\n`;
     }
   }
   return out;
