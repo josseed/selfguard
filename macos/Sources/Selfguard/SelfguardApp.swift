@@ -25,7 +25,7 @@ struct SelfguardApp: App {
 
         Window("selfguard", id: "dashboard") {
             DashboardView(model: model)
-                .frame(minWidth: 900, minHeight: 600)
+                .frame(minWidth: 720, minHeight: 560)
                 .onAppear {
                     DockIcon.show(true)
                     model.dashboardWindow(visible: true)

@@ -89,7 +89,7 @@ selfguard setup
 `setup` is a small terminal UI. Pick the folders where you keep your code, and selfguard scans
 them. It then offers to install the shell hook and background watching with notifications.
 You don't need the command line on a Mac: the selfguard app bundles everything, opens a
-one-minute setup on first launch (find your projects or choose the folders, a first check,
+one-minute setup on first launch (find your projects or choose the folders,
 then background watching and alerts), and can add a `selfguard` terminal command that runs its
 engine (dashboard → Settings → This Mac → Terminal command).
 The dashboard is only in the selfguard Mac app (from the

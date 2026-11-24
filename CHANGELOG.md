@@ -9,7 +9,7 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 
 - **A first-run setup in the Mac app.** On first launch the dashboard opens a short setup:
-  **Find my projects** or **I'll choose the folders**, a first check with what it found, then
+  **Find my projects** or **I'll choose the folders**, then (with a line on what the first check found)
   background watching, the weekly search for new project folders, Bastion's alerts, open at
   login and the terminal command, saved together. The overview sends you there while nothing is
   watched, and "Skip for now" leaves it for later.
@@ -20,6 +20,8 @@ All notable changes to this project are documented here. The format is based on
   icon shows Bastion asleep and the panel says selfguard isn't watching any code yet, with a
   **Set Up selfguard** button, instead of zero counts that looked like "all clear". The
   summary file gains `roots` (watched folders).
+- **"Find my projects" is about 4x faster.** The home-folder search reads folders 32 at a time
+  instead of one after another (a home with 430k folders: 58 s → 14 s), with the same results.
 - **No "Watch your projects in the background?" dialog on first launch.** It asked before any
   folder was chosen, and turning it on silently started a search of the home folder. Background
   watching is now the last step of the setup. Moving an npm install's agents to the app is

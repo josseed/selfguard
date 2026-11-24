@@ -60,11 +60,20 @@ document.addEventListener("keydown", (e) => {
   b.click();
 });
 
+/** Whether the last page shown was the setup (the window is then small). */
+let windowSetup = false;
+
 async function render() {
   if (!state.overview) return;
   renderNav();
   renderUpdate();
   const r = state.route;
+  // The setup has the window to itself: no sidebar, and the app makes the window small.
+  const setup = r.name === "welcome";
+  document.body.classList.toggle("setup", setup);
+  // One size for the whole setup, set once on the way in: steps don't resize the window.
+  if (setup !== windowSetup) call("POST", "/api/app", { window: setup ? "setup" : "dashboard" }).catch(() => {});
+  windowSetup = setup;
   if (r.name === "welcome") pageWelcome();
   else if (r.name === "overview") pageOverview();
   else if (r.name === "repos") pageRepos();
@@ -80,7 +89,7 @@ async function loadForRoute() {
   const r = state.route;
   const jobs = [];
   if (r.name === "overview" || r.name === "packages") jobs.push(loadPackages());
-  if (r.name === "overview") jobs.push(loadMascot());
+  if (r.name === "overview" || r.name === "welcome") jobs.push(loadMascot());
   // CI workflows and agent tools: shown when this version reads any (never blocks the page).
   if (r.name === "overview" || r.name === "repo") jobs.push(loadSources().catch(() => {}));
   if (r.name === "repo" && r.arg) jobs.push(loadRepoSources(r.arg).catch(() => {}));

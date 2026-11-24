@@ -87,10 +87,9 @@ from the menu bar panel's **Set Up selfguard** while nothing is watched):
 1. **Where is your code?** Either **Find my projects** (searches your home folder and
    pre-selects the places with recently active repos; unchecked places are excluded) or
    **I'll choose the folders** (common code folders that exist on your Mac, plus any folder
-   you pick).
-2. **First check.** The projects found are registered and checked. This first check is a silent
+   you pick). The projects found are registered and checked; this first check is a silent
    baseline: from then on you hear about what changes.
-3. **Stay informed.** Background watching (on by default), the weekly search for new project
+2. **Stay informed.** A line on what the first check found, then background watching (on by default), the weekly search for new project
    folders (on if you let selfguard find your projects), Bastion's alerts, open at login and
    the terminal command.
 

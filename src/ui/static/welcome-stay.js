@@ -1,11 +1,11 @@
-// Welcome page, last step: background watching, alerts and the Mac app's own settings, saved
-// together by "Finish setup".
-import { h, state, store, toast } from "./core.js";
+// Welcome page, last step: what the first check found, then background watching, alerts and the
+// Mac app's own settings, saved together by "Finish setup".
+import { h, plural, state, store, toast } from "./core.js";
 import { busy, call } from "./api.js";
 import { card } from "./layout.js";
 import { settingRow, toggleSwitch } from "./controls.js";
 import { refresh } from "./app.js";
-import { pageWelcome, SKIP_KEY, wz } from "./page-welcome.js";
+import { pageWelcome, SKIP_KEY, start, wz } from "./page-welcome.js";
 
 export function stayStep() {
   const o = state.overview;
@@ -58,5 +58,19 @@ export function stayStep() {
     await refresh();
   }));
   return card("Stay informed", "You can change all of this later in Settings.",
-    h("div", {}, ...rows), h("div", { class: "row-actions" }, done));
+    h("div", { class: "stack" }, found(o), h("div", {}, ...rows)), h("div", { class: "row-actions" }, done));
+}
+
+/** One line on the first check (a baseline: nothing found today sends an alert). */
+function found(o) {
+  if (o.trackedProjects === 0) {
+    return h("div", { class: "notice" },
+      h("span", {}, "No projects found in those folders yet; new ones are picked up as they appear. "),
+      h("button", { class: "btn small", type: "button", onclick: () => start("pick") }, "Choose another folder"));
+  }
+  const att = o.needsAttention.length;
+  return h("div", { class: "notice info" }, h("span", {},
+    h("strong", {}, `Watching ${plural(o.trackedProjects, "project")}. `),
+    att ? `${plural(att, "repo")} you're working on ${att === 1 ? "has" : "have"} something serious to fix (on the overview). ` : "Nothing serious in the repos you're working on. ",
+    "What's there today is the starting point: from now on you hear about what changes."));
 }

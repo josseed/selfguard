@@ -48,6 +48,9 @@ export interface EverywhereResult {
   ms: number;
 }
 
+/** Folders read at the same time. */
+const CONCURRENCY = 32;
+
 interface Frame {
   dir: string;
   /** Top-level zone under the home ("Desktop", "repository"…), for budgets. */
@@ -104,22 +107,19 @@ export async function discoverEverywhere(opts: EverywhereOptions = {}): Promise<
   let visited = 0;
   let lastProgress = 0;
 
-  // Depth-first keeps memory small and finishes one zone before the next.
-  const stack: Frame[] = [{ dir: home, zone: "", repo: null, ignore: null, worktreeRoot: null }];
-  while (stack.length > 0) {
-    if (opts.isCancelled?.() || visited >= maxDirs) break;
-    const f = stack.pop()!;
-    if (seenDirs.has(f.dir)) continue;
+  /** One folder: record it if it's a project, then queue its subfolders. */
+  const visit = async (f: Frame): Promise<void> => {
+    if (seenDirs.has(f.dir)) return;
     seenDirs.add(f.dir);
-    if (isExcluded(f.dir, exclude)) continue;
-    if (f.zone && cutZones.has(f.zone)) continue;
+    if (isExcluded(f.dir, exclude)) return;
+    if (f.zone && cutZones.has(f.zone)) return;
 
     // Don't wander onto other disks or network mounts that live inside the home.
     if (f.dir !== home) {
       try {
-        if ((await stat(f.dir)).dev !== homeDev) continue;
+        if ((await stat(f.dir)).dev !== homeDev) return;
       } catch {
-        continue;
+        return;
       }
     }
     let entries: import("node:fs").Dirent[];
@@ -128,16 +128,18 @@ export async function discoverEverywhere(opts: EverywhereOptions = {}): Promise<
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
       if ((code === "EPERM" || code === "EACCES") && denied.length < 200) denied.push(f.dir);
-      continue;
+      return;
     }
     visited++;
     if (f.zone) {
       const n = (zoneVisits.get(f.zone) ?? 0) + 1;
       zoneVisits.set(f.zone, n);
+      // Folders of the zone read in the same batch get here too: cut it (and report it) once.
+      if (cutZones.has(f.zone)) return;
       if (n > emptyBudget && !zoneFound.has(f.zone)) {
         cutZones.add(f.zone);
         heavy.push(join(home, f.zone));
-        continue;
+        return;
       }
     }
     if (opts.onProgress && visited - lastProgress >= 500) {
@@ -199,7 +201,15 @@ export async function discoverEverywhere(opts: EverywhereOptions = {}): Promise<
       if (prunePaths.includes(child)) continue;
       stack.push({ dir: child, zone: f.zone || name, repo, ignore, worktreeRoot: f.worktreeRoot });
     }
+  };
 
+  // Depth-first keeps memory small and finishes one zone before the next. Folders are read a
+  // batch at a time from the top of the stack: one readdir after another left the disk idle
+  // (a home with 400k folders took a minute).
+  const stack: Frame[] = [{ dir: home, zone: "", repo: null, ignore: null, worktreeRoot: null }];
+  while (stack.length > 0) {
+    if (opts.isCancelled?.() || visited >= maxDirs) break;
+    await Promise.all(stack.splice(Math.max(0, stack.length - CONCURRENCY)).map(visit));
   }
 
   return {

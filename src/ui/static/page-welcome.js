@@ -1,12 +1,12 @@
 // Welcome page: the first-run setup. One decision (find my projects, or I'll pick the folders),
-// a first check, then how selfguard keeps watching (that last step is in welcome-stay.js).
+// then how selfguard keeps watching (that last step is in welcome-stay.js).
 // Opened by the app on its first launch, by the menu bar panel's "Set Up selfguard" and by the
 // overview while nothing is watched.
 import { $, ago, h, icon, plural, state, store, tildify, toast } from "./core.js";
 import { busy, call } from "./api.js";
 import { card, empty, setHead } from "./layout.js";
-import { helmet } from "./controls.js";
 import { stayStep } from "./welcome-stay.js";
+import { mascot } from "./mascot.js";
 import { openFolderPicker } from "./dialogs.js";
 import { refresh } from "./app.js";
 
@@ -18,8 +18,8 @@ export const needsSetup = (o) => !!o && o.roots === 0 && o.trackedProjects === 0
 export const setupSkipped = () => store.get(SKIP_KEY) === "1";
 
 /**
- * Where the setup is: "intro" (the choice), "find" or "pick" (where the code is), "result"
- * (the first check), "stay" (background watching and alerts).
+ * Where the setup is: "intro" (the choice), "find" or "pick" (where the code is, then a
+ * first check), "stay" (what was found, background watching and alerts).
  */
 export const wz = {
   step: "intro",
@@ -32,7 +32,7 @@ export const wz = {
 };
 let poll = null;
 
-const STEPS = ["Your code", "First check", "Stay informed"];
+const STEPS = ["Your code", "Stay informed"];
 
 export function go(step) {
   wz.step = step;
@@ -42,13 +42,14 @@ export function go(step) {
 
 export function pageWelcome() {
   const o = state.overview;
-  setHead("Welcome to selfguard", [], [], { icon: helmet(o, "big"), sub: "A one-minute setup: where your code is, a first check, and how to keep you posted." });
-  const body = wz.step === "find" ? findStep() : wz.step === "pick" ? pickStep() : wz.step === "result" ? resultStep() : wz.step === "stay" ? stayStep() : introStep();
+  // Bastion patrols next to the title, as on the overview.
+  setHead("Welcome to selfguard", [], [mascot(o)], { sub: "A one-minute setup: where your code is, a first check, and how to keep you posted." });
+  const body = wz.step === "find" ? findStep() : wz.step === "pick" ? pickStep() : wz.step === "stay" ? stayStep() : introStep();
   $("page").replaceChildren(h("div", { class: "stack welcome" }, progress(), body));
 }
 
 function progress() {
-  const at = wz.step === "result" ? 1 : wz.step === "stay" ? 2 : 0;
+  const at = wz.step === "stay" ? 1 : 0;
   return h("ol", { class: "welcome-steps", "aria-label": "Setup steps" },
     ...STEPS.map((label, i) => h("li", { class: i < at ? "done" : i === at ? "current" : null, "aria-current": i === at ? "step" : null },
       h("span", { class: "n" }, i < at ? "✓" : String(i + 1)), label)));
@@ -69,7 +70,7 @@ function introStep() {
     h("div", { class: "stack" },
       h("div", { class: "choices" },
         choice("find", "Find my projects", "recommended",
-          "Search your home folder for repos and suggest the places to watch. Best if your code isn't all in one folder. Takes a minute or two.",
+          "Search your home folder for repos and suggest the places to watch. Best if your code isn't all in one folder. Usually takes under a minute.",
           mac ? "macOS may ask whether “node” can access Desktop, Documents or Downloads: that is selfguard's engine. Allow it to include projects there." : null),
         choice("pick", "I'll choose the folders", null,
           "Point selfguard at the folders where you keep repos, like ~/code. Nothing outside them is looked at.")),
@@ -77,7 +78,7 @@ function introStep() {
     null, skip);
 }
 
-async function start(path) {
+export async function start(path) {
   wz.path = path;
   if (path === "find") {
     if (!state.find || (!state.find.running && !state.find.result)) {
@@ -115,9 +116,20 @@ function watchFind() {
       return;
     }
     if (!state.find.running) clearInterval(poll);
-    if (state.route.name === "welcome" && wz.step === "find") pageWelcome();
+    if (state.route.name !== "welcome" || wz.step !== "find") return;
+    // While it runs, only the numbers change: redrawing the card restarted the spinner every second.
+    const live = document.getElementById("find-live");
+    if (state.find.running && live) {
+      const p = state.find.progress || { visited: 0, found: 0, current: "" };
+      live.firstChild.textContent = progressText(p);
+      live.lastChild.textContent = p.current || "…";
+    } else {
+      pageWelcome();
+    }
   }, 1000);
 }
+
+const progressText = (p) => `${p.visited.toLocaleString()} folders searched · ${plural(p.found, "project")} found`;
 
 const backLink = () => h("button", { class: "btn small ghost", type: "button", onclick: () => go("intro") }, "← Back");
 
@@ -132,8 +144,8 @@ function findStep() {
     }));
     return card("Finding your projects…", "Only folder names are read, never your files. Dependencies, caches, hidden and system folders are skipped.",
       h("div", { class: "find-progress" }, h("span", { class: "spinner" }),
-        h("div", { class: "grow" },
-          h("div", {}, `${p.visited.toLocaleString()} folders searched · ${plural(p.found, "project")} found`),
+        h("div", { class: "grow", id: "find-live" },
+          h("div", {}, progressText(p)),
           h("div", { class: "small muted mono path" }, p.current || "…"))),
       null, cancel);
   }
@@ -218,7 +230,7 @@ function pickStep() {
       for (const p of add) await call("POST", "/api/folders/add", { path: p.path, depth: p.depth });
       await call("POST", "/api/discover", { dryRun: false });
       await refresh();
-      go("result");
+      go("stay");
     });
   });
   return card("Choose your code folders",
@@ -236,27 +248,6 @@ function checkNow(watch, ignore, button) {
     state.find = null;
     wz.findChoice = null;
     await refresh();
-    go("result");
+    go("stay");
   });
-}
-
-// ---------- 2. first check ----------
-
-function resultStep() {
-  const o = state.overview;
-  const att = o.needsAttention.length;
-  const next = h("button", { class: "btn primary", type: "button", onclick: () => go("stay") }, "Continue");
-  if (o.trackedProjects === 0) {
-    return card("No projects there yet", null,
-      empty("Nothing to check", "selfguard found no lockfiles in those folders. Add the folder where your repos are, or go on: new projects are picked up as they appear."),
-      h("div", { class: "row-actions" }, h("button", { class: "btn", type: "button", onclick: () => start("pick") }, "Choose another folder"), next));
-  }
-  const lines = [
-    h("p", {}, h("strong", {}, `selfguard is watching ${plural(o.trackedProjects, "project")}.`),
-      att ? ` ${plural(att, "repo")} you're working on ${att === 1 ? "has" : "have"} something serious to fix; you'll see ${att === 1 ? "it" : "them"} on the overview.`
-        : " Nothing serious in the repos you're working on."),
-    h("p", {}, "What is there today is the starting point, so this first check doesn't send alerts. From now on you hear about what changes: a new advisory, a vulnerable install, a malicious package, or a fix."),
-    o.trackedProjects > o.activeCheckouts ? h("p", {}, `Only checkouts with recent git activity alert you (${o.activeCheckouts} of ${o.trackedProjects}); old clones stay listed but quiet, except for malicious packages.`) : null,
-  ];
-  return card("First check done", null, h("div", { class: "prose" }, ...lines), h("div", { class: "row-actions" }, next));
 }
