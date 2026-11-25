@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-11-25
+
 ### Fixed
 
 - **The background watcher no longer spikes the CPU.** Each run of `selfguard check --background`
@@ -778,7 +780,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.21.1...HEAD
+[0.21.1]: https://github.com/josseed/selfguard/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/josseed/selfguard/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/josseed/selfguard/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/josseed/selfguard/compare/v0.19.1...v0.20.0
