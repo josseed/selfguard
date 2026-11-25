@@ -23,6 +23,7 @@ import {
   isLoaded,
   MAX_WATCH_PATHS,
   plistPath,
+  plistWatchPaths,
   REMOTE_INTERVAL,
   REMOTE_LABEL,
   SYNC_LABEL,
@@ -30,7 +31,7 @@ import {
   WATCH_LABEL,
 } from "./schedule/launchd.ts";
 
-export { agentPlist, DISCOVER_INTERVAL, MAX_WATCH_PATHS, parseInterval, REMOTE_INTERVAL } from "./schedule/launchd.ts";
+export { agentPlist, DISCOVER_INTERVAL, MAX_WATCH_PATHS, parseInterval, plistWatchPaths, REMOTE_INTERVAL } from "./schedule/launchd.ts";
 export { shareAgentStatus, shareUnit, updateShareAgent } from "./schedule/share.ts";
 
 export function scheduleOn(seconds: number, watchPaths: string[], opts: { machines?: boolean; autoDiscover?: boolean } = {}): string {
@@ -112,6 +113,18 @@ export function updateWatcher(paths: string[], opts: { force?: boolean } = {}): 
   return { watching: list.length, changed: true };
 }
 
+/**
+ * What the installed watcher watches (null when it isn't installed or can't be read). The
+ * watcher's own run uses it to look only at the checkouts that can have triggered it.
+ */
+export function watcherPaths(): string[] | null {
+  try {
+    return plistWatchPaths(readFileSync(plistPath(WATCH_LABEL), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
 export function scheduleOff(): boolean {
   assertMac();
   let existed = false;
@@ -158,12 +171,7 @@ export function scheduleStatus(): ScheduleStatus {
   } catch {
     /* not installed */
   }
-  try {
-    const section = /<key>WatchPaths<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(readFileSync(plistPath(WATCH_LABEL), "utf8"));
-    paths = section?.[1]?.match(/<string>/g)?.length ?? 0;
-  } catch {
-    paths = 0;
-  }
+  paths = watcherPaths()?.length ?? 0;
   return {
     installed: existsSync(plistPath(SYNC_LABEL)),
     loaded: isLoaded(SYNC_LABEL),

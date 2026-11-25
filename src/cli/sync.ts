@@ -6,7 +6,7 @@ import * as api from "../api.ts";
 import { notify } from "../notify.ts";
 import { groupByPackage, paint, severityLabel, tildify } from "../report.ts";
 import { clean } from "../sanitize.ts";
-import { updateWatcher } from "../schedule.ts";
+import { updateWatcher, watcherPaths } from "../schedule.ts";
 import { checkForUpdate, installedVersion, notifyUpdateOnce } from "../update.ts";
 import { VERSION } from "../version.ts";
 import { emit, err, JSON_OPT, out } from "./output.ts";
@@ -59,7 +59,8 @@ export async function cmdCheck(args: string[]): Promise<number> {
   const { values } = parseArgs({ args, options: { ...JSON_OPT, background: { type: "boolean" } } });
   let r: api.CheckResult;
   try {
-    r = await api.check({ notify: true });
+    // The watcher's run: only what it watches can have changed (sync covers the rest).
+    r = await api.check({ notify: true, only: values.background ? (watcherPaths() ?? undefined) : undefined });
   } catch (e) {
     if (values.background && e instanceof api.ApiError && e.code === "busy") return 0;
     throw e;

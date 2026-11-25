@@ -213,22 +213,32 @@ export interface CheckResult {
 /**
  * Re-scan only tracked projects whose lockfile changed (cheap stat first). Run by the
  * lockfile watcher after `git pull`, installs or branch switches.
+ *
+ * `only` (the watcher's run): the paths it watches. Only the tracked projects among them can
+ * have triggered it, so only those are looked at (a few dozen, not every record), and the
+ * dismissal cleanup is left to sync. This machine's agent configs are always looked at.
  */
-export async function check(opts: { notify?: boolean } = {}): Promise<CheckResult> {
+export async function check(opts: { notify?: boolean; only?: readonly string[] } = {}): Promise<CheckResult> {
   const release = tryLock("check");
   if (!release) throw new ApiError("busy", "a check is already running");
   try {
     const cfg = loadConfig();
     const changed: Project[] = [];
     const tracked: string[] = [];
-    for (const r of listRepos()) {
+    const records = opts.only
+      ? [...new Set(opts.only)].flatMap((p) => {
+          const r = loadRepo(p);
+          return r ? [r] : [];
+        })
+      : listRepos();
+    for (const r of records) {
       if (!existsSync(r.path) || isExcluded(r.path, cfg.exclude)) continue;
       tracked.push(r.path);
       const p = findProject(r.path);
       if (p && p.root === r.path && p.lockfile && lockChanged(r, p)) changed.push(p);
     }
     updateState({ lastCheck: new Date().toISOString() });
-    pruneDismissed(cfg);
+    if (!opts.only) pruneDismissed(cfg);
     const changedSources = sourcesWith(tracked, { machine: true, onlyChanged: true });
     if (changed.length === 0 && changedSources.length === 0) return { rescanned: [], errors: [] };
     // A changed agent config (~/.claude.json changes all the time) is re-read, but OSV is only

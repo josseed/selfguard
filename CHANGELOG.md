@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **The background watcher no longer spikes the CPU.** Each run of `selfguard check --background`
+  read every tracked record, found the git root of every checkout and worked out the git activity
+  of all of them, even though only a watched checkout can have triggered it. With hundreds of
+  repos that was about 2 seconds of a full core per run, several times a minute while git rewrote
+  `.git/config` (push, branch, worktree). The watcher's run now looks only at the checkouts it
+  watches plus this machine's agent configs (sync, every 6 hours, still covers the rest, and still
+  cleans up dismissals), about 6 times less CPU per run. Runs are also at least 30 seconds apart
+  (was 15).
+
 ## [0.21.0] - 2026-11-24
 
 ### Added

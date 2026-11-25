@@ -44,7 +44,7 @@ macOS only. Installs two per-user launchd agents:
   discovers new projects, re-checks everything against new advisories, and sends the reminder
   when it is due.
 - `dev.selfguard.watch` runs `selfguard check --background` when the lockfile or folder of an
-  active checkout changes (at most every 15 seconds). It watches up to 200 paths, most recently
+  active checkout changes (at most every 30 seconds). It watches up to 200 paths, most recently
   active first, and is refreshed after each sync.
 
 | Option | Default | |
