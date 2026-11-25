@@ -144,3 +144,20 @@ test("a record from 0.10.0 (no markers) is listed once, then gets markers", asyn
   await api.check();
   assert.deepEqual(calls, []);
 });
+
+test("the watcher's run (only) looks at the watched checkouts and leaves the rest to sync", async () => {
+  const watched = repo();
+  const other = repo();
+  await api.scanPath(watched);
+  await api.scanPath(other);
+  const bump = (root: string): void => {
+    put(root, "package-lock.json", JSON.stringify({ lockfileVersion: 3, packages: { "": { dependencies: { lodash: "4.17.20" } }, "node_modules/lodash": { version: "4.17.20" } } }));
+  };
+  bump(watched);
+  bump(other);
+  calls.length = 0;
+  const only = [join(watched, "package-lock.json"), watched, join(watched, ".github", "workflows"), "/nowhere/at/all"];
+  assert.deepEqual((await api.check({ only })).rescanned, [watched]);
+  assert.ok(!calls.includes(other), "the unwatched repo's sources are not looked at");
+  assert.deepEqual((await api.check()).rescanned, [other], "a full check still finds the rest");
+});

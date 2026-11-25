@@ -24,12 +24,26 @@ export const DISCOVER_LABEL = "dev.selfguard.discover";
 export const DISCOVER_INTERVAL = 24 * 3600;
 /** launchd watches each path with a kqueue descriptor; keep the set bounded. */
 export const MAX_WATCH_PATHS = 200;
+/**
+ * Minimum seconds between two watcher runs. Git rewrites .git/config and friends in bursts
+ * (push -u, branch, worktree add), and every run is a node start at background priority.
+ */
+export const WATCH_THROTTLE = 30;
 
 export const plistPath = (label: string): string => join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
 export const domain = (): string => `gui/${userInfo().uid}`;
 
 function xml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** The WatchPaths of a plist written by agentPlist (null when it has none). Pure: tested directly. */
+export function plistWatchPaths(plist: string): string[] | null {
+  const section = /<key>WatchPaths<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(plist)?.[1];
+  if (section === undefined) return null;
+  return [...section.matchAll(/<string>([^<]*)<\/string>/g)].map((m) =>
+    m[1]!.replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&"),
+  );
 }
 
 export function parseInterval(input: string): number {
@@ -60,7 +74,7 @@ export function agentPlist(
       ? `  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n  <key>ThrottleInterval</key><integer>30</integer>`
       : "interval" in trigger
       ? `  <key>StartInterval</key><integer>${trigger.interval}</integer>\n  <key>RunAtLoad</key><true/>`
-      : `  <key>WatchPaths</key>\n  <array>\n${trigger.watch.map((p) => `    <string>${xml(p)}</string>`).join("\n")}\n  </array>\n  <key>ThrottleInterval</key><integer>15</integer>`;
+      : `  <key>WatchPaths</key>\n  <array>\n${trigger.watch.map((p) => `    <string>${xml(p)}</string>`).join("\n")}\n  </array>\n  <key>ThrottleInterval</key><integer>${WATCH_THROTTLE}</integer>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
