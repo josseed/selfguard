@@ -1,7 +1,6 @@
 // Dialogs: the folder picker, adding a machine and installing the reader on it.
-import { $, h, icon, state, toast } from "./core.js";
+import { $, copyText, h, icon, state, toast } from "./core.js";
 import { busy, call } from "./api.js";
-import { copyText } from "./page-repo.js";
 import { addFolder } from "./page-folders.js";
 import { addMachineFolder } from "./page-machines.js";
 import { openEnableShare, openPairing } from "./tailnet.js";

@@ -223,6 +223,17 @@ td.top { vertical-align: top; }
 /* Long sentences (a warning's message) wrap instead of being cut. */
 .list > li.wrap { align-items: flex-start; }
 .list .title.wrap { white-space: normal; overflow-wrap: anywhere; }
+/* A warning opens in place: where it is, its rule and id, copy and Show in Finder. */
+.list > li .chev { flex: none; color: var(--text3); display: grid; place-items: center; transition: transform .15s; margin-top: 2px; }
+.list > li .chev svg { width: 12px; height: 12px; }
+.list > li .chev.open { transform: rotate(90deg); }
+.list > li[aria-expanded="true"] .title { text-decoration: none; }
+.list > li:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.warn-detail { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--fill); cursor: auto; }
+.warn-detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0 0 10px; font-size: 12px; }
+.warn-detail dt { color: var(--text2); }
+.warn-detail dd { margin: 0; overflow-wrap: anywhere; }
+.selectable { user-select: text; -webkit-user-select: text; cursor: text; }
 
 .feed-icon { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: none; background: var(--card); color: var(--text2); }
 .feed-icon svg { width: 14px; height: 14px; }

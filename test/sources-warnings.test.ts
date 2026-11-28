@@ -119,6 +119,9 @@ test("announce logs risk events, the menu bar counts them; dismissing one silenc
   const dismissed = new Set([hook.warningKey]);
   assert.deepEqual(news.riskNews([o], 30, new Map(), dismissed)[0]!.newWarnings.map((w) => w.rule), ["test-low"]);
   assert.throws(() => api.dismissWarning("nope"), /unknown warning/);
+  // Show in Finder only takes the id of a known warning, never a path.
+  assert.throws(() => api.revealWarning("nope"), process.platform === "darwin" ? /unknown warning/ : /macOS-only/);
+  assert.throws(() => api.revealWarning("/etc/passwd"), process.platform === "darwin" ? /unknown warning/ : /macOS-only/);
 
   assert.deepEqual(api.undismissWarning(hook.id), { key: hook.warningKey, removed: true });
   assert.equal(api.undismissWarning(hook.id).removed, false);
@@ -173,4 +176,14 @@ test("machine scope: baseline first, then always active; the reminder includes o
   const reminder = events.readEvents(5).find((e) => e.kind === "reminder");
   assert.ok(reminder && reminder.total >= 1);
   assert.match(readFileSync(join(process.env.SELFGUARD_HOME!, "events.jsonl"), "utf8"), /"kind":"reminder"/);
+});
+
+test("a long warning message is kept whole (up to 600 characters)", async () => {
+  const long = `${"A credential sits in plain text. ".repeat(14)}Safer: use a helper.`;
+  assert.ok(long.length > 300 && long.length < 600);
+  const root = repo([W({ message: long })]);
+  const o = await scan(root);
+  assert.equal(o.record.warnings[0]!.message, long);
+  const huge = repo([W({ message: "x".repeat(2000) })]);
+  assert.equal((await scan(huge)).record.warnings[0]!.message.length, 600, "still bounded");
 });

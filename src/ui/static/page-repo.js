@@ -1,5 +1,5 @@
 // One repo: its vulnerable packages and checkouts.
-import { $, advisoryUrl, ago, ecoTag, h, icon, isSerious, plural, sevBadge, state, tildify, toast } from "./core.js";
+import { $, advisoryUrl, ago, copyText, ecoTag, h, icon, isSerious, plural, sevBadge, state, tildify, toast } from "./core.js";
 import { busy, call } from "./api.js";
 import { card, empty, representative, setHead } from "./layout.js";
 import { refresh } from "./app.js";
@@ -96,25 +96,6 @@ export function pageRepo() {
     repoSourcesCard(d.key),
     card(`Checkouts (${d.checkouts.length})`, "Worktrees and clones of this repo", checkouts,
       d.checkouts.length > listed.length ? h("button", { class: "btn small", type: "button", onclick: () => { state.ui.allCheckouts = true; pageRepo(); } }, `Show all ${d.checkouts.length}`) : null)));
-}
-
-/**
- * Copy text, or a promise of text. Safari and the Mac app (WebKit) only allow a clipboard
- * write started during the click, so a promise is handed to a ClipboardItem right away
- * instead of awaiting the text first.
- */
-export async function copyText(text) {
-  try {
-    if (typeof text !== "string" && typeof ClipboardItem === "function" && navigator.clipboard?.write) {
-      const blob = Promise.resolve(text).then((t) => new Blob([t], { type: "text/plain" }));
-      await navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
-      return true;
-    }
-    await navigator.clipboard.writeText(await text);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function showMarkdown(label, markdown) {

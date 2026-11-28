@@ -78,7 +78,7 @@ function cleanRef(r: ExtractResult["refs"][number], file: string): SourceRef | n
 
 function cleanWarning(w: ExtractResult["warnings"][number], file: string): SourceWarning | null {
   const rule = opt(w?.rule, 64);
-  const message = opt(w?.message, 300);
+  const message = opt(w?.message, 600);
   if (!rule || !message) return null;
   const out: SourceWarning = { rule, message, file, line: lineOf(w.line), severity: SEVERITIES.has(w.severity) ? w.severity : "low" };
   const key = opt(w.key, 120);

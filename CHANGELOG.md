@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Warnings open in place in the dashboard.** Click a warning under Agent tools, This machine or
+  a repo's CI and agent configs to see its full path and line, rule, severity, id and where it was
+  found, with **Copy markdown**, **Copy path** and **Show in Finder**. Each of those cards also has a
+  **Copy markdown** button for all its findings and warnings.
+
+### Fixed
+
+- Warning messages are kept up to 600 characters (was 300), so long advice such as the gcloud
+  credentials one is no longer cut off.
+
 ## [0.21.1] - 2026-11-25
 
 ### Fixed
