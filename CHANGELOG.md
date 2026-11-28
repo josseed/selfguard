@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-28
+
 ### Added
 
 - **Warnings open in place in the dashboard.** Click a warning under Agent tools, This machine or
@@ -792,7 +794,8 @@ First release.
   AI agents.
 - Releases with npm Trusted Publishing, provenance and staged publishing.
 
-[Unreleased]: https://github.com/josseed/selfguard/compare/v0.21.1...HEAD
+[Unreleased]: https://github.com/josseed/selfguard/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/josseed/selfguard/compare/v0.21.1...v0.22.0
 [0.21.1]: https://github.com/josseed/selfguard/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/josseed/selfguard/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/josseed/selfguard/compare/v0.20.0...v0.20.1
