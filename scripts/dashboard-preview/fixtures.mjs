@@ -111,12 +111,13 @@ export function repoDetail(key) {
   };
 }
 
-const source = (label, path, findings, warnings, refs) => ({
-  label, path, references: refs, skippedReferences: 0, scannedAt: at(30), error: null, findings, warnings,
+const source = (label, path, findings, warnings, refs, kind = "agents") => ({
+  kind, label, path, references: refs, skippedReferences: 0, scannedAt: at(30), error: null, findings, files: [path],
+  warnings: warnings.map((w, i) => ({ id: `${kind}${i}`.padEnd(12, "0"), alerts: w.severity === "high", dismissed: false, ...w })),
   vulnerableReferences: findings.length,
 });
 export const sources = {
-  kinds: ["agents", "ci"],
+  kinds: ["agents", "ci", "host"],
   machine: [
     source("Claude Code", `${HOME}/.claude.json`, [
       { severity: "high", name: "@modelcontextprotocol/server-filesystem", version: "0.5.0", ecosystem: "npm", certainty: "may-be-affected", id: "GHSA-hc55-p739-j48w", summary: "Path validation bypass", locations: [{ file: `${HOME}/.claude.json`, line: 14 }], fixedIn: "0.6.3" },
@@ -124,6 +125,11 @@ export const sources = {
       { rule: "unpinned-npx", severity: "moderate", message: `MCP server "playwright (project ~/code/acme/admin-console-with-a-long-name)" runs @playwright/mcp (npx) unpinned: whatever is latest at start-up runs with your agent's permissions`, file: `${HOME}/.claude.json`, line: 1528 },
     ], [{ agent: "Claude Code" }, { agent: "Claude Code" }, { agent: "Claude Code" }]),
     source("Cursor", `${HOME}/.cursor/mcp.json`, [], [], [{ agent: "Cursor" }]),
+    source("This machine", HOME, [], [
+      { rule: "suspicious-launch-item", severity: "high", message: `Suspicious launch item "com.example.updater" runs Example Updater: its program is missing`, file: "/Library/LaunchAgents/com.example.updater.plist", line: 0 },
+      { rule: "plaintext-credential", severity: "moderate", message: "~/.aws/credentials holds an AWS secret access key in plain text: any package install script or stealer can read it. Safer: use `aws sso login` or a credential_process (aws-vault) so no long-lived key sits on disk.", file: `${HOME}/.aws/credentials`, line: 3 },
+      { rule: "launch-item", severity: "low", message: `Starts at login: "com.google.GoogleUpdater.wake" runs GoogleUpdater`, file: `${HOME}/Library/LaunchAgents/com.google.GoogleUpdater.wake.plist`, line: 0 },
+    ], [], "host"),
   ],
 };
 export const repoSources = {

@@ -143,3 +143,22 @@ export const ecoTag = (p) => (p.ecosystem && p.ecosystem !== "npm" ? h("span", {
 export const plural = (n, w, ws) => `${n} ${n === 1 ? w : ws || `${w}s`}`;
 export const isSerious = (sev, direct, dev) => sev === "malicious" || (!dev && (sev === "critical" || (sev === "high" && direct)));
 export const sevBadge = (sev) => h("span", { class: "badge", "data-sev": sev }, sev);
+
+/**
+ * Copy text, or a promise of text. Safari and the Mac app (WebKit) only allow a clipboard
+ * write started during the click, so a promise is handed to a ClipboardItem right away
+ * instead of awaiting the text first.
+ */
+export async function copyText(text) {
+  try {
+    if (typeof text !== "string" && typeof ClipboardItem === "function" && navigator.clipboard?.write) {
+      const blob = Promise.resolve(text).then((t) => new Blob([t], { type: "text/plain" }));
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
+      return true;
+    }
+    await navigator.clipboard.writeText(await text);
+    return true;
+  } catch {
+    return false;
+  }
+}

@@ -1,7 +1,7 @@
 // CI workflows, agent tools and host checks: the "Agent tools" and "This machine" cards
 // (Overview) and a repo's sources (repo page).
 // Everything here comes from files of the user's projects or OSV.dev: textContent only.
-import { advisoryUrl, ago, ecoTag, h, plural, sevBadge, state, tildify, toast } from "./core.js";
+import { advisoryUrl, ago, copyText, ecoTag, h, icon, plural, sevBadge, state, tildify, toast } from "./core.js";
 import { busy, call } from "./api.js";
 import { refresh } from "./app.js";
 import { card, empty } from "./layout.js";
@@ -54,17 +54,115 @@ function dismissButton(w) {
   return btn;
 }
 
-function warningItem(w, root) {
+/** `text` as inline code, whatever backticks it holds. */
+function code(text) {
+  const t = String(text);
+  const ticks = "`".repeat(Math.max(0, ...(t.match(/`+/g) || []).map((m) => m.length)) + 1);
+  return ticks.length > 1 || t.startsWith(" ") || t.endsWith(" ") ? `${ticks} ${t} ${ticks}` : `\`${t}\``;
+}
+
+const fileRef = (file, line) => `${file}${line > 0 ? `:${line}` : ""}`;
+/** Real files only (not the "(scan limits)" placeholder). */
+const isPath = (file) => typeof file === "string" && file.startsWith("/");
+
+function warningMarkdown(w, s) {
+  const status = w.dismissed ? "dismissed" : w.alerts ? "alerts" : "warning";
+  return [
+    `### ${w.severity[0].toUpperCase()}${w.severity.slice(1)}: ${w.rule}`,
+    "",
+    w.message,
+    "",
+    `- **Status:** ${status}`,
+    `- **File:** ${isPath(w.file) ? code(fileRef(w.file, w.line)) : w.file}`,
+    `- **Rule:** ${code(w.rule)} · id ${code(w.id)}`,
+    `- **Found in:** ${s.label} (${code(tildify(s.path))})${s.scannedAt ? `, checked ${new Date(s.scannedAt).toLocaleString()}` : ""}`,
+  ].join("\n");
+}
+
+function findingMarkdown(f, s) {
+  const loc = f.locations.map((l) => code(fileRef(l.file, l.line))).join(", ");
+  return [
+    `### ${f.name}@${f.version} · ${f.severity}`,
+    "",
+    `- **Advisory:** [${f.id}](${advisoryUrl(f.id)})${f.summary ? `: ${f.summary}` : ""}`,
+    `- **Fix:** ${f.severity === "malicious" ? "remove it and rotate credentials" : f.fixedIn ? `upgrade to ${f.fixedIn}` : "no fix yet"}`,
+    loc ? `- **Where:** ${loc}` : null,
+    `- **Found in:** ${s.label} (${code(tildify(s.path))})`,
+  ].filter((l) => l !== null).join("\n");
+}
+
+/** Every finding and warning of these sources, as markdown. */
+export function sourcesMarkdown(title, list) {
+  const parts = [`# ${title}`];
+  for (const s of list) {
+    if (!s.findings.length && !s.warnings.length) continue;
+    parts.push(`## ${s.label} (${code(tildify(s.path))})`);
+    for (const f of s.findings) parts.push(findingMarkdown(f, s));
+    for (const w of sortWarnings(s)) parts.push(warningMarkdown(w, s));
+  }
+  return parts.join("\n\n") + "\n";
+}
+
+function copyButton(label, text, done) {
+  const btn = h("button", { class: "btn small", type: "button" }, icon("copy"), label);
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    toast(await copyText(typeof text === "function" ? text() : text) ? done : "Could not copy");
+  });
+  return btn;
+}
+
+/** The expanded part of a warning: where it is, its rule and id, and what you can do with it. */
+function warningDetail(w, s) {
+  const rows = [
+    ["File", isPath(w.file) ? h("span", { class: "mono selectable" }, fileRef(w.file, w.line)) : w.file],
+    ["Rule", h("span", { class: "mono selectable" }, w.rule)],
+    ["Severity", `${w.severity}${w.dismissed ? " · dismissed" : w.alerts ? " · alerts" : ""}`],
+    ["Id", h("span", { class: "mono selectable" }, w.id)],
+    ["Found in", `${s.label} · ${tildify(s.path)}${s.scannedAt ? ` · checked ${ago(s.scannedAt)}` : ""}`],
+  ];
+  const reveal = isPath(w.file) ? h("button", { class: "btn small", type: "button" }, icon("folder"), "Show in Finder") : null;
+  reveal?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    busy(reveal, "…", () => call("POST", "/api/warning/reveal", { id: w.id }));
+  });
+  return h("div", { class: "warn-detail" },
+    h("dl", {}, ...rows.flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
+    h("div", { class: "chips" },
+      copyButton("Copy markdown", () => warningMarkdown(w, s), "Copied as markdown"),
+      isPath(w.file) ? copyButton("Copy path", w.file, "Path copied") : null,
+      reveal));
+}
+
+function warningItem(w, s) {
+  const root = s.path;
   const label = w.dismissed ? "dismissed" : w.alerts ? `risk · ${w.severity}` : `warning · ${w.severity}`;
-  return h("li", { class: `wrap${w.dismissed ? " dismissed" : ""}` },
+  const key = `${s.path}|${w.id}`;
+  const open = state.ui.openWarnings?.has(key) ?? false;
+  const li = h("li", { class: `wrap clickable${w.dismissed ? " dismissed" : ""}`, "aria-expanded": String(open), tabindex: "0", title: open ? "Hide details" : "Show where it is and copy it" },
     w.alerts && !w.dismissed ? sevBadge(w.severity) : h("span", { class: "tag", title: `rule: ${w.rule}` }, label),
     h("div", { class: "grow" },
       h("div", { class: "title wrap" }, w.message),
-      h("div", { class: "sub mono" }, `${where(w.file, w.line, root)} · ${w.rule}`)),
-    w.alerts || w.dismissed ? dismissButton(w) : null);
+      h("div", { class: "sub mono" }, `${where(w.file, w.line, root)} · ${w.rule}`),
+      open ? warningDetail(w, s) : null),
+    w.alerts || w.dismissed ? dismissButton(w) : null,
+    h("span", { class: `chev${open ? " open" : ""}`, "aria-hidden": "true" }, icon("chevron")));
+  const toggle = (e) => {
+    // Selecting text (a path) or using a button inside must not fold it.
+    if (e.target.closest("button, a, .warn-detail") || window.getSelection()?.toString()) return;
+    const set = (state.ui.openWarnings ??= new Set());
+    if (set.has(key)) set.delete(key); else set.add(key);
+    li.replaceWith(warningItem(w, s));
+  };
+  li.addEventListener("click", toggle);
+  li.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === li) { e.preventDefault(); toggle(e); } });
+  return li;
 }
 
 const WARNING_RANK = { high: 0, moderate: 1, low: 2 };
+
+/** Host checks: the high ones first, ordinary launch items last. */
+const sortWarnings = (s) => (s.kind === "host" ? [...s.warnings].sort((a, b) => WARNING_RANK[a.severity] - WARNING_RANK[b.severity]) : s.warnings);
 
 function sourceBlock(s) {
   const refs = s.references;
@@ -76,9 +174,7 @@ function sourceBlock(s) {
     agents.length ? agents.join(", ") : null,
     s.scannedAt ? `checked ${ago(s.scannedAt)}` : "not checked yet",
   ].filter(Boolean).join(" · ");
-  // Host checks: the high ones first, ordinary launch items last.
-  const warnings = host ? [...s.warnings].sort((a, b) => WARNING_RANK[a.severity] - WARNING_RANK[b.severity]) : s.warnings;
-  const items = [...s.findings.map((f) => findingItem(f, s.path)), ...warnings.map((w) => warningItem(w, s.path))];
+  const items = [...s.findings.map((f) => findingItem(f, s.path)), ...sortWarnings(s).map((w) => warningItem(w, s))];
   return h("div", {},
     h("div", { class: "card-head" },
       h("div", {}, h("h3", {}, s.label), h("div", { class: "sub" }, `${tildify(s.path)} · ${head}`))),
@@ -92,7 +188,8 @@ export function sourcesCard(title, sub, list, kinds) {
   const findings = list.reduce((n, s) => n + s.vulnerableReferences, 0);
   const warnings = list.reduce((n, s) => n + s.warnings.length, 0);
   const summary = list.length ? `${sub} · ${plural(findings, "flagged reference")}, ${plural(warnings, "warning")}` : sub;
-  return card(title, summary, list.length ? h("div", { class: "stack" }, ...list.map(sourceBlock)) : empty("None found", "No configuration files of this kind were found."));
+  const copyAll = findings + warnings ? copyButton("Copy markdown", () => sourcesMarkdown(title, list), `Copied ${title} as markdown`) : null;
+  return card(title, summary, list.length ? h("div", { class: "stack" }, ...list.map(sourceBlock)) : empty("None found", "No configuration files of this kind were found."), null, copyAll);
 }
 
 /** Overview: this machine's agent tools. */

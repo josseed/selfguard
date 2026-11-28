@@ -2,6 +2,9 @@
  * Source warnings as risks: which are open (reminder, menu bar), and dismissing one the user
  * put there on purpose (a LaunchAgent, a repo hook) so it stops alerting. Local state only.
  */
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, isAbsolute } from "node:path";
 import { loadConfig, saveConfig, type WarningDismissal } from "../config.ts";
 import { liveDismissals, trackedActivity } from "../dismiss.ts";
 import { ApiError } from "../errors.ts";
@@ -85,6 +88,21 @@ export function dismissWarning(target: string): DismissedWarning {
   saveConfig(cfg);
   writeMenuBar();
   return shape(d);
+}
+
+/**
+ * Show the file of a warning in Finder (the Mac app's "Show in Finder"). Only files of known
+ * warnings, never a path from the request; a file that is gone shows its nearest folder.
+ */
+export function revealWarning(target: string): { path: string } {
+  if (process.platform !== "darwin") throw new ApiError("unsupported", "Show in Finder is macOS-only");
+  const hit = findWarning(target.trim());
+  if (!hit) throw new ApiError("not_found", "unknown warning");
+  let path = hit.w.file;
+  if (!isAbsolute(path)) throw new ApiError("not_found", "this warning has no file");
+  while (!existsSync(path) && dirname(path) !== path) path = dirname(path);
+  execFile("/usr/bin/open", ["-R", path], () => {});
+  return { path };
 }
 
 export function undismissWarning(target: string): { key: string; removed: boolean } {

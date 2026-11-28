@@ -167,6 +167,7 @@ export async function route(method: string, url: URL, body: Record<string, unkno
     if (p === "/api/repo/undismiss") return api.undismissRepo(str(body, "key"));
     if (p === "/api/warning/dismiss") return api.dismissWarning(str(body, "id"));
     if (p === "/api/warning/undismiss") return api.undismissWarning(str(body, "id"));
+    if (p === "/api/warning/reveal") return api.revealWarning(str(body, "id"));
     if (p === "/api/folders/ignore") return api.ignoreFolder(str(body, "path"), machineOf(body));
     if (p === "/api/unexclude") {
       const path = str(body, "path");
